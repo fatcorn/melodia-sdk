@@ -22,6 +22,12 @@ func NewPV() PV {
 	return PV{ed25519.GenPrivKey()}
 }
 
+// GetPrivKey() returns the private key of the validator.
+// Implements PrivValidator.
+func (pv PV) GetPrivKey() (crypto.PrivKey, error) {
+	return nil, nil
+}
+
 // GetPubKey implements PrivValidator interface
 func (pv PV) GetPubKey() (crypto.PubKey, error) {
 	return cryptocodec.ToCmtPubKeyInterface(pv.PrivKey.PubKey())
