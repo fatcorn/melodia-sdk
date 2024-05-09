@@ -136,7 +136,7 @@ func BroadcastTx(clientCtx client.Context, txf Factory, msgs ...sdk.Msg) error {
 	}
 
 	// broadcast to a CometBFT node
-	res, err := clientCtx.BroadcastTx(txBytes)
+	res, err := clientCtx.BroadcastTx(txBytes, 101)
 	if err != nil {
 		return err
 	}

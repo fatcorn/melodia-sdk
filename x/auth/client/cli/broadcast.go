@@ -44,7 +44,7 @@ $ <appd> tx broadcast ./mytxn.json
 				return err
 			}
 
-			res, err := clientCtx.BroadcastTx(txBytes)
+			res, err := clientCtx.BroadcastTx(txBytes, 101)
 			if err != nil {
 				return err
 			}
