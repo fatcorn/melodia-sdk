@@ -2,6 +2,7 @@ package cli
 
 import (
 	"errors"
+	"github.com/cometbft/cometbft/crypto/merkle"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -44,7 +45,7 @@ $ <appd> tx broadcast ./mytxn.json
 				return err
 			}
 
-			res, err := clientCtx.BroadcastTx(txBytes, 101)
+			res, err := clientCtx.BroadcastTx(txBytes, merkle.DefaultTxNamespaceID)
 			if err != nil {
 				return err
 			}
