@@ -696,9 +696,9 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 		return nil, err
 	}
 
-	if err := app.validateFinalizeBlockHeight(req); err != nil {
-		return nil, err
-	}
+	//if err := app.validateFinalizeBlockHeight(req); err != nil {
+	//	return nil, err
+	//}
 
 	if app.cms.TracingEnabled() {
 		app.cms.SetTracingContext(storetypes.TraceContext(

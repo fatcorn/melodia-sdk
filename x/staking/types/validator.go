@@ -265,8 +265,9 @@ func (v Validator) ABCIValidatorUpdate(r math.Int) abci.ValidatorUpdate {
 	}
 
 	return abci.ValidatorUpdate{
-		PubKey: tmProtoPk,
-		Power:  v.ConsensusPower(r),
+		PubKey:     tmProtoPk,
+		Power:      v.ConsensusPower(r),
+		SignPubkey: v.SignPubkey,
 	}
 }
 
