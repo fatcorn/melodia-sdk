@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cometbft/cometbft/crypto/merkle"
 	"os"
 
 	gogogrpc "github.com/cosmos/gogoproto/grpc"
@@ -136,7 +137,7 @@ func BroadcastTx(clientCtx client.Context, txf Factory, msgs ...sdk.Msg) error {
 	}
 
 	// broadcast to a CometBFT node
-	res, err := clientCtx.BroadcastTx(txBytes)
+	res, err := clientCtx.BroadcastTx(txBytes, merkle.DefaultTxNamespaceID)
 	if err != nil {
 		return err
 	}

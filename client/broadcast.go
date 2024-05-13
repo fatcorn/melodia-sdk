@@ -20,13 +20,13 @@ import (
 // based on the context parameters. The result of the broadcast is parsed into
 // an intermediate structure which is logged if the context has a logger
 // defined.
-func (ctx Context) BroadcastTx(txBytes []byte) (res *sdk.TxResponse, err error) {
+func (ctx Context) BroadcastTx(txBytes []byte, namespace cmttypes.Namespace) (res *sdk.TxResponse, err error) {
 	switch ctx.BroadcastMode {
 	case flags.BroadcastSync:
-		res, err = ctx.BroadcastTxSync(txBytes)
+		res, err = ctx.BroadcastTxSync(txBytes, namespace)
 
 	case flags.BroadcastAsync:
-		res, err = ctx.BroadcastTxAsync(txBytes)
+		res, err = ctx.BroadcastTxAsync(txBytes, namespace)
 
 	default:
 		return nil, fmt.Errorf("unsupported return type %s; supported types: sync, async", ctx.BroadcastMode)
@@ -85,13 +85,13 @@ func CheckCometError(err error, tx cmttypes.Tx) *sdk.TxResponse {
 
 // BroadcastTxSync broadcasts transaction bytes to a CometBFT node
 // synchronously (i.e. returns after CheckTx execution).
-func (ctx Context) BroadcastTxSync(txBytes []byte) (*sdk.TxResponse, error) {
+func (ctx Context) BroadcastTxSync(txBytes []byte, namespace cmttypes.Namespace) (*sdk.TxResponse, error) {
 	node, err := ctx.GetNode()
 	if err != nil {
 		return nil, err
 	}
 
-	res, err := node.BroadcastTxSync(context.Background(), txBytes)
+	res, err := node.BroadcastTxSync(context.Background(), txBytes, namespace)
 	if errRes := CheckCometError(err, txBytes); errRes != nil {
 		return errRes, nil
 	}
@@ -101,13 +101,13 @@ func (ctx Context) BroadcastTxSync(txBytes []byte) (*sdk.TxResponse, error) {
 
 // BroadcastTxAsync broadcasts transaction bytes to a CometBFT node
 // asynchronously (i.e. returns immediately).
-func (ctx Context) BroadcastTxAsync(txBytes []byte) (*sdk.TxResponse, error) {
+func (ctx Context) BroadcastTxAsync(txBytes []byte, namespace cmttypes.Namespace) (*sdk.TxResponse, error) {
 	node, err := ctx.GetNode()
 	if err != nil {
 		return nil, err
 	}
 
-	res, err := node.BroadcastTxAsync(context.Background(), txBytes)
+	res, err := node.BroadcastTxAsync(context.Background(), txBytes, namespace)
 	if errRes := CheckCometError(err, txBytes); errRes != nil {
 		return errRes, nil
 	}
@@ -123,7 +123,9 @@ func TxServiceBroadcast(_ context.Context, clientCtx Context, req *tx.BroadcastT
 	}
 
 	clientCtx = clientCtx.WithBroadcastMode(normalizeBroadcastMode(req.Mode))
-	resp, err := clientCtx.BroadcastTx(req.TxBytes)
+	fmt.Printf("-----unexpected invoke \n")
+	// todo, add valid namespace
+	resp, err := clientCtx.BroadcastTx(req.TxBytes, cmttypes.Namespace(101))
 	if err != nil {
 		return nil, err
 	}
