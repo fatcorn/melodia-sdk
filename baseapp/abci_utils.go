@@ -11,6 +11,7 @@ import (
 	cryptoenc "github.com/cometbft/cometbft/crypto/encoding"
 	cmtprotocrypto "github.com/cometbft/cometbft/proto/tendermint/crypto"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	consensustypes "github.com/cometbft/cometbft/types"
 	protoio "github.com/cosmos/gogoproto/io"
 	"github.com/cosmos/gogoproto/proto"
 
@@ -282,6 +283,7 @@ func (h *DefaultProposalHandler) PrepareProposalHandler() sdk.PrepareProposalHan
 		iterator := h.mempool.Select(ctx, req.Txs)
 		selectedTxsSignersSeqs := make(map[string]uint64)
 		var selectedTxsNums int
+
 		for iterator != nil {
 			memTx := iterator.Tx()
 			signerData, err := h.signerExtAdapter.GetSigners(memTx)
@@ -318,6 +320,10 @@ func (h *DefaultProposalHandler) PrepareProposalHandler() sdk.PrepareProposalHan
 			// which calls mempool.Insert, in theory everything in the pool should be
 			// valid. But some mempool implementations may insert invalid txs, so we
 			// check again.
+
+			//todo if not use the noop mempool, the tx orders would not math with NStalbe,
+			// so not set the prepareProposalState context with namespace, and we stong suggest use the
+			// noop mempoll for now.
 			txBz, err := h.txVerifier.PrepareProposalVerifyTx(memTx)
 			if err != nil {
 				err := h.mempool.Remove(memTx)
@@ -381,8 +387,13 @@ func (h *DefaultProposalHandler) ProcessProposalHandler() sdk.ProcessProposalHan
 		if b := ctx.ConsensusParams().Block; b != nil {
 			maxBlockGas = b.MaxGas
 		}
-
-		for _, txBytes := range req.Txs {
+		namespaceIdList, err := consensustypes.ListTxsNamespaceIdsWithTxsAndNSTable(len(req.Txs), req.NsTable)
+		if err != nil {
+			panic("Unmatched txs with tx NS table")
+		}
+		for i, txBytes := range req.Txs {
+			app := h.txVerifier.(*BaseApp)
+			app.processProposalState.SetContext(app.processProposalState.Context().WithNamepace(namespaceIdList[i]))
 			tx, err := h.txVerifier.ProcessProposalVerifyTx(txBytes)
 			if err != nil {
 				return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil

@@ -82,6 +82,63 @@ func (k msgServer) Send(goCtx context.Context, msg *types.MsgSend) (*types.MsgSe
 	return &types.MsgSendResponse{}, nil
 }
 
+// Todo delete， only for test
+func (k msgServer) SendToNamespace(goCtx context.Context, msg *types.MsgSendToNamespace) (*types.MsgSendResponse, error) {
+	var (
+		from, to []byte
+		err      error
+	)
+
+	if base, ok := k.Keeper.(BaseKeeper); ok {
+		from, err = base.ak.AddressCodec().StringToBytes(msg.FromAddress)
+		if err != nil {
+			return nil, sdkerrors.ErrInvalidAddress.Wrapf("invalid from address: %s", err)
+		}
+		to, err = base.ak.AddressCodec().StringToBytes(msg.ToAddress)
+		if err != nil {
+			return nil, sdkerrors.ErrInvalidAddress.Wrapf("invalid to address: %s", err)
+		}
+	} else {
+		return nil, sdkerrors.ErrInvalidRequest.Wrapf("invalid keeper type: %T", k.Keeper)
+	}
+
+	if !msg.Amount.IsValid() {
+		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, msg.Amount.String())
+	}
+
+	if !msg.Amount.IsAllPositive() {
+		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, msg.Amount.String())
+	}
+
+	ctx := sdk.UnwrapSDKContext(goCtx)
+	if err := k.IsSendEnabledCoins(ctx, msg.Amount...); err != nil {
+		return nil, err
+	}
+
+	if k.BlockedAddr(to) {
+		return nil, errorsmod.Wrapf(sdkerrors.ErrUnauthorized, "%s is not allowed to receive funds", msg.ToAddress)
+	}
+
+	err = k.SendCoinsToNamespace(ctx, from, to, msg.Amount, msg.NamespaceId)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		for _, a := range msg.Amount {
+			if a.Amount.IsInt64() {
+				telemetry.SetGaugeWithLabels(
+					[]string{"tx", "msg", "send"},
+					float32(a.Amount.Int64()),
+					[]metrics.Label{telemetry.NewLabel("denom", a.Denom)},
+				)
+			}
+		}
+	}()
+
+	return &types.MsgSendResponse{}, nil
+}
+
 func (k msgServer) MultiSend(goCtx context.Context, msg *types.MsgMultiSend) (*types.MsgMultiSendResponse, error) {
 	if len(msg.Inputs) == 0 {
 		return nil, types.ErrNoInputs

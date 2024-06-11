@@ -83,10 +83,19 @@ func (ctx Context) Invoke(grpcCtx gocontext.Context, method string, req, reply i
 		ctx = ctx.WithHeight(height)
 	}
 
+	var namespaceId uint64
+	if namespaceIdStr := md.Get(grpctypes.GRPCNamespaceId); len(namespaceIdStr) > 0 {
+		namespaceId, err = strconv.ParseUint(namespaceIdStr[0], 10, 64)
+		if err != nil {
+			return err
+		}
+	}
+
 	abciReq := abci.RequestQuery{
-		Path:   method,
-		Data:   reqBz,
-		Height: ctx.Height,
+		Path:        method,
+		Data:        reqBz,
+		Height:      ctx.Height,
+		NamespaceId: namespaceId,
 	}
 
 	res, err := ctx.QueryABCI(abciReq)

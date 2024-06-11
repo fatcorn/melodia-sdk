@@ -19,10 +19,11 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Msg_Send_FullMethodName           = "/cosmos.bank.v1beta1.Msg/Send"
-	Msg_MultiSend_FullMethodName      = "/cosmos.bank.v1beta1.Msg/MultiSend"
-	Msg_UpdateParams_FullMethodName   = "/cosmos.bank.v1beta1.Msg/UpdateParams"
-	Msg_SetSendEnabled_FullMethodName = "/cosmos.bank.v1beta1.Msg/SetSendEnabled"
+	Msg_Send_FullMethodName            = "/cosmos.bank.v1beta1.Msg/Send"
+	Msg_SendToNamespace_FullMethodName = "/cosmos.bank.v1beta1.Msg/SendToNamespace"
+	Msg_MultiSend_FullMethodName       = "/cosmos.bank.v1beta1.Msg/MultiSend"
+	Msg_UpdateParams_FullMethodName    = "/cosmos.bank.v1beta1.Msg/UpdateParams"
+	Msg_SetSendEnabled_FullMethodName  = "/cosmos.bank.v1beta1.Msg/SetSendEnabled"
 )
 
 // MsgClient is the client API for Msg service.
@@ -31,6 +32,8 @@ const (
 type MsgClient interface {
 	// Send defines a method for sending coins from one account to another account.
 	Send(ctx context.Context, in *MsgSend, opts ...grpc.CallOption) (*MsgSendResponse, error)
+	// SendToNamespace defines a method for sending coins from one account to another account.
+	SendToNamespace(ctx context.Context, in *MsgSendToNamespace, opts ...grpc.CallOption) (*MsgSendResponse, error)
 	// MultiSend defines a method for sending coins from some accounts to other accounts.
 	MultiSend(ctx context.Context, in *MsgMultiSend, opts ...grpc.CallOption) (*MsgMultiSendResponse, error)
 	// UpdateParams defines a governance operation for updating the x/bank module parameters.
@@ -58,6 +61,15 @@ func NewMsgClient(cc grpc.ClientConnInterface) MsgClient {
 func (c *msgClient) Send(ctx context.Context, in *MsgSend, opts ...grpc.CallOption) (*MsgSendResponse, error) {
 	out := new(MsgSendResponse)
 	err := c.cc.Invoke(ctx, Msg_Send_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *msgClient) SendToNamespace(ctx context.Context, in *MsgSendToNamespace, opts ...grpc.CallOption) (*MsgSendResponse, error) {
+	out := new(MsgSendResponse)
+	err := c.cc.Invoke(ctx, Msg_SendToNamespace_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -97,6 +109,8 @@ func (c *msgClient) SetSendEnabled(ctx context.Context, in *MsgSetSendEnabled, o
 type MsgServer interface {
 	// Send defines a method for sending coins from one account to another account.
 	Send(context.Context, *MsgSend) (*MsgSendResponse, error)
+	// SendToNamespace defines a method for sending coins from one account to another account.
+	SendToNamespace(context.Context, *MsgSendToNamespace) (*MsgSendResponse, error)
 	// MultiSend defines a method for sending coins from some accounts to other accounts.
 	MultiSend(context.Context, *MsgMultiSend) (*MsgMultiSendResponse, error)
 	// UpdateParams defines a governance operation for updating the x/bank module parameters.
@@ -120,6 +134,9 @@ type UnimplementedMsgServer struct {
 
 func (UnimplementedMsgServer) Send(context.Context, *MsgSend) (*MsgSendResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Send not implemented")
+}
+func (UnimplementedMsgServer) SendToNamespace(context.Context, *MsgSendToNamespace) (*MsgSendResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SendToNamespace not implemented")
 }
 func (UnimplementedMsgServer) MultiSend(context.Context, *MsgMultiSend) (*MsgMultiSendResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method MultiSend not implemented")
@@ -157,6 +174,24 @@ func _Msg_Send_Handler(srv interface{}, ctx context.Context, dec func(interface{
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(MsgServer).Send(ctx, req.(*MsgSend))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Msg_SendToNamespace_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgSendToNamespace)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).SendToNamespace(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Msg_SendToNamespace_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).SendToNamespace(ctx, req.(*MsgSendToNamespace))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -225,6 +260,10 @@ var Msg_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Send",
 			Handler:    _Msg_Send_Handler,
+		},
+		{
+			MethodName: "SendToNamespace",
+			Handler:    _Msg_SendToNamespace_Handler,
 		},
 		{
 			MethodName: "MultiSend",

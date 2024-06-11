@@ -170,9 +170,12 @@ require (
 
 // Below are the long-lived replace of the Cosmos SDK
 replace (
+	cosmossdk.io/collections v0.4.0 => git.everylink.ai/public/cosmossdk-io-collections v0.4.0
+	cosmossdk.io/core v0.11.0 => git.everylink.ai/public/cosmossdk-io-core v0.11.0
+	cosmossdk.io/store v1.0.2 => git.everylink.ai/public/cosmossdk-io-store v1.0.2
 	// use cosmos fork of keyring
 	github.com/99designs/keyring => github.com/cosmos/keyring v1.2.0
-	github.com/cometbft/cometbft v0.38.5 => ../shared-comebft
+	github.com/cometbft/cometbft v0.38.5 => git.everylink.ai/public/shared-comebft v0.38.7-0.20240611014808-61b8b13f956e
 	// dgrijalva/jwt-go is deprecated and doesn't receive security updates.
 	// TODO: remove it: https://github.com/cosmos/cosmos-sdk/issues/13134
 	github.com/dgrijalva/jwt-go => github.com/golang-jwt/jwt/v4 v4.4.2

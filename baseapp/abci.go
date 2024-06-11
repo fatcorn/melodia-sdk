@@ -20,6 +20,7 @@ import (
 	snapshottypes "cosmossdk.io/store/snapshots/types"
 	storetypes "cosmossdk.io/store/types"
 
+	consensustypes "github.com/cometbft/cometbft/types"
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/telemetry"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -346,7 +347,7 @@ func (app *BaseApp) CheckTx(req *abci.RequestCheckTx) (*abci.ResponseCheckTx, er
 	default:
 		return nil, fmt.Errorf("unknown RequestCheckTx type: %s", req.Type)
 	}
-
+	app.checkState.SetContext(app.checkState.Context().WithNamepace(req.NamespaceId))
 	gInfo, result, anteEvents, err := app.runTx(mode, req.Tx)
 	if err != nil {
 		return sdkerrors.ResponseCheckTxWithEvents(err, gInfo.GasWanted, gInfo.GasUsed, anteEvents, app.trace), nil
@@ -783,8 +784,11 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	// NOTE: Not all raw transactions may adhere to the sdk.Tx interface, e.g.
 	// vote extensions, so skip those.
 	txResults := make([]*abci.ExecTxResult, 0, len(req.Txs))
-	for _, rawTx := range req.Txs {
+	namespaceList, err := consensustypes.ListTxsNamespaceIdsWithTxsAndNSTable(len(req.Txs), req.NsTable)
+	for i, rawTx := range req.Txs {
 		var response *abci.ExecTxResult
+		namespaceId := namespaceList[i]
+		app.finalizeBlockState.SetContext(app.finalizeBlockState.Context().WithNamepace(namespaceId))
 
 		if _, err := app.txDecoder(rawTx); err == nil {
 			response = app.deliverTx(rawTx)
@@ -1132,9 +1136,11 @@ func (app *BaseApp) getContextForProposal(ctx sdk.Context, height int64) sdk.Con
 
 func (app *BaseApp) handleQueryGRPC(handler GRPCQueryHandler, req *abci.RequestQuery) *abci.ResponseQuery {
 	ctx, err := app.CreateQueryContext(req.Height, req.Prove)
+
 	if err != nil {
 		return sdkerrors.QueryResult(err, app.trace)
 	}
+	ctx.SetNamespace(req.NamespaceId)
 
 	resp, err := handler(ctx, req)
 	if err != nil {
