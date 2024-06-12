@@ -119,6 +119,7 @@ func initFixture(t testing.TB) *fixture {
 		addresscodec.NewBech32Codec(sdk.Bech32MainPrefix),
 		sdk.Bech32MainPrefix,
 		authority.String(),
+		runtime.NewNamespaceKVStoreService(keys[banktypes.StoreKey]),
 	)
 
 	blockedAddresses := map[string]bool{
@@ -131,9 +132,10 @@ func initFixture(t testing.TB) *fixture {
 		blockedAddresses,
 		authority.String(),
 		log.NewNopLogger(),
+		runtime.NewNamespaceKVStoreService(keys[banktypes.StoreKey]),
 	)
 
-	stakingKeeper := stakingkeeper.NewKeeper(cdc, runtime.NewKVStoreService(keys[types.StoreKey]), accountKeeper, bankKeeper, authority.String(), addresscodec.NewBech32Codec(sdk.Bech32PrefixValAddr), addresscodec.NewBech32Codec(sdk.Bech32PrefixConsAddr))
+	stakingKeeper := stakingkeeper.NewKeeper(cdc, runtime.NewKVStoreService(keys[types.StoreKey]), accountKeeper, bankKeeper, authority.String(), addresscodec.NewBech32Codec(sdk.Bech32PrefixValAddr), addresscodec.NewBech32Codec(sdk.Bech32PrefixConsAddr), runtime.NewNamespaceKVStoreService(keys[banktypes.StoreKey]))
 
 	authModule := auth.NewAppModule(cdc, accountKeeper, authsims.RandomGenesisAccounts, nil)
 	bankModule := bank.NewAppModule(cdc, bankKeeper, accountKeeper, nil)

@@ -25,6 +25,7 @@ var _ types.DelegationSet = Keeper{}
 // Keeper of the x/staking store
 type Keeper struct {
 	storeService          storetypes.KVStoreService
+	namespaceStoreService storetypes.NamespaceKVStoreService
 	cdc                   codec.BinaryCodec
 	authKeeper            types.AccountKeeper
 	bankKeeper            types.BankKeeper
@@ -43,6 +44,7 @@ func NewKeeper(
 	authority string,
 	validatorAddressCodec addresscodec.Codec,
 	consensusAddressCodec addresscodec.Codec,
+	namespaceStoreService storetypes.NamespaceKVStoreService,
 ) *Keeper {
 	// ensure bonded and not bonded module accounts are set
 	if addr := ak.GetModuleAddress(types.BondedPoolName); addr == nil {
@@ -71,6 +73,7 @@ func NewKeeper(
 		authority:             authority,
 		validatorAddressCodec: validatorAddressCodec,
 		consensusAddressCodec: consensusAddressCodec,
+		namespaceStoreService: namespaceStoreService,
 	}
 }
 
@@ -171,4 +174,9 @@ func (k Keeper) GetValidatorUpdates(ctx context.Context) ([]abci.ValidatorUpdate
 	}
 
 	return valUpdates.Updates, nil
+}
+
+// GetCdc return the cdc
+func (k Keeper) GetCdc() codec.BinaryCodec {
+	return k.cdc
 }
