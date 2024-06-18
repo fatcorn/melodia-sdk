@@ -39,6 +39,8 @@ message MsgUpdateParams {
 
   // Since: cosmos-sdk 0.50
   tendermint.types.ABCIParams abci = 5;
+
+  tendermint.types.MempoolParams mempool = 6;
 }
 
 // MsgUpdateParamsResponse defines the response structure for executing a

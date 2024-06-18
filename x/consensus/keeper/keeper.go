@@ -2,6 +2,11 @@ package keeper
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	genutiltypes "github.com/cosmos/cosmos-sdk/x/genutil/types"
+	"strconv"
 
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	cmttypes "github.com/cometbft/cometbft/types"
@@ -89,4 +94,57 @@ func (k Keeper) UpdateParams(ctx context.Context, msg *types.MsgUpdateParams) (*
 	}
 
 	return &types.MsgUpdateParamsResponse{}, nil
+}
+
+// ChainserviceHandler the namespace init genesis handler
+type ChainserviceHandler struct {
+	keeper Keeper
+}
+
+// NamespaceInitGenesis namespace initializes the module's state from a provided genesis state.
+func (c ChainserviceHandler) NamespaceInitGenesis(ctx sdk.Context, genesis sdk.NamespaceGenesis) error {
+
+	ctx.Logger().Info(fmt.Sprintf("Namespace init genesis %s namespaceId= %v", types.ModuleName, genesis.NamespaceId))
+
+	var genesisState genutiltypes.ConsensusGenesis
+	err := json.Unmarshal(genesis.Data, &genesisState)
+	if err != nil {
+		return err
+	}
+
+	consensusParams, err := c.keeper.ParamsStore.Get(ctx)
+	if err != nil {
+		return status.Error(codes.Internal, err.Error())
+	}
+	oldSort := consensusParams.Mempool.Sort
+	newSort := make(map[string]string)
+	if len(oldSort) > 0 {
+		err = json.Unmarshal([]byte(oldSort), &newSort)
+		if err != nil {
+			ctx.Logger().Error("Parsing sort failed", "namespaceId", genesis.NamespaceId, "sort", oldSort)
+			return err
+		}
+	}
+	newSort[strconv.FormatUint(uint64(genesis.NamespaceId), 10)] = genesisState.Params.Mempool.Sort
+
+	newSortBytes, err := json.Marshal(newSort)
+	if err != nil {
+		return err
+	}
+	consensusParams.Mempool.Sort = string(newSortBytes)
+
+	if err := cmttypes.ConsensusParamsFromProto(consensusParams).ValidateBasic(); err != nil {
+		return err
+	}
+
+	if err := c.keeper.ParamsStore.Set(ctx, consensusParams); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// NewChainserviceHandler create new handler
+func NewChainserviceHandler(k Keeper) ChainserviceHandler {
+	return ChainserviceHandler{keeper: k}
 }

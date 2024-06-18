@@ -72,6 +72,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2 // indirect
 	github.com/bufbuild/protocompile v0.6.0 // indirect
+	github.com/celestiaorg/nmt v0.20.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.3 // indirect
 	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
@@ -174,7 +175,7 @@ replace (
 	cosmossdk.io/store v1.0.2 => git.everylink.ai/public/cosmossdk-io-store v1.0.2
 	// use cosmos fork of keyring
 	github.com/99designs/keyring => github.com/cosmos/keyring v1.2.0
-	github.com/cometbft/cometbft v0.38.6 => git.everylink.ai/blockchain/shared-comebft v0.38.7-0.20240615033214-0fafa75b902d
+	github.com/cometbft/cometbft v0.38.5 => git.everylink.ai/public/shared-comebft v0.38.7-0.20240618111849-3c7d4b7273e3
 	// dgrijalva/jwt-go is deprecated and doesn't receive security updates.
 	// TODO: remove it: https://github.com/cosmos/cosmos-sdk/issues/13134
 	github.com/dgrijalva/jwt-go => github.com/golang-jwt/jwt/v4 v4.4.2
