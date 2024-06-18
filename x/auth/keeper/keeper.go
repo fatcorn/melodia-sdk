@@ -124,7 +124,7 @@ func NewAccountKeeper(
 
 	sb := collections.NewSchemaBuilder(storeService)
 
-	namespaceSchemaBuilder := collections.NewSchemaBuilderFromAccessor(namespaceStoreService.OpenNamespaceKVStore)
+	//namespaceSchemaBuilder := collections.NewSchemaBuilderFromAccessor(namespaceStoreService.OpenNamespaceKVStore)
 
 	ak := AccountKeeper{
 		addressCodec:  ac,
@@ -135,8 +135,8 @@ func NewAccountKeeper(
 		permAddrs:     permAddrs,
 		authority:     authority,
 		Params:        collections.NewItem(sb, types.ParamsKey, "params", codec.CollValue[types.Params](cdc)),
-		AccountNumber: collections.NewSequence(namespaceSchemaBuilder, types.GlobalAccountNumberKey, "account_number"),
-		Accounts:      collections.NewIndexedMap(namespaceSchemaBuilder, types.AddressStoreKeyPrefix, "accounts", sdk.AccAddressKey, codec.CollInterfaceValue[sdk.AccountI](cdc), NewAccountIndexes(namespaceSchemaBuilder)),
+		AccountNumber: collections.NewSequence(sb, types.GlobalAccountNumberKey, "account_number"),
+		Accounts:      collections.NewIndexedMap(sb, types.AddressStoreKeyPrefix, "accounts", sdk.AccAddressKey, codec.CollInterfaceValue[sdk.AccountI](cdc), NewAccountIndexes(sb)),
 	}
 	schema, err := sb.Build()
 	if err != nil {

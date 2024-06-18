@@ -238,6 +238,14 @@ func (e Events) ToABCIEvents() []abci.Event {
 	return res
 }
 
+func SdkEventsFromABCIEvent(ae []abci.Event) Events {
+	ret := make([]Event, len(ae))
+	for i, event := range ae {
+		ret[i] = Event(event)
+	}
+	return ret
+}
+
 // GetAttributes returns all attributes matching a given key present in events.
 // If the key is not found, the boolean value will be false.
 func (e Events) GetAttributes(key string) ([]Attribute, bool) {

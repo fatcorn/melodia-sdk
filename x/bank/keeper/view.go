@@ -78,7 +78,7 @@ func NewBaseViewKeeper(
 	namespaceStoreService store.NamespaceKVStoreService,
 ) BaseViewKeeper {
 	sb := collections.NewSchemaBuilder(storeService)
-	namespacewSchemaBuilder := collections.NewSchemaBuilderFromAccessor(namespaceStoreService.OpenNamespaceKVStore)
+	//namespacewSchemaBuilder := collections.NewSchemaBuilderFromAccessor(namespaceStoreService.OpenNamespaceKVStore)
 	k := BaseViewKeeper{
 		cdc:           cdc,
 		storeService:  storeService,
@@ -87,7 +87,7 @@ func NewBaseViewKeeper(
 		Supply:        collections.NewMap(sb, types.SupplyKey, "supply", collections.StringKey, sdk.IntValue),
 		DenomMetadata: collections.NewMap(sb, types.DenomMetadataPrefix, "denom_metadata", collections.StringKey, codec.CollValue[types.Metadata](cdc)),
 		SendEnabled:   collections.NewMap(sb, types.SendEnabledPrefix, "send_enabled", collections.StringKey, codec.BoolValue), // NOTE: we use a bool value which uses protobuf to retain state backwards compat
-		Balances:      collections.NewIndexedMap(namespacewSchemaBuilder, types.BalancesPrefix, "balances", collections.PairKeyCodec(sdk.AccAddressKey, collections.StringKey), types.BalanceValueCodec, newBalancesIndexes(namespacewSchemaBuilder)),
+		Balances:      collections.NewIndexedMap(sb, types.BalancesPrefix, "balances", collections.PairKeyCodec(sdk.AccAddressKey, collections.StringKey), types.BalanceValueCodec, newBalancesIndexes(sb)),
 		Params:        collections.NewItem(sb, types.ParamsKey, "params", codec.CollValue[types.Params](cdc)),
 	}
 

@@ -24,6 +24,9 @@ import (
 	"cosmossdk.io/store/snapshots"
 	storetypes "cosmossdk.io/store/types"
 
+	"encoding/json"
+	"github.com/cometbft/cometbft/crypto/merkle"
+	bfttypes "github.com/cometbft/cometbft/types"
 	"github.com/cosmos/cosmos-sdk/baseapp/oe"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
@@ -32,6 +35,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/cosmos/cosmos-sdk/types/mempool"
+	"golang.org/x/exp/slices"
 )
 
 type (
@@ -193,6 +197,8 @@ type BaseApp struct {
 	//
 	// SAFETY: it's safe to do if validators validate the total gas wanted in the `ProcessProposal`, which is the case in the default handler.
 	disableBlockGasMeter bool
+
+	NamespaceStoresLoaded bool
 }
 
 // NewBaseApp returns a reference to an initialized BaseApp. It accepts a
@@ -285,7 +291,9 @@ func (app *BaseApp) SetMsgServiceRouter(msgServiceRouter *MsgServiceRouter) {
 // MountStores mounts all IAVL or DB stores to the provided keys in the BaseApp
 // multistore.
 func (app *BaseApp) MountStores(keys ...storetypes.StoreKey) {
-	for _, key := range keys {
+	allStoreKeys := app.LoadAllValidNamespaceStore(keys...)
+
+	for _, key := range allStoreKeys {
 		switch key.(type) {
 		case *storetypes.KVStoreKey:
 			if !app.fauxMerkleMode {
@@ -304,6 +312,109 @@ func (app *BaseApp) MountStores(keys ...storetypes.StoreKey) {
 
 		default:
 			panic(fmt.Sprintf("Unrecognized store key type :%T", key))
+		}
+	}
+}
+
+func (app *BaseApp) LoadAllValidNamespaceStore(keys ...storetypes.StoreKey) []storetypes.StoreKey {
+	namesapceIdPrefixKey := []byte("s/k:chainservice_0/fnamespace_port")
+	iter, _ := app.db.Iterator(namesapceIdPrefixKey, storetypes.PrefixEndBytes(namesapceIdPrefixKey))
+	//prefixKey := []byte{115, 47, 107, 58, 99, 104, 97, 105, 110, 115, 101, 114, 118, 105, 99, 101, 47}
+	//endKey := []byte{115, 47, 107, 58, 99, 104, 97, 105, 110, 115, 101, 114, 118, 105, 99, 101, 47, 155}
+	//iter, _ := app.db.Iterator(prefixKey, endKey)
+	//time := 0
+	var namespaceStores []storetypes.StoreKey
+	if !app.NamespaceStoresLoaded {
+		var nsPorts []*bfttypes.NamespacePort
+		for iter.Valid() {
+			key := iter.Key()
+			value := iter.Value()
+			fmt.Printf("%s, %v\n", string(key), key)
+			fmt.Printf("%s， %v\n", string(value), value)
+
+			validBytesStartIndex := slices.IndexFunc(value, func(val byte) bool {
+				if val == []byte("{")[0] {
+					return true
+				}
+				return false
+			})
+			var nsPort bfttypes.NamespacePort
+			err := json.Unmarshal(value[validBytesStartIndex:], &nsPort)
+			if err != nil {
+				fmt.Printf("Unmarshal namespacePort failed %v\n", err)
+			} else {
+				nsPorts = append(nsPorts, &nsPort)
+				fmt.Printf("nsPorts %v", nsPort)
+			}
+			iter.Next()
+		}
+		var indunplicateNamespace []*bfttypes.NamespacePort
+		uniqueNamespaces := make(map[bfttypes.Namespace]bool)
+		for _, port := range nsPorts {
+			if ok := uniqueNamespaces[port.NamespaceId]; ok {
+				continue
+			}
+			uniqueNamespaces[port.NamespaceId] = true
+			indunplicateNamespace = append(indunplicateNamespace, port)
+		}
+
+		namespaceStores = NamespaceStoresFromNSPort(indunplicateNamespace)
+		app.NamespaceStoresLoaded = true
+	}
+
+	defaultNamesapceKeys := make([]storetypes.StoreKey, 0)
+	for _, key := range keys {
+		switch key.(type) {
+		case *storetypes.KVStoreKey:
+			defaultNamesapceKey := storetypes.NewKVStoreKey(key.Name() + "_" + strconv.FormatUint(merkle.DefaultTxNamespaceID, 10))
+			defaultNamesapceKeys = append(defaultNamesapceKeys, defaultNamesapceKey)
+		case *storetypes.TransientStoreKey:
+			defaultNamesapceKey := storetypes.NewTransientStoreKey(key.Name() + "_" + strconv.FormatUint(merkle.DefaultTxNamespaceID, 10))
+			defaultNamesapceKeys = append(defaultNamesapceKeys, defaultNamesapceKey)
+		case *storetypes.MemoryStoreKey:
+			defaultNamesapceKey := storetypes.NewMemoryStoreKey(key.Name() + "_" + strconv.FormatUint(merkle.DefaultTxNamespaceID, 10))
+			defaultNamesapceKeys = append(defaultNamesapceKeys, defaultNamesapceKey)
+		}
+	}
+
+	allStoreKeys := append(defaultNamesapceKeys, namespaceStores...)
+	return allStoreKeys
+}
+
+func NamespaceStoresFromNSPort(indunplicateNamespace []*bfttypes.NamespacePort) []storetypes.StoreKey {
+	namespaceStores := make([]storetypes.StoreKey, 0)
+	for _, namesapceInfo := range indunplicateNamespace {
+		vmMoudleStoreKey := storetypes.NewKVStoreKey(namesapceInfo.Module + "_" + strconv.FormatUint(uint64(namesapceInfo.NamespaceId), 10))
+		namespaceStores = append(namespaceStores, vmMoudleStoreKey)
+		for _, dependentModule := range namesapceInfo.VMModuleDependentModules {
+			dependentModuleStoreKey := storetypes.NewKVStoreKey(dependentModule + "_" + strconv.FormatUint(uint64(namesapceInfo.NamespaceId), 10))
+			namespaceStores = append(namespaceStores, dependentModuleStoreKey)
+		}
+	}
+	return namespaceStores
+}
+
+// HandleInternalEvent handle internal Event to execute related logic
+func (app *BaseApp) HandleInternalEvent(events sdk.Events) {
+	for _, event := range events {
+		switch event.Type {
+		case InternalEventTypeNewNamespace:
+			{
+				nsPortObj, hasKey := event.GetAttribute(InternalEventTypeNewNamespaceAttribute)
+				if !hasKey {
+					panic("Get InternalEventTypeNewNamespace but no value")
+				}
+				var nsPort bfttypes.NamespacePort
+				err := json.Unmarshal([]byte(nsPortObj.Value), &nsPort)
+				if err != nil {
+					panic(fmt.Sprintf("Get InternalEventTypeNewNamespace but unmarshal value failed %v", err))
+				}
+				newNamespaceStoreKey := NamespaceStoresFromNSPort([]*bfttypes.NamespacePort{&nsPort})
+				err = app.cms.DynamicAddNamesapceStore(newNamespaceStoreKey...)
+				if err != nil {
+					panic(fmt.Sprintf("Dynamic add namesapce store failed %v", err))
+				}
+			}
 		}
 	}
 }
@@ -526,7 +637,8 @@ func (app *BaseApp) GetConsensusParams(ctx sdk.Context) cmtproto.ConsensusParams
 		return cmtproto.ConsensusParams{}
 	}
 
-	cp, err := app.paramStore.Get(ctx)
+	baseNamespaceCtx := ctx.WithNamepace(0)
+	cp, err := app.paramStore.Get(baseNamespaceCtx)
 	if err != nil {
 		// This could happen while migrating from v0.45/v0.46 to v0.50, we should
 		// allow it to happen so during preblock the upgrade plan can be executed
@@ -789,7 +901,10 @@ func (app *BaseApp) endBlock(ctx context.Context) (sdk.EndBlock, error) {
 	var endblock sdk.EndBlock
 
 	if app.endBlocker != nil {
-		eb, err := app.endBlocker(app.finalizeBlockState.Context())
+		endblockContext := app.finalizeBlockState.Context()
+		// todo check, every moudle namespace use default 0 is ok?(include vm moudle, like evm、wasm)
+		endblockContext.SetNamespace(0)
+		eb, err := app.endBlocker(endblockContext)
 		if err != nil {
 			return endblock, err
 		}

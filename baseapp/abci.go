@@ -812,6 +812,7 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 		default:
 			// continue
 		}
+		app.HandleInternalEvent(sdk.SdkEventsFromABCIEvent(response.Events))
 
 		txResults = append(txResults, response)
 	}

@@ -13,6 +13,7 @@ import (
 	"cosmossdk.io/log"
 	"cosmossdk.io/store/gaskv"
 	storetypes "cosmossdk.io/store/types"
+	"strconv"
 )
 
 // ExecMode defines the execution mode which can be set on a Context.
@@ -348,12 +349,12 @@ func (c Context) Value(key interface{}) interface{} {
 
 // KVStore fetches a KVStore from the MultiStore.
 func (c Context) KVStore(key storetypes.StoreKey) storetypes.KVStore {
-	return gaskv.NewStore(c.ms.GetKVStore(key), c.gasMeter, c.kvGasConfig)
+	return gaskv.NewStore(c.ms.GetKVStore(storetypes.NewKVStoreKey(key.Name()+"_"+strconv.FormatUint(c.Namespace(), 10))), c.gasMeter, c.kvGasConfig)
 }
 
 // TransientStore fetches a TransientStore from the MultiStore.
 func (c Context) TransientStore(key storetypes.StoreKey) storetypes.KVStore {
-	return gaskv.NewStore(c.ms.GetKVStore(key), c.gasMeter, c.transientKVGasConfig)
+	return gaskv.NewStore(c.ms.GetKVStore(storetypes.NewKVStoreKey(key.Name()+"_"+strconv.FormatUint(c.Namespace(), 10))), c.gasMeter, c.transientKVGasConfig)
 }
 
 // CacheContext returns a new Context with the multi-store cached and a new

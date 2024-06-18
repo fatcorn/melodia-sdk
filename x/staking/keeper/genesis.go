@@ -303,6 +303,10 @@ func (c ChainserviceHandler) NamespaceInitGenesis(ctx sdk.Context, genesis sdk.N
 	return nil
 }
 
+func (_c ChainserviceHandler) ListDependentModulesStoreNames() []string {
+	return []string{}
+}
+
 // NewChainserviceHandler create new handler
 func NewChainserviceHandler(k Keeper) ChainserviceHandler {
 	return ChainserviceHandler{keeper: k}
