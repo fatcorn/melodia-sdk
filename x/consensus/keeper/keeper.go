@@ -112,6 +112,12 @@ func (c ChainserviceHandler) NamespaceInitGenesis(ctx sdk.Context, genesis sdk.N
 		return err
 	}
 
+	paramsSort := genesisState.Params.Mempool.Sort
+	if paramsSort != "queue" &&
+		paramsSort != "gas" {
+		return fmt.Errorf("not support Consensus.Params.Mempool.Sort: %s, only 'queue' or 'gas' \n", paramsSort)
+	}
+
 	consensusParams, err := c.keeper.ParamsStore.Get(ctx)
 	if err != nil {
 		return status.Error(codes.Internal, err.Error())
@@ -125,7 +131,7 @@ func (c ChainserviceHandler) NamespaceInitGenesis(ctx sdk.Context, genesis sdk.N
 			return err
 		}
 	}
-	newSort[strconv.FormatUint(uint64(genesis.NamespaceId), 10)] = genesisState.Params.Mempool.Sort
+	newSort[strconv.FormatUint(uint64(genesis.NamespaceId), 10)] = paramsSort
 
 	newSortBytes, err := json.Marshal(newSort)
 	if err != nil {
