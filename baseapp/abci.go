@@ -46,6 +46,7 @@ func (app *BaseApp) InitChain(req *abci.RequestInitChain) (*abci.ResponseInitCha
 	initHeader := cmtproto.Header{ChainID: req.ChainId, Time: req.Time}
 	app.logger.Info("InitChain", "initialHeight", req.InitialHeight, "chainID", req.ChainId)
 
+	app.finalizeBlockHeight = req.InitialHeight
 	// Set the initial height, which will be used to determine if we are proposing
 	// or processing the first block or not.
 	app.initialHeight = req.InitialHeight
@@ -859,7 +860,15 @@ func (app *BaseApp) FinalizeBlock(req *abci.RequestFinalizeBlock) (res *abci.Res
 			}
 		}
 	}()
-
+	if app.finalizeBlockHeight == req.Height && req.Height > app.initialHeight {
+		rms, ok := app.cms.(*rootmulti.Store)
+		if ok {
+			err := rms.RollbackToVersion(req.Height - 1)
+			if err != nil {
+				app.logger.Error("FinalizeBlock prune stores error.", "height", req.Height, "err", err)
+			}
+		}
+	}
 	if app.optimisticExec.Initialized() {
 		// check if the hash we got is the same as the one we are executing
 		aborted := app.optimisticExec.AbortIfNeeded(req.Hash)
@@ -885,6 +894,7 @@ func (app *BaseApp) FinalizeBlock(req *abci.RequestFinalizeBlock) (res *abci.Res
 	if res != nil {
 		res.AppHash = app.workingHash()
 	}
+	app.finalizeBlockHeight = req.Height
 
 	return res, err
 }

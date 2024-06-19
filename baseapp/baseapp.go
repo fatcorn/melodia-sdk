@@ -118,6 +118,7 @@ type BaseApp struct {
 	prepareProposalState *state
 	processProposalState *state
 	finalizeBlockState   *state
+	finalizeBlockHeight  int64
 
 	// An inter-block write-through cache provided to the context during the ABCI
 	// FinalizeBlock call.
