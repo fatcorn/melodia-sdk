@@ -64,6 +64,8 @@ type Context struct {
 	streamingManager     storetypes.StreamingManager
 	cometInfo            comet.BlockInfo
 	headerInfo           header.Info
+
+	namespaceId uint64 // The tx related namesapceId
 }
 
 // Proposed rename, not done to avoid API breakage
@@ -91,6 +93,7 @@ func (c Context) TransientKVGasConfig() storetypes.GasConfig    { return c.trans
 func (c Context) StreamingManager() storetypes.StreamingManager { return c.streamingManager }
 func (c Context) CometInfo() comet.BlockInfo                    { return c.cometInfo }
 func (c Context) HeaderInfo() header.Info                       { return c.headerInfo }
+func (c Context) Namespace() uint64                             { return c.namespaceId }
 
 // clone the header before returning
 func (c Context) BlockHeader() cmtproto.Header {
@@ -167,6 +170,17 @@ func (c Context) WithHeaderHash(hash []byte) Context {
 
 	c.headerHash = temp
 	return c
+}
+
+// WithNamepace returns a Context with an namespace.
+func (c Context) WithNamepace(namespaceId uint64) Context {
+	c.namespaceId = namespaceId
+	return c
+}
+
+// WithNamepace returns a Context with an namespace.
+func (c *Context) SetNamespace(namespaceId uint64) {
+	c.namespaceId = namespaceId
 }
 
 // WithBlockTime returns a Context with an updated CometBFT block header time in UTC with no monotonic component.

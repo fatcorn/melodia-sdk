@@ -14,6 +14,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/version"
 	"github.com/cosmos/cosmos-sdk/x/bank/types"
+	"strconv"
 )
 
 var FlagSplit = "split"
@@ -31,6 +32,7 @@ func NewTxCmd(ac address.Codec) *cobra.Command {
 	txCmd.AddCommand(
 		NewSendTxCmd(ac),
 		NewMultiSendTxCmd(ac),
+		NewNamespaceSendTxCmd(ac),
 	)
 
 	return txCmd
@@ -67,6 +69,52 @@ When using '--dry-run' a key name cannot be used, only a bech32 address.
 			}
 
 			msg := types.NewMsgSend(clientCtx.GetFromAddress(), toAddr, coins)
+
+			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
+		},
+	}
+
+	flags.AddTxFlagsToCmd(cmd)
+
+	return cmd
+}
+
+// NewSendTxCmd returns a CLI command handler for creating a MsgSend transaction.
+func NewNamespaceSendTxCmd(ac address.Codec) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "namespace-send [from_key_or_address] [to_address] [amount] [target_namespace]",
+		Short: "Send funds from one account to another namespace.",
+		Long: `Send funds from one account to another namespace.
+Note, the '--from' flag is ignored as it is implied from [from_key_or_address].
+When using '--dry-run' a key name cannot be used, only a bech32 address.
+`,
+		Args: cobra.ExactArgs(4),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cmd.Flags().Set(flags.FlagFrom, args[0])
+			clientCtx, err := client.GetClientTxContext(cmd)
+			if err != nil {
+				return err
+			}
+			toAddr, err := ac.StringToBytes(args[1])
+			if err != nil {
+				return err
+			}
+
+			coins, err := sdk.ParseCoinsNormalized(args[2])
+			if err != nil {
+				return err
+			}
+
+			namespaceId, err := strconv.ParseUint(args[3], 10, 64)
+			if err != nil {
+				return err
+			}
+
+			if len(coins) == 0 {
+				return fmt.Errorf("invalid coins")
+			}
+
+			msg := types.NewMsgSendToNamespace(clientCtx.GetFromAddress(), toAddr, coins, namespaceId)
 
 			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
 		},

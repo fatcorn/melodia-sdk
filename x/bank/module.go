@@ -206,10 +206,11 @@ func init() {
 type ModuleInputs struct {
 	depinject.In
 
-	Config       *modulev1.Module
-	Cdc          codec.Codec
-	StoreService corestore.KVStoreService
-	Logger       log.Logger
+	Config                *modulev1.Module
+	Cdc                   codec.Codec
+	StoreService          corestore.KVStoreService
+	NamespaceStoreService corestore.NamespaceKVStoreService
+	Logger                log.Logger
 
 	AccountKeeper types.AccountKeeper
 
@@ -253,6 +254,7 @@ func ProvideModule(in ModuleInputs) ModuleOutputs {
 		blockedAddresses,
 		authority.String(),
 		in.Logger,
+		in.NamespaceStoreService,
 	)
 	m := NewAppModule(in.Cdc, bankKeeper, in.AccountKeeper, in.LegacySubspace)
 

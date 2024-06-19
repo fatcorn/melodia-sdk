@@ -36,7 +36,11 @@ func (ar AccountRetriever) GetAccountWithHeight(clientCtx client.Context, addr s
 	var header metadata.MD
 
 	queryClient := NewQueryClient(clientCtx)
-	res, err := queryClient.Account(context.Background(), &QueryAccountRequest{Address: addr.String()}, grpc.Header(&header))
+	withNamespaceIdCtx := metadata.AppendToOutgoingContext(
+		context.Background(),
+		grpctypes.GRPCNamespaceId, fmt.Sprintf("%d", clientCtx.NamespaceId),
+	)
+	res, err := queryClient.Account(withNamespaceIdCtx, &QueryAccountRequest{Address: addr.String()}, grpc.Header(&header))
 	if err != nil {
 		return nil, 0, err
 	}

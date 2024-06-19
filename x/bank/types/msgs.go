@@ -15,6 +15,12 @@ func NewMsgSend(fromAddr, toAddr sdk.AccAddress, amount sdk.Coins) *MsgSend {
 	return &MsgSend{FromAddress: fromAddr.String(), ToAddress: toAddr.String(), Amount: amount}
 }
 
+// todo，only for test for now
+// NewMsgSendToNamespace - construct a msg to send coins from one account to another.
+func NewMsgSendToNamespace(fromAddr, toAddr sdk.AccAddress, amount sdk.Coins, namespaceId uint64) *MsgSendToNamespace {
+	return &MsgSendToNamespace{FromAddress: fromAddr.String(), ToAddress: toAddr.String(), Amount: amount, NamespaceId: namespaceId}
+}
+
 // NewMsgMultiSend - construct arbitrary multi-in, multi-out send msg.
 func NewMsgMultiSend(in Input, out []Output) *MsgMultiSend {
 	return &MsgMultiSend{Inputs: []Input{in}, Outputs: out}

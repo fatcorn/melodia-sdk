@@ -65,10 +65,12 @@ func init() {
 			ProvideApp,
 			ProvideInterfaceRegistry,
 			ProvideKVStoreKey,
+			//ProvideNamespaceKVStoreKey,
 			ProvideTransientStoreKey,
 			ProvideMemoryStoreKey,
 			ProvideGenesisTxHandler,
 			ProvideKVStoreService,
+			ProvideNamespaceKVStoreService,
 			ProvideMemoryStoreService,
 			ProvideTransientStoreService,
 			ProvideEventService,
@@ -210,6 +212,21 @@ func ProvideKVStoreKey(config *runtimev1alpha1.Module, key depinject.ModuleKey, 
 	return storeKey
 }
 
+func ProvideNamespaceKVStoreKey(config *runtimev1alpha1.Module, key depinject.ModuleKey, app *AppBuilder) *storetypes.KVStoreKey {
+	override := storeKeyOverride(config, key.Name())
+
+	var storeKeyName string
+	if override != nil {
+		storeKeyName = override.KvStoreKey
+	} else {
+		storeKeyName = key.Name()
+	}
+
+	storeKey := storetypes.NewKVStoreKey(fmt.Sprintf("namespace:%s", storeKeyName))
+	registerStoreKey(app, storeKey)
+	return storeKey
+}
+
 func ProvideTransientStoreKey(key depinject.ModuleKey, app *AppBuilder) *storetypes.TransientStoreKey {
 	storeKey := storetypes.NewTransientStoreKey(fmt.Sprintf("transient:%s", key.Name()))
 	registerStoreKey(app, storeKey)
@@ -229,6 +246,11 @@ func ProvideGenesisTxHandler(appBuilder *AppBuilder) genesis.TxHandler {
 func ProvideKVStoreService(config *runtimev1alpha1.Module, key depinject.ModuleKey, app *AppBuilder) store.KVStoreService {
 	storeKey := ProvideKVStoreKey(config, key, app)
 	return kvStoreService{key: storeKey}
+}
+
+func ProvideNamespaceKVStoreService(config *runtimev1alpha1.Module, key depinject.ModuleKey, app *AppBuilder) store.NamespaceKVStoreService {
+	storeKey := ProvideNamespaceKVStoreKey(config, key, app)
+	return namespaceKvStoreService{key: storeKey}
 }
 
 func ProvideMemoryStoreService(key depinject.ModuleKey, app *AppBuilder) store.MemoryStoreService {

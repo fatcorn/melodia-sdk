@@ -91,8 +91,9 @@ func (ctx Context) queryABCI(req abci.RequestQuery) (abci.ResponseQuery, error) 
 	}
 
 	opts := rpcclient.ABCIQueryOptions{
-		Height: queryHeight,
-		Prove:  req.Prove,
+		Height:      queryHeight,
+		Prove:       req.Prove,
+		NamespaceId: req.NamespaceId,
 	}
 
 	result, err := node.ABCIQueryWithOptions(context.Background(), req.Path, req.Data, opts)

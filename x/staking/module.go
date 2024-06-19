@@ -208,6 +208,8 @@ type ModuleInputs struct {
 
 	// LegacySubspace is used solely for migration of x/params managed parameters
 	LegacySubspace exported.Subspace `optional:"true"`
+
+	NamespaceKVStoreService store.NamespaceKVStoreService
 }
 
 // Dependency Injection Outputs
@@ -233,6 +235,7 @@ func ProvideModule(in ModuleInputs) ModuleOutputs {
 		authority.String(),
 		in.ValidatorAddressCodec,
 		in.ConsensusAddressCodec,
+		in.NamespaceKVStoreService,
 	)
 	m := NewAppModule(in.Cdc, k, in.AccountKeeper, in.BankKeeper, in.LegacySubspace)
 	return ModuleOutputs{StakingKeeper: k, Module: m}

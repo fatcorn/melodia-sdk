@@ -61,6 +61,7 @@ type BaseKeeper struct {
 	storeService           store.KVStoreService
 	mintCoinsRestrictionFn types.MintingRestrictionFn
 	logger                 log.Logger
+	namespaceStoreService  store.NamespaceKVStoreService
 }
 
 // GetPaginatedTotalSupply queries for the supply, ignoring 0 coins, with a given pagination
@@ -88,6 +89,7 @@ func NewBaseKeeper(
 	blockedAddrs map[string]bool,
 	authority string,
 	logger log.Logger,
+	namespaceStoreService store.NamespaceKVStoreService,
 ) BaseKeeper {
 	if _, err := ak.AddressCodec().StringToBytes(authority); err != nil {
 		panic(fmt.Errorf("invalid bank authority address: %w", err))
@@ -97,12 +99,13 @@ func NewBaseKeeper(
 	logger = logger.With(log.ModuleKey, "x/"+types.ModuleName)
 
 	return BaseKeeper{
-		BaseSendKeeper:         NewBaseSendKeeper(cdc, storeService, ak, blockedAddrs, authority, logger),
+		BaseSendKeeper:         NewBaseSendKeeper(cdc, storeService, ak, blockedAddrs, authority, logger, namespaceStoreService),
 		ak:                     ak,
 		cdc:                    cdc,
 		storeService:           storeService,
 		mintCoinsRestrictionFn: types.NoOpMintingRestrictionFn,
 		logger:                 logger,
+		namespaceStoreService:  namespaceStoreService,
 	}
 }
 

@@ -37,6 +37,11 @@ func (msg MsgUpdateParams) ToProtoConsensusParams() (cmtproto.ConsensusParams, e
 			VoteExtensionsEnableHeight: msg.Abci.VoteExtensionsEnableHeight,
 		}
 	}
+	if msg.Mempool != nil {
+		cp.Mempool = &cmtproto.MempoolParams{
+			Sort: msg.Mempool.Sort,
+		}
+	}
 
 	return cp, nil
 }

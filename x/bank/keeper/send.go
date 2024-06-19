@@ -28,6 +28,8 @@ type SendKeeper interface {
 
 	InputOutputCoins(ctx context.Context, input types.Input, outputs []types.Output) error
 	SendCoins(ctx context.Context, fromAddr, toAddr sdk.AccAddress, amt sdk.Coins) error
+	// Experimental function， todo delete, add by jesse
+	SendCoinsToNamespace(ctx context.Context, fromAddr, toAddr sdk.AccAddress, amt sdk.Coins, targetNamespace uint64) error
 
 	GetParams(ctx context.Context) types.Params
 	SetParams(ctx context.Context, params types.Params) error
@@ -78,13 +80,14 @@ func NewBaseSendKeeper(
 	blockedAddrs map[string]bool,
 	authority string,
 	logger log.Logger,
+	namespaceStoreService store.NamespaceKVStoreService,
 ) BaseSendKeeper {
 	if _, err := ak.AddressCodec().StringToBytes(authority); err != nil {
 		panic(fmt.Errorf("invalid bank authority address: %w", err))
 	}
 
 	return BaseSendKeeper{
-		BaseViewKeeper:  NewBaseViewKeeper(cdc, storeService, ak, logger),
+		BaseViewKeeper:  NewBaseViewKeeper(cdc, storeService, ak, logger, namespaceStoreService),
 		cdc:             cdc,
 		ak:              ak,
 		storeService:    storeService,
@@ -230,6 +233,57 @@ func (k BaseSendKeeper) SendCoins(ctx context.Context, fromAddr, toAddr sdk.AccA
 	if !accExists {
 		defer telemetry.IncrCounter(1, "new", "account")
 		k.ak.SetAccount(ctx, k.ak.NewAccountWithAddress(ctx, toAddr))
+	}
+
+	// bech32 encoding is expensive! Only do it once for fromAddr
+	fromAddrString := fromAddr.String()
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	sdkCtx.EventManager().EmitEvents(sdk.Events{
+		sdk.NewEvent(
+			types.EventTypeTransfer,
+			sdk.NewAttribute(types.AttributeKeyRecipient, toAddr.String()),
+			sdk.NewAttribute(types.AttributeKeySender, fromAddrString),
+			sdk.NewAttribute(sdk.AttributeKeyAmount, amt.String()),
+		),
+		sdk.NewEvent(
+			sdk.EventTypeMessage,
+			sdk.NewAttribute(types.AttributeKeySender, fromAddr.String()),
+		),
+	})
+
+	return nil
+}
+
+func (k BaseSendKeeper) SendCoinsToNamespace(ctx context.Context, fromAddr, toAddr sdk.AccAddress, amt sdk.Coins, targetNamespace uint64) error {
+	var err error
+	err = k.subUnlockedCoins(ctx, fromAddr, amt)
+	if err != nil {
+		return err
+	}
+
+	toAddr, err = k.sendRestriction.apply(ctx, fromAddr, toAddr, amt)
+	if err != nil {
+		return err
+	}
+
+	ctxWithTargetNamespace := sdk.UnwrapSDKContext(ctx)
+	ctxWithTargetNamespace = ctxWithTargetNamespace.WithNamepace(targetNamespace)
+	err = k.addCoins(ctxWithTargetNamespace, toAddr, amt)
+	if err != nil {
+		return err
+	}
+
+	// Create account if recipient does not exist.
+	//
+	// NOTE: This should ultimately be removed in favor a more flexible approach
+	// such as delegated fee messages.
+	accExists := k.ak.HasAccount(ctxWithTargetNamespace, toAddr)
+	fmt.Printf("to account[%v] exists %v\n", toAddr, accExists)
+	if !accExists {
+		defer telemetry.IncrCounter(1, "new", "account")
+		fmt.Printf("ready to set accout to account[%v] in namespace %s\n", toAddr, targetNamespace)
+		k.ak.SetAccount(ctxWithTargetNamespace, k.ak.NewAccountWithAddress(ctxWithTargetNamespace, toAddr))
+		fmt.Printf(" accout to account[%v] in namespace %s\n successed", toAddr, targetNamespace)
 	}
 
 	// bech32 encoding is expensive! Only do it once for fromAddr

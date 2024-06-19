@@ -65,12 +65,22 @@ type Context struct {
 
 	// CmdContext is the context.Context from the Cobra command.
 	CmdContext context.Context
+
+	// namespaceId query something within this namespaceId context
+	NamespaceId uint64
 }
 
 // WithCmdContext returns a copy of the context with an updated context.Context,
 // usually set to the cobra cmd context.
 func (ctx Context) WithCmdContext(c context.Context) Context {
 	ctx.CmdContext = c
+	return ctx
+}
+
+// WithCmdContext returns a copy of the context with an updated context.Context,
+// usually set to the cobra cmd context.
+func (ctx Context) WithNamespaceId(namespaceId uint64) Context {
+	ctx.NamespaceId = namespaceId
 	return ctx
 }
 
