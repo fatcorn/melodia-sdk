@@ -14,7 +14,7 @@ import (
 	cmttypes "github.com/cometbft/cometbft/types"
 	"github.com/cosmos/go-bip39"
 
-	"github.com/cometbft/cometbft/hotstuff/crypto/bls12"
+	"github.com/cometbft/cometbft/crypto/bls12"
 	cryptocodec "github.com/cosmos/cosmos-sdk/crypto/codec"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	"github.com/cosmos/cosmos-sdk/x/genutil/types"
@@ -87,7 +87,7 @@ func InitializeNodeValidatorFilesFromMnemonic(config *cfg.Config, mnemonic strin
 	}
 	blsPrivateKey := bls12.PrivateKey{}
 	blsPrivateKey.FromBytes(priKey.Bytes())
-	blsPubKey := blsPrivateKey.Public().(*bls12.PublicKey)
+	blsPubKey := blsPrivateKey.Public()
 	tmValPubKey, err := filePV.GetPubKey()
 	if err != nil {
 		return "", nil, []byte{}, err
