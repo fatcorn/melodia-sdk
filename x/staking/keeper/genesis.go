@@ -296,6 +296,11 @@ func (c ChainserviceHandler) NamespaceInitGenesis(ctx sdk.Context, genesis sdk.N
 		return err
 	}
 
+	err = genesisState.Params.Validate()
+	if err != nil {
+		return err
+	}
+
 	if err := c.keeper.SetParams(ctx, genesisState.Params); err != nil {
 		panic(err)
 	}
