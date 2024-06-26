@@ -44,9 +44,13 @@ import (
 	errorsmod "cosmossdk.io/errors"
 	storetypes "cosmossdk.io/store/types"
 
+	"github.com/cometbft/cometbft/crypto/merkle"
+	tdmtypes "github.com/cometbft/cometbft/proto/tendermint/types"
+	bfttypes "github.com/cometbft/cometbft/types"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/codec/types"
+	"github.com/cosmos/cosmos-sdk/nsblockstore"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 )
@@ -273,15 +277,16 @@ func (gam GenesisOnlyAppModule) ConsensusVersion() uint64 { return 1 }
 // Manager defines a module manager that provides the high level utility for managing and executing
 // operations for a group of modules
 type Manager struct {
-	Modules                  map[string]interface{} // interface{} is used now to support the legacy AppModule as well as new core appmodule.AppModule.
-	OrderInitGenesis         []string
-	OrderExportGenesis       []string
-	OrderPreBlockers         []string
-	OrderBeginBlockers       []string
-	OrderEndBlockers         []string
-	OrderPrepareCheckStaters []string
-	OrderPrecommiters        []string
-	OrderMigrations          []string
+	Modules                   map[string]interface{} // interface{} is used now to support the legacy AppModule as well as new core appmodule.AppModule.
+	OrderInitGenesis          []string
+	OrderExportGenesis        []string
+	OrderPreBlockers          []string
+	OrderBeginBlockers        []string
+	OrderNamespaceBLockMakers []string
+	OrderEndBlockers          []string
+	OrderPrepareCheckStaters  []string
+	OrderPrecommiters         []string
+	OrderMigrations           []string
 }
 
 // NewManager creates a new Manager object.
@@ -398,6 +403,17 @@ func (m *Manager) SetOrderBeginBlockers(moduleNames ...string) {
 			return !hasBeginBlock
 		})
 	m.OrderBeginBlockers = moduleNames
+}
+
+// SetOrderEndBlockers sets the order of set end-blocker calls
+func (m *Manager) SetOrderNamespaceBLockMakers(moduleNames ...string) {
+	m.assertNoForgottenModules("SetOrderNamespaceBLockMakers", moduleNames,
+		func(moduleName string) bool {
+			module := m.Modules[moduleName]
+			_, hasVMNamespaceBLockMaker := module.(appmodule.HasVMNamespaceBLockMaker)
+			return !hasVMNamespaceBLockMaker
+		})
+	m.OrderNamespaceBLockMakers = moduleNames
 }
 
 // SetOrderEndBlockers sets the order of set end-blocker calls
@@ -785,6 +801,64 @@ func (m *Manager) BeginBlock(ctx sdk.Context) (sdk.BeginBlock, error) {
 	return sdk.BeginBlock{
 		Events: ctx.EventManager().ABCIEvents(),
 	}, nil
+}
+
+// MakeNamespaceBlock performs end block functionality for all modules. It creates a
+// child context with an event manager to aggregate events emitted from all
+// modules.
+func (m *Manager) MakeNamespaceBlock(
+	ctx sdk.Context,
+	txs [][]byte, nsTable []*tdmtypes.NamespaceTableEntries,
+	mannager *nsblockstore.NamespaceStoreManager,
+	cms storetypes.CommitMultiStore,
+) (map[uint64]appmodule.NamespaceBlockData, error) {
+	ret := make(map[uint64]appmodule.NamespaceBlockData)
+	namespaceIDsMoudle := mannager.GetNamespaceIdsModule()
+	moudleRelatedMoudles := mannager.GetModuleRelatedModules()
+	//stores := mannager.GetNamespaceStores()
+
+	namespaceTxsMap := bfttypes.ListNamespaceTxsWithNSTable(txs, nsTable)
+	// todo, every tendermint block will generate every namespace block
+	for namespaceId, moduleName := range namespaceIDsMoudle {
+		store, ok := mannager.GetNamespaceStore(namespaceId)
+		// unactive namespace not produce block
+		if !store.GetNamespaceState() {
+			continue
+		}
+		if !ok {
+			panic("Registerd namespace store not found in block stores")
+		}
+		args := appmodule.NamespaceBlockMakeCommonArgs{}
+		// todo, add genesis block logic
+		lastBlock := store.LoadBlock(store.Height())
+		if lastBlock != nil {
+			args.ParentBlockData = lastBlock.Data
+		}
+		var emptyNamespaceTxs [][]byte
+		// if block not include this namespace txs, namespace root hash set to empty root hash
+		if namespaceTxs, ok := namespaceTxsMap[namespaceId]; ok {
+			args.TxRootHash = merkle.GenerateBlockDataNmtRootHash([]uint64{namespaceId}, namespaceTxs)
+		} else {
+			args.TxRootHash = merkle.GenerateBlockDataNmtRootHash([]uint64{}, emptyNamespaceTxs)
+		}
+
+		relatedMoudles := moudleRelatedMoudles[moduleName]
+		moudles := append([]string{moduleName}, relatedMoudles...)
+
+		args.StateRootHash = cms.NamespaceWorkingHash(moudles, namespaceId)
+
+		if module, ok := m.Modules[moduleName].(appmodule.HasVMNamespaceBLockMaker); ok {
+			namespaceBlockData, err := module.MakeBlock(ctx, args)
+			if err != nil {
+				return nil, err
+			}
+			ret[namespaceId] = namespaceBlockData
+		} else {
+			panic("Registerd namespace related moudle not found in moudles manager")
+		}
+	}
+
+	return ret, nil
 }
 
 // EndBlock performs end block functionality for all modules. It creates a

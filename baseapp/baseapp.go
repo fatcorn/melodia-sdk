@@ -8,7 +8,9 @@ import (
 	"strconv"
 
 	"github.com/cockroachdb/errors"
+	cmtdbm "github.com/cometbft/cometbft-db"
 	abci "github.com/cometbft/cometbft/abci/types"
+	cmtcfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/crypto/tmhash"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	dbm "github.com/cosmos/cosmos-db"
@@ -30,11 +32,13 @@ import (
 	"github.com/cosmos/cosmos-sdk/baseapp/oe"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	"github.com/cosmos/cosmos-sdk/nsblockstore"
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
 	"github.com/cosmos/cosmos-sdk/telemetry"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/cosmos/cosmos-sdk/types/mempool"
+	"github.com/near/borsh-go"
 	"golang.org/x/exp/slices"
 )
 
@@ -81,16 +85,17 @@ type BaseApp struct {
 	anteHandler sdk.AnteHandler // ante handler for fee and auth
 	postHandler sdk.PostHandler // post handler, optional
 
-	initChainer        sdk.InitChainer                // ABCI InitChain handler
-	preBlocker         sdk.PreBlocker                 // logic to run before BeginBlocker
-	beginBlocker       sdk.BeginBlocker               // (legacy ABCI) BeginBlock handler
-	endBlocker         sdk.EndBlocker                 // (legacy ABCI) EndBlock handler
-	processProposal    sdk.ProcessProposalHandler     // ABCI ProcessProposal handler
-	prepareProposal    sdk.PrepareProposalHandler     // ABCI PrepareProposal
-	extendVote         sdk.ExtendVoteHandler          // ABCI ExtendVote handler
-	verifyVoteExt      sdk.VerifyVoteExtensionHandler // ABCI VerifyVoteExtension handler
-	prepareCheckStater sdk.PrepareCheckStater         // logic to run during commit using the checkState
-	precommiter        sdk.Precommiter                // logic to run during commit using the deliverState
+	initChainer         sdk.InitChainer  // ABCI InitChain handler
+	preBlocker          sdk.PreBlocker   // logic to run before BeginBlocker
+	beginBlocker        sdk.BeginBlocker // (legacy ABCI) BeginBlock handler
+	endBlocker          sdk.EndBlocker   // (legacy ABCI) EndBlock handler
+	namespaceBLockMaker sdk.NamespaceMakeBLock
+	processProposal     sdk.ProcessProposalHandler     // ABCI ProcessProposal handler
+	prepareProposal     sdk.PrepareProposalHandler     // ABCI PrepareProposal
+	extendVote          sdk.ExtendVoteHandler          // ABCI ExtendVote handler
+	verifyVoteExt       sdk.VerifyVoteExtensionHandler // ABCI VerifyVoteExtension handler
+	prepareCheckStater  sdk.PrepareCheckStater         // logic to run during commit using the checkState
+	precommiter         sdk.Precommiter                // logic to run during commit using the deliverState
 
 	addrPeerFilter sdk.PeerFilter // filter peers by address and port
 	idPeerFilter   sdk.PeerFilter // filter peers by node ID
@@ -199,7 +204,45 @@ type BaseApp struct {
 	disableBlockGasMeter bool
 
 	NamespaceStoresLoaded bool
+
+	namespaceStoreManager *nsblockstore.NamespaceStoreManager
 }
+
+//type NamespaceStoreManager struct {
+//	nsStores               map[uint64]nsblockstore.NSBlockStore
+//	namespaceIdsMoudle     map[uint64]string
+//	moudleRelatedMoudles   map[string][]string
+//	dbRootDir              string
+//	namespaceActivateState map[uint64]bool
+//}
+//
+//func newNamespaceStoreManager() NamespaceStoreManager {
+//	return NamespaceStoreManager{
+//		nsStores:               make(map[uint64]nsblockstore.NSBlockStore),
+//		namespaceIdsMoudle:     make(map[uint64]string),
+//		moudleRelatedMoudles:   make(map[string][]string),
+//		namespaceActivateState: make(map[uint64]bool),
+//	}
+//}
+//
+//func (manager *NamespaceStoreManager) GetNamespaceIdsMoudle() map[uint64]string {
+//	return manager.namespaceIdsMoudle
+//}
+//
+//func (manager *NamespaceStoreManager) GetNamespacensStores() map[uint64]nsblockstore.NSBlockStore {
+//	return manager.nsStores
+//}
+//
+//func (manager *NamespaceStoreManager) GetMoudleRelatedMoudles() map[string][]string {
+//	return manager.moudleRelatedMoudles
+//}
+//
+//type NamespaceStoreDBInfo struct {
+//	NamespaceStoreDBs    map[uint64]cmtdbm.DB
+//	DbRootDir            string
+//	NamespacesModuleName map[uint64]string
+//	MoudleRelatedMoudles map[string][]string
+//}
 
 // NewBaseApp returns a reference to an initialized BaseApp. It accepts a
 // variadic number of option functions, which act on the BaseApp to set
@@ -208,16 +251,17 @@ func NewBaseApp(
 	name string, logger log.Logger, db dbm.DB, txDecoder sdk.TxDecoder, options ...func(*BaseApp),
 ) *BaseApp {
 	app := &BaseApp{
-		logger:           logger,
-		name:             name,
-		db:               db,
-		cms:              store.NewCommitMultiStore(db, logger, storemetrics.NewNoOpMetrics()), // by default we use a no-op metric gather in store
-		storeLoader:      DefaultStoreLoader,
-		grpcQueryRouter:  NewGRPCQueryRouter(),
-		msgServiceRouter: NewMsgServiceRouter(),
-		txDecoder:        txDecoder,
-		fauxMerkleMode:   false,
-		queryGasLimit:    math.MaxUint64,
+		logger:                logger,
+		name:                  name,
+		db:                    db,
+		cms:                   store.NewCommitMultiStore(db, logger, storemetrics.NewNoOpMetrics()), // by default we use a no-op metric gather in store
+		storeLoader:           DefaultStoreLoader,
+		grpcQueryRouter:       NewGRPCQueryRouter(),
+		msgServiceRouter:      NewMsgServiceRouter(),
+		txDecoder:             txDecoder,
+		fauxMerkleMode:        false,
+		queryGasLimit:         math.MaxUint64,
+		namespaceStoreManager: nsblockstore.NewNamespaceStoreManager(),
 	}
 
 	for _, option := range options {
@@ -317,48 +361,15 @@ func (app *BaseApp) MountStores(keys ...storetypes.StoreKey) {
 }
 
 func (app *BaseApp) LoadAllValidNamespaceStore(keys ...storetypes.StoreKey) []storetypes.StoreKey {
-	namesapceIdPrefixKey := []byte("s/k:chainservice_0/fnamespace_port")
-	iter, _ := app.db.Iterator(namesapceIdPrefixKey, storetypes.PrefixEndBytes(namesapceIdPrefixKey))
+
 	//prefixKey := []byte{115, 47, 107, 58, 99, 104, 97, 105, 110, 115, 101, 114, 118, 105, 99, 101, 47}
 	//endKey := []byte{115, 47, 107, 58, 99, 104, 97, 105, 110, 115, 101, 114, 118, 105, 99, 101, 47, 155}
 	//iter, _ := app.db.Iterator(prefixKey, endKey)
 	//time := 0
 	var namespaceStores []storetypes.StoreKey
 	if !app.NamespaceStoresLoaded {
-		var nsPorts []*bfttypes.NamespacePort
-		for iter.Valid() {
-			key := iter.Key()
-			value := iter.Value()
-			fmt.Printf("%s, %v\n", string(key), key)
-			fmt.Printf("%s， %v\n", string(value), value)
-
-			validBytesStartIndex := slices.IndexFunc(value, func(val byte) bool {
-				if val == []byte("{")[0] {
-					return true
-				}
-				return false
-			})
-			var nsPort bfttypes.NamespacePort
-			err := json.Unmarshal(value[validBytesStartIndex:], &nsPort)
-			if err != nil {
-				fmt.Printf("Unmarshal namespacePort failed %v\n", err)
-			} else {
-				nsPorts = append(nsPorts, &nsPort)
-				fmt.Printf("nsPorts %v", nsPort)
-			}
-			iter.Next()
-		}
-		var indunplicateNamespace []*bfttypes.NamespacePort
-		uniqueNamespaces := make(map[bfttypes.Namespace]bool)
-		for _, port := range nsPorts {
-			if ok := uniqueNamespaces[port.NamespaceId]; ok {
-				continue
-			}
-			uniqueNamespaces[port.NamespaceId] = true
-			indunplicateNamespace = append(indunplicateNamespace, port)
-		}
-
-		namespaceStores = NamespaceStoresFromNSPort(indunplicateNamespace)
+		nsPorts := ListDBNamespace(app.db)
+		namespaceStores = NamespaceStoresFromNSPort(nsPorts)
 		app.NamespaceStoresLoaded = true
 	}
 
@@ -381,6 +392,7 @@ func (app *BaseApp) LoadAllValidNamespaceStore(keys ...storetypes.StoreKey) []st
 	return allStoreKeys
 }
 
+// NamespaceStoresFromNSPort create namesapce store key
 func NamespaceStoresFromNSPort(indunplicateNamespace []*bfttypes.NamespacePort) []storetypes.StoreKey {
 	namespaceStores := make([]storetypes.StoreKey, 0)
 	for _, namesapceInfo := range indunplicateNamespace {
@@ -394,13 +406,95 @@ func NamespaceStoresFromNSPort(indunplicateNamespace []*bfttypes.NamespacePort) 
 	return namespaceStores
 }
 
+// ListDBNamespace list registered namespace in chainservice
+func ListDBNamespace(db dbm.DB) []*bfttypes.NamespacePort {
+	var nsPorts []*bfttypes.NamespacePort
+
+	namesapceIdPrefixKey := []byte("s/k:chainservice_0/fnamespace_port")
+	iter, _ := db.Iterator(namesapceIdPrefixKey, storetypes.PrefixEndBytes(namesapceIdPrefixKey))
+
+	for iter.Valid() {
+		key := iter.Key()
+		value := iter.Value()
+		fmt.Printf("%s, %v\n", string(key), key)
+		fmt.Printf("%s， %v\n", string(value), value)
+
+		validBytesStartIndex := slices.IndexFunc(value, func(val byte) bool {
+			if val == []byte("{")[0] {
+				return true
+			}
+			return false
+		})
+		var nsPort bfttypes.NamespacePort
+		err := json.Unmarshal(value[validBytesStartIndex:], &nsPort)
+		if err != nil {
+			fmt.Printf("Unmarshal namespacePort failed %v\n", err)
+		} else {
+			nsPorts = append(nsPorts, &nsPort)
+			fmt.Printf("nsPorts %v", nsPort)
+		}
+		iter.Next()
+	}
+	var induplicateNamespace []*bfttypes.NamespacePort
+	uniqueNamespaces := make(map[bfttypes.Namespace]bool)
+	for _, port := range nsPorts {
+		if ok := uniqueNamespaces[port.NamespaceId]; ok {
+			continue
+		}
+		uniqueNamespaces[port.NamespaceId] = true
+		induplicateNamespace = append(induplicateNamespace, port)
+	}
+
+	return induplicateNamespace
+}
+
+// NewNamespaceDB handle internal Event to execute related logic
+func CreateNamespaceDB(namespaceId uint64, dbRootDir string) (cmtdbm.DB, error) {
+	namespaceDB, err := cmtcfg.DefaultDBProvider(&cmtcfg.DBContext{
+		ID:     "namespace" + "_" + strconv.FormatUint(namespaceId, 10),
+		Config: cmtcfg.DefaultConfig().SetRoot(dbRootDir).AddDBPath("namespace"),
+	})
+	return namespaceDB, err
+}
+
+// addNewNamespaceBLockStore Create a new namespace blockdb
+func (app *BaseApp) addNewNamespaceBLockStore(namespaceID uint64, moduleName string, moduleRelatedModules []string) {
+	newNamespaceDB, err := CreateNamespaceDB(namespaceID, app.namespaceStoreManager.GetDBRootDir())
+	if err != nil {
+		panic(fmt.Sprintf("Create namespace-%v DB failed, causev%v", namespaceID, err))
+	}
+	nsBLockStore := nsblockstore.NewNamespaceBlockStore(newNamespaceDB, namespaceID)
+	app.namespaceStoreManager.AddNamespaceStore(namespaceID, nsBLockStore)
+	app.namespaceStoreManager.AddNamespaceIdsModule(namespaceID, moduleName)
+	app.namespaceStoreManager.AddModuleRelatedModules(moduleName, moduleRelatedModules)
+}
+
+// loadNamespaceBLockStore Load a namespace blockdb to namespace store manager
+func (app *BaseApp) loadNamespaceBLockStore(namespaceID uint64, db cmtdbm.DB, moduleName string, moduleRelatedModules []string) {
+	nsBLockStore := nsblockstore.NewNamespaceBlockStore(db, namespaceID)
+	app.namespaceStoreManager.AddNamespaceStore(namespaceID, nsBLockStore)
+	app.namespaceStoreManager.AddNamespaceIdsModule(namespaceID, moduleName)
+	app.namespaceStoreManager.AddModuleRelatedModules(moduleName, moduleRelatedModules)
+	app.namespaceStoreManager.AddNamespaceActiveState(namespaceID, nsBLockStore.GetNamespaceState())
+}
+
+// activeNamespace Create a new namespace blockdb
+func (app *BaseApp) activeNamespace(namespaceID uint64) {
+	nsBlockStore, ok := app.namespaceStoreManager.GetNamespaceStore(namespaceID)
+	if !ok {
+		panic("not found namespace block store")
+	}
+	nsBlockStore.SetNamespaceStateActive()
+	app.namespaceStoreManager.AddNamespaceActiveState(namespaceID, true)
+}
+
 // HandleInternalEvent handle internal Event to execute related logic
 func (app *BaseApp) HandleInternalEvent(events sdk.Events) {
 	for _, event := range events {
 		switch event.Type {
 		case InternalEventTypeNewNamespace:
 			{
-				nsPortObj, hasKey := event.GetAttribute(InternalEventTypeNewNamespaceAttribute)
+				nsPortObj, hasKey := event.GetAttribute(InternalEventTypeNamespaceAttribute)
 				if !hasKey {
 					panic("Get InternalEventTypeNewNamespace but no value")
 				}
@@ -414,7 +508,23 @@ func (app *BaseApp) HandleInternalEvent(events sdk.Events) {
 				if err != nil {
 					panic(fmt.Sprintf("Dynamic add namesapce store failed %v", err))
 				}
+
+				app.addNewNamespaceBLockStore(uint64(nsPort.NamespaceId), nsPort.Module, nsPort.VMModuleDependentModules)
 			}
+		case InternalEventTypeNamespaceActive:
+			{
+				nsPortObj, hasKey := event.GetAttribute(InternalEventTypeNamespaceAttribute)
+				if !hasKey {
+					panic("Get InternalEventTypeNamespaceActive but no value")
+				}
+				var nsPort bfttypes.NamespacePort
+				err := json.Unmarshal([]byte(nsPortObj.Value), &nsPort)
+				if err != nil {
+					panic(fmt.Sprintf("Get InternalEventTypeNewNamespace but unmarshal value failed %v", err))
+				}
+				app.activeNamespace(uint64(nsPort.NamespaceId))
+			}
+
 		}
 	}
 }
@@ -485,6 +595,12 @@ func (app *BaseApp) CommitMultiStore() storetypes.CommitMultiStore {
 // application use this to register extra extension snapshotters.
 func (app *BaseApp) SnapshotManager() *snapshots.Manager {
 	return app.snapshotManager
+}
+
+// NamespaceStoreManager returns the snapshot manager.
+// application use this to register extra extension snapshotters.
+func (app *BaseApp) NamespaceStoreManager() *nsblockstore.NamespaceStoreManager {
+	return app.namespaceStoreManager
 }
 
 // LoadVersion loads the BaseApp application version. It will panic if called
@@ -893,6 +1009,39 @@ func (app *BaseApp) deliverTx(tx []byte) *abci.ExecTxResult {
 	}
 
 	return resp
+}
+
+// makeNamespaceBlock is an application-defined function that is called after transactions
+// have been processed in FinalizeBlock.
+func (app *BaseApp) makeNamespaceBlock(ctx context.Context, txs [][]byte, nsTable []*cmtproto.NamespaceTableEntries) error {
+
+	if app.namespaceBLockMaker != nil {
+		namespaceMakeBLockContext := app.finalizeBlockState.Context()
+		namespacesBLockData, err := app.namespaceBLockMaker(namespaceMakeBLockContext, txs, nsTable)
+		if err != nil {
+			return err
+		}
+
+		for namespaceID, datum := range namespacesBLockData {
+			if len(datum) == 0 {
+				continue
+			}
+			var namespaceBLock nsblockstore.NamespaceBLock
+			err = borsh.Deserialize(&namespaceBLock, datum)
+			if err != nil {
+				return err
+			}
+			// todo, get namespaceId height and block hash
+			namespaceBLockStore, ok := app.namespaceStoreManager.GetNamespaceStore(uint64(namespaceID))
+			if !ok {
+				panic("Load namespace block store failed")
+			}
+			namespaceBLockStore.SaveBlock(namespaceBLock.Height, namespaceBLock.Hash, &namespaceBLock)
+		}
+
+	}
+
+	return nil
 }
 
 // endBlock is an application-defined function that is called after transactions

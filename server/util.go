@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/cosmos/cosmos-sdk/nsblockstore"
 	"io"
 	"net"
 	"os"
@@ -514,6 +515,8 @@ func DefaultBaseappOptions(appOpts types.AppOptions) []func(*baseapp.BaseApp) {
 		)
 	}
 
+	namespaceDBInfo := appOpts.Get(flags.FlagNamespaceDB).(nsblockstore.NamespaceStoreDBInfo)
+
 	return []func(*baseapp.BaseApp){
 		baseapp.SetPruning(pruningOpts),
 		baseapp.SetMinGasPrices(cast.ToString(appOpts.Get(FlagMinGasPrices))),
@@ -529,6 +532,7 @@ func DefaultBaseappOptions(appOpts types.AppOptions) []func(*baseapp.BaseApp) {
 		defaultMempool,
 		baseapp.SetChainID(chainID),
 		baseapp.SetQueryGasLimit(cast.ToUint64(appOpts.Get(FlagQueryGasLimit))),
+		baseapp.SetNamespaceDBManager(namespaceDBInfo),
 	}
 }
 

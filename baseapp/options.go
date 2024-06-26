@@ -2,6 +2,7 @@ package baseapp
 
 import (
 	"fmt"
+	"github.com/cosmos/cosmos-sdk/nsblockstore"
 	"io"
 	"math"
 
@@ -45,6 +46,18 @@ func SetQueryGasLimit(queryGasLimit uint64) func(*BaseApp) {
 	}
 
 	return func(bapp *BaseApp) { bapp.queryGasLimit = queryGasLimit }
+}
+
+// SetNamespaceDBManager returns an option that sets a namespaceDBManager.
+func SetNamespaceDBManager(info nsblockstore.NamespaceStoreDBInfo) func(*BaseApp) {
+	return func(bapp *BaseApp) {
+		for namespaceId, db := range info.NamespaceStoreDBs {
+			moduleName := info.NamespacesModuleName[namespaceId]
+			relatedModules := info.ModuleRelatedModules[moduleName]
+			bapp.loadNamespaceBLockStore(namespaceId, db, moduleName, relatedModules)
+		}
+		bapp.namespaceStoreManager.SetDBRootDir(info.DbRootDir)
+	}
 }
 
 // SetHaltHeight returns a BaseApp option function that sets the halt block height.
@@ -202,6 +215,14 @@ func (app *BaseApp) SetEndBlocker(endBlocker sdk.EndBlocker) {
 	}
 
 	app.endBlocker = endBlocker
+}
+
+func (app *BaseApp) SetNamespaceBLockMaker(namespaceBLockMaker sdk.NamespaceMakeBLock) {
+	if app.sealed {
+		panic("SetEndBlocker() on sealed BaseApp")
+	}
+
+	app.namespaceBLockMaker = namespaceBLockMaker
 }
 
 func (app *BaseApp) SetPrepareCheckStater(prepareCheckStater sdk.PrepareCheckStater) {

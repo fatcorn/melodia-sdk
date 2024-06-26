@@ -821,6 +821,12 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 		app.finalizeBlockState.ms = app.finalizeBlockState.ms.SetTracingContext(nil).(storetypes.CacheMultiStore)
 	}
 
+	err = app.makeNamespaceBlock(app.finalizeBlockState.Context(), req.Txs, req.NsTable)
+
+	if err != nil {
+		return nil, err
+	}
+
 	endBlock, err := app.endBlock(app.finalizeBlockState.Context())
 	if err != nil {
 		return nil, err
@@ -932,7 +938,8 @@ func (app *BaseApp) Commit() (*abci.ResponseCommit, error) {
 		rms.SetCommitHeader(header)
 	}
 
-	app.cms.Commit()
+	commintId := app.cms.Commit()
+	fmt.Printf("commintId %v", commintId)
 
 	resp := &abci.ResponseCommit{
 		RetainHeight: retainHeight,

@@ -19,6 +19,7 @@ require (
 	github.com/cockroachdb/apd/v2 v2.0.2
 	github.com/cockroachdb/errors v1.11.1
 	github.com/cometbft/cometbft v0.38.5
+	github.com/cometbft/cometbft-db v0.9.1
 	github.com/cosmos/btcutil v1.0.5
 	github.com/cosmos/cosmos-db v1.0.2
 	github.com/cosmos/cosmos-proto v1.0.0-beta.4
@@ -44,6 +45,7 @@ require (
 	github.com/magiconair/properties v1.8.7
 	github.com/manifoldco/promptui v0.9.0
 	github.com/mattn/go-isatty v0.0.20
+	github.com/near/borsh-go v0.3.1
 	github.com/prometheus/client_golang v1.18.0
 	github.com/prometheus/common v0.47.0
 	github.com/rs/zerolog v1.32.0
@@ -80,7 +82,6 @@ require (
 	github.com/cockroachdb/pebble v1.1.0 // indirect
 	github.com/cockroachdb/redact v1.1.5 // indirect
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
-	github.com/cometbft/cometbft-db v0.9.1 // indirect
 	github.com/cosmos/iavl v1.0.1 // indirect
 	github.com/cosmos/ics23/go v0.10.0 // indirect
 	github.com/danieljoos/wincred v1.1.2 // indirect
@@ -171,7 +172,8 @@ require (
 // Below are the long-lived replace of the Cosmos SDK
 replace (
 	cosmossdk.io/collections v0.4.0 => git.everylink.ai/public/cosmossdk-io-collections v0.4.0
-	cosmossdk.io/core v0.11.0 => git.everylink.ai/public/cosmossdk-io-core v0.11.0
+	//cosmossdk.io/core v0.11.0 => git.everylink.ai/public/cosmossdk-io-core v0.11.0
+	cosmossdk.io/core v0.11.0 => ../cosmossdk-io-core
 	cosmossdk.io/store v1.0.2 => git.everylink.ai/public/cosmossdk-io-store v1.0.3-0.20240618031919-35b1ae32aa8d
 	//cosmossdk.io/store v1.0.2 => ../cosmossdk-io-store
 	// use cosmos fork of keyring

@@ -1,7 +1,9 @@
 package types
 
 import (
+	"cosmossdk.io/core/appmodule"
 	abci "github.com/cometbft/cometbft/abci/types"
+	tdmtypes "github.com/cometbft/cometbft/proto/tendermint/types"
 )
 
 // InitChainer initializes application state at genesis
@@ -55,6 +57,9 @@ type BeginBlocker func(Context) (BeginBlock, error)
 // compatibility with applications that still use the EndBlock ABCI method
 // and allows for existing EndBlock functionality within applications.
 type EndBlocker func(Context) (EndBlock, error)
+
+// NamespaceMakeBLock
+type NamespaceMakeBLock func(Context, [][]byte, []*tdmtypes.NamespaceTableEntries) (map[uint64]appmodule.NamespaceBlockData, error)
 
 // EndBlock defines a type which contains endblock events and validator set updates
 type EndBlock struct {

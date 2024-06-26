@@ -4,5 +4,7 @@ package baseapp
 const (
 	InternalEventTypeNewNamespace = "new_namespace"
 
-	InternalEventTypeNewNamespaceAttribute = "new_namespace_obj"
+	InternalEventTypeNamespaceAttribute = "namespace_obj"
+
+	InternalEventTypeNamespaceActive = "active_namespace"
 )

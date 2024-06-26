@@ -15,6 +15,7 @@ import (
 	storetypes "cosmossdk.io/store/types"
 
 	"github.com/cosmos/cosmos-sdk/client"
+	"github.com/cosmos/cosmos-sdk/nsblockstore"
 	"github.com/cosmos/cosmos-sdk/server/api"
 	"github.com/cosmos/cosmos-sdk/server/config"
 )
@@ -58,6 +59,8 @@ type (
 
 		// Return the snapshot manager
 		SnapshotManager() *snapshots.Manager
+
+		NamespaceStoreManager() *nsblockstore.NamespaceStoreManager
 
 		// Close is called in start cmd to gracefully cleanup resources.
 		// Must be safe to be called multiple times.
