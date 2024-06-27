@@ -40,6 +40,10 @@ service Service {
   rpc GetBlockWithTxs(GetBlockWithTxsRequest) returns (GetBlockWithTxsResponse) {
     option (google.api.http).get = "/cosmos/tx/v1beta1/txs/block/{height}";
   }
+
+  rpc GetBlockWithTxsByNamespace(GetBlockWithTxsByNamespaceRequest) returns (GetBlockWithTxsByNamespaceResponse) {
+    option (google.api.http).get = "/cosmos/tx/v1beta1/txs/block/{height}/{namespace}";
+  }
   // TxDecode decodes the transaction.
   //
   // Since: cosmos-sdk 0.47
@@ -221,6 +225,29 @@ message GetBlockWithTxsResponse {
   .tendermint.types.Block       block    = 3;
   // pagination defines a pagination for the response.
   cosmos.base.query.v1beta1.PageResponse pagination = 4;
+}
+
+// GetBlockWithTxsByNamespaceRequest is the request type for the Service.GetBlockWithTxsByNamespace
+// RPC method.
+//
+// Since: cosmos-sdk 0.45.2
+message GetBlockWithTxsByNamespaceRequest {
+  // height is the height of the block to query.
+  int64 height = 1;
+  uint64 namespace = 2;
+  // pagination defines a pagination for the request.
+  cosmos.base.query.v1beta1.PageRequest pagination = 3;
+}
+
+// GetBlockWithTxsByNamespaceResponse is the response type for the Service.GetBlockWithTxsByNamespace
+// method.
+//
+// Since: cosmos-sdk 0.45.2
+message GetBlockWithTxsByNamespaceResponse {
+  // txs are the transactions in the block.
+  repeated cosmos.tx.v1beta1.Tx txs      = 1;
+  // pagination defines a pagination for the response.
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
 }
 
 // TxDecodeRequest is the request type for the Service.TxDecode

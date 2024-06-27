@@ -19,13 +19,15 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Service_GetNodeInfo_FullMethodName             = "/cosmos.base.tendermint.v1beta1.Service/GetNodeInfo"
-	Service_GetSyncing_FullMethodName              = "/cosmos.base.tendermint.v1beta1.Service/GetSyncing"
-	Service_GetLatestBlock_FullMethodName          = "/cosmos.base.tendermint.v1beta1.Service/GetLatestBlock"
-	Service_GetBlockByHeight_FullMethodName        = "/cosmos.base.tendermint.v1beta1.Service/GetBlockByHeight"
-	Service_GetLatestValidatorSet_FullMethodName   = "/cosmos.base.tendermint.v1beta1.Service/GetLatestValidatorSet"
-	Service_GetValidatorSetByHeight_FullMethodName = "/cosmos.base.tendermint.v1beta1.Service/GetValidatorSetByHeight"
-	Service_ABCIQuery_FullMethodName               = "/cosmos.base.tendermint.v1beta1.Service/ABCIQuery"
+	Service_GetNodeInfo_FullMethodName                     = "/cosmos.base.tendermint.v1beta1.Service/GetNodeInfo"
+	Service_GetSyncing_FullMethodName                      = "/cosmos.base.tendermint.v1beta1.Service/GetSyncing"
+	Service_GetLatestBlock_FullMethodName                  = "/cosmos.base.tendermint.v1beta1.Service/GetLatestBlock"
+	Service_GetBlockByHeight_FullMethodName                = "/cosmos.base.tendermint.v1beta1.Service/GetBlockByHeight"
+	Service_GetLatestValidatorSet_FullMethodName           = "/cosmos.base.tendermint.v1beta1.Service/GetLatestValidatorSet"
+	Service_GetValidatorSetByHeight_FullMethodName         = "/cosmos.base.tendermint.v1beta1.Service/GetValidatorSetByHeight"
+	Service_ABCIQuery_FullMethodName                       = "/cosmos.base.tendermint.v1beta1.Service/ABCIQuery"
+	Service_GetLatestBlockTxsByNamespace_FullMethodName    = "/cosmos.base.tendermint.v1beta1.Service/GetLatestBlockTxsByNamespace"
+	Service_GetBlockTxsByHeightAndNamespace_FullMethodName = "/cosmos.base.tendermint.v1beta1.Service/GetBlockTxsByHeightAndNamespace"
 )
 
 // ServiceClient is the client API for Service service.
@@ -50,6 +52,10 @@ type ServiceClient interface {
 	//
 	// Since: cosmos-sdk 0.46
 	ABCIQuery(ctx context.Context, in *ABCIQueryRequest, opts ...grpc.CallOption) (*ABCIQueryResponse, error)
+	// GetLatestBlockTxsByNamespace returns the latest block txs for given namespace.
+	GetLatestBlockTxsByNamespace(ctx context.Context, in *GetLatestBlockTxsRequest, opts ...grpc.CallOption) (*GetLatestBlockTxsResponse, error)
+	// GetBlockTxsByHeightAndNamespace queries block txs for given height and namespace.
+	GetBlockTxsByHeightAndNamespace(ctx context.Context, in *GetBlockTxsByHeightRequest, opts ...grpc.CallOption) (*GetBlockTxsByHeightResponse, error)
 }
 
 type serviceClient struct {
@@ -123,6 +129,24 @@ func (c *serviceClient) ABCIQuery(ctx context.Context, in *ABCIQueryRequest, opt
 	return out, nil
 }
 
+func (c *serviceClient) GetLatestBlockTxsByNamespace(ctx context.Context, in *GetLatestBlockTxsRequest, opts ...grpc.CallOption) (*GetLatestBlockTxsResponse, error) {
+	out := new(GetLatestBlockTxsResponse)
+	err := c.cc.Invoke(ctx, Service_GetLatestBlockTxsByNamespace_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *serviceClient) GetBlockTxsByHeightAndNamespace(ctx context.Context, in *GetBlockTxsByHeightRequest, opts ...grpc.CallOption) (*GetBlockTxsByHeightResponse, error) {
+	out := new(GetBlockTxsByHeightResponse)
+	err := c.cc.Invoke(ctx, Service_GetBlockTxsByHeightAndNamespace_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ServiceServer is the server API for Service service.
 // All implementations must embed UnimplementedServiceServer
 // for forward compatibility
@@ -145,6 +169,10 @@ type ServiceServer interface {
 	//
 	// Since: cosmos-sdk 0.46
 	ABCIQuery(context.Context, *ABCIQueryRequest) (*ABCIQueryResponse, error)
+	// GetLatestBlockTxsByNamespace returns the latest block txs for given namespace.
+	GetLatestBlockTxsByNamespace(context.Context, *GetLatestBlockTxsRequest) (*GetLatestBlockTxsResponse, error)
+	// GetBlockTxsByHeightAndNamespace queries block txs for given height and namespace.
+	GetBlockTxsByHeightAndNamespace(context.Context, *GetBlockTxsByHeightRequest) (*GetBlockTxsByHeightResponse, error)
 	mustEmbedUnimplementedServiceServer()
 }
 
@@ -172,6 +200,12 @@ func (UnimplementedServiceServer) GetValidatorSetByHeight(context.Context, *GetV
 }
 func (UnimplementedServiceServer) ABCIQuery(context.Context, *ABCIQueryRequest) (*ABCIQueryResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ABCIQuery not implemented")
+}
+func (UnimplementedServiceServer) GetLatestBlockTxsByNamespace(context.Context, *GetLatestBlockTxsRequest) (*GetLatestBlockTxsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetLatestBlockTxsByNamespace not implemented")
+}
+func (UnimplementedServiceServer) GetBlockTxsByHeightAndNamespace(context.Context, *GetBlockTxsByHeightRequest) (*GetBlockTxsByHeightResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetBlockTxsByHeightAndNamespace not implemented")
 }
 func (UnimplementedServiceServer) mustEmbedUnimplementedServiceServer() {}
 
@@ -312,6 +346,42 @@ func _Service_ABCIQuery_Handler(srv interface{}, ctx context.Context, dec func(i
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Service_GetLatestBlockTxsByNamespace_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetLatestBlockTxsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ServiceServer).GetLatestBlockTxsByNamespace(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Service_GetLatestBlockTxsByNamespace_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ServiceServer).GetLatestBlockTxsByNamespace(ctx, req.(*GetLatestBlockTxsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Service_GetBlockTxsByHeightAndNamespace_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetBlockTxsByHeightRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ServiceServer).GetBlockTxsByHeightAndNamespace(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Service_GetBlockTxsByHeightAndNamespace_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ServiceServer).GetBlockTxsByHeightAndNamespace(ctx, req.(*GetBlockTxsByHeightRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Service_ServiceDesc is the grpc.ServiceDesc for Service service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -346,6 +416,14 @@ var Service_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ABCIQuery",
 			Handler:    _Service_ABCIQuery_Handler,
+		},
+		{
+			MethodName: "GetLatestBlockTxsByNamespace",
+			Handler:    _Service_GetLatestBlockTxsByNamespace_Handler,
+		},
+		{
+			MethodName: "GetBlockTxsByHeightAndNamespace",
+			Handler:    _Service_GetBlockTxsByHeightAndNamespace_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
