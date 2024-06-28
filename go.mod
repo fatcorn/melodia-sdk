@@ -178,7 +178,7 @@ replace (
 	//cosmossdk.io/store v1.0.2 => ../cosmossdk-io-store
 	// use cosmos fork of keyring
 	github.com/99designs/keyring => github.com/cosmos/keyring v1.2.0
-	github.com/cometbft/cometbft v0.38.5 => git.everylink.ai/public/shared-comebft v0.38.7-0.20240618024549-84ad468eafd6
+	github.com/cometbft/cometbft v0.38.5 => ../shared-comebft
 	// dgrijalva/jwt-go is deprecated and doesn't receive security updates.
 	// TODO: remove it: https://github.com/cosmos/cosmos-sdk/issues/13134
 	github.com/dgrijalva/jwt-go => github.com/golang-jwt/jwt/v4 v4.4.2
