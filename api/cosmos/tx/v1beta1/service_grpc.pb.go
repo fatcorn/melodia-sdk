@@ -19,15 +19,16 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Service_Simulate_FullMethodName        = "/cosmos.tx.v1beta1.Service/Simulate"
-	Service_GetTx_FullMethodName           = "/cosmos.tx.v1beta1.Service/GetTx"
-	Service_BroadcastTx_FullMethodName     = "/cosmos.tx.v1beta1.Service/BroadcastTx"
-	Service_GetTxsEvent_FullMethodName     = "/cosmos.tx.v1beta1.Service/GetTxsEvent"
-	Service_GetBlockWithTxs_FullMethodName = "/cosmos.tx.v1beta1.Service/GetBlockWithTxs"
-	Service_TxDecode_FullMethodName        = "/cosmos.tx.v1beta1.Service/TxDecode"
-	Service_TxEncode_FullMethodName        = "/cosmos.tx.v1beta1.Service/TxEncode"
-	Service_TxEncodeAmino_FullMethodName   = "/cosmos.tx.v1beta1.Service/TxEncodeAmino"
-	Service_TxDecodeAmino_FullMethodName   = "/cosmos.tx.v1beta1.Service/TxDecodeAmino"
+	Service_Simulate_FullMethodName                   = "/cosmos.tx.v1beta1.Service/Simulate"
+	Service_GetTx_FullMethodName                      = "/cosmos.tx.v1beta1.Service/GetTx"
+	Service_BroadcastTx_FullMethodName                = "/cosmos.tx.v1beta1.Service/BroadcastTx"
+	Service_GetTxsEvent_FullMethodName                = "/cosmos.tx.v1beta1.Service/GetTxsEvent"
+	Service_GetBlockWithTxs_FullMethodName            = "/cosmos.tx.v1beta1.Service/GetBlockWithTxs"
+	Service_GetBlockWithTxsByNamespace_FullMethodName = "/cosmos.tx.v1beta1.Service/GetBlockWithTxsByNamespace"
+	Service_TxDecode_FullMethodName                   = "/cosmos.tx.v1beta1.Service/TxDecode"
+	Service_TxEncode_FullMethodName                   = "/cosmos.tx.v1beta1.Service/TxEncode"
+	Service_TxEncodeAmino_FullMethodName              = "/cosmos.tx.v1beta1.Service/TxEncodeAmino"
+	Service_TxDecodeAmino_FullMethodName              = "/cosmos.tx.v1beta1.Service/TxDecodeAmino"
 )
 
 // ServiceClient is the client API for Service service.
@@ -46,6 +47,7 @@ type ServiceClient interface {
 	//
 	// Since: cosmos-sdk 0.45.2
 	GetBlockWithTxs(ctx context.Context, in *GetBlockWithTxsRequest, opts ...grpc.CallOption) (*GetBlockWithTxsResponse, error)
+	GetBlockWithTxsByNamespace(ctx context.Context, in *GetBlockWithTxsByNamespaceRequest, opts ...grpc.CallOption) (*GetBlockWithTxsByNamespaceResponse, error)
 	// TxDecode decodes the transaction.
 	//
 	// Since: cosmos-sdk 0.47
@@ -117,6 +119,15 @@ func (c *serviceClient) GetBlockWithTxs(ctx context.Context, in *GetBlockWithTxs
 	return out, nil
 }
 
+func (c *serviceClient) GetBlockWithTxsByNamespace(ctx context.Context, in *GetBlockWithTxsByNamespaceRequest, opts ...grpc.CallOption) (*GetBlockWithTxsByNamespaceResponse, error) {
+	out := new(GetBlockWithTxsByNamespaceResponse)
+	err := c.cc.Invoke(ctx, Service_GetBlockWithTxsByNamespace_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *serviceClient) TxDecode(ctx context.Context, in *TxDecodeRequest, opts ...grpc.CallOption) (*TxDecodeResponse, error) {
 	out := new(TxDecodeResponse)
 	err := c.cc.Invoke(ctx, Service_TxDecode_FullMethodName, in, out, opts...)
@@ -169,6 +180,7 @@ type ServiceServer interface {
 	//
 	// Since: cosmos-sdk 0.45.2
 	GetBlockWithTxs(context.Context, *GetBlockWithTxsRequest) (*GetBlockWithTxsResponse, error)
+	GetBlockWithTxsByNamespace(context.Context, *GetBlockWithTxsByNamespaceRequest) (*GetBlockWithTxsByNamespaceResponse, error)
 	// TxDecode decodes the transaction.
 	//
 	// Since: cosmos-sdk 0.47
@@ -206,6 +218,9 @@ func (UnimplementedServiceServer) GetTxsEvent(context.Context, *GetTxsEventReque
 }
 func (UnimplementedServiceServer) GetBlockWithTxs(context.Context, *GetBlockWithTxsRequest) (*GetBlockWithTxsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetBlockWithTxs not implemented")
+}
+func (UnimplementedServiceServer) GetBlockWithTxsByNamespace(context.Context, *GetBlockWithTxsByNamespaceRequest) (*GetBlockWithTxsByNamespaceResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetBlockWithTxsByNamespace not implemented")
 }
 func (UnimplementedServiceServer) TxDecode(context.Context, *TxDecodeRequest) (*TxDecodeResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method TxDecode not implemented")
@@ -322,6 +337,24 @@ func _Service_GetBlockWithTxs_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Service_GetBlockWithTxsByNamespace_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetBlockWithTxsByNamespaceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ServiceServer).GetBlockWithTxsByNamespace(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Service_GetBlockWithTxsByNamespace_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ServiceServer).GetBlockWithTxsByNamespace(ctx, req.(*GetBlockWithTxsByNamespaceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Service_TxDecode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(TxDecodeRequest)
 	if err := dec(in); err != nil {
@@ -420,6 +453,10 @@ var Service_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetBlockWithTxs",
 			Handler:    _Service_GetBlockWithTxs_Handler,
+		},
+		{
+			MethodName: "GetBlockWithTxsByNamespace",
+			Handler:    _Service_GetBlockWithTxsByNamespace_Handler,
 		},
 		{
 			MethodName: "TxDecode",

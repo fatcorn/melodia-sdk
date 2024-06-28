@@ -54,6 +54,18 @@ service Service {
   rpc ABCIQuery(ABCIQueryRequest) returns (ABCIQueryResponse) {
     option (google.api.http).get = "/cosmos/base/tendermint/v1beta1/abci_query";
   }
+
+
+  // GetLatestBlockTxsByNamespace returns the latest block txs for given namespace.
+  rpc GetLatestBlockTxsByNamespace(GetLatestBlockTxsRequest) returns (GetLatestBlockTxsResponse) {
+    option (google.api.http).get = "/cosmos/base/tendermint/v1beta1/blocks/latest/{namespace}/txs";
+  }
+
+  // GetBlockTxsByHeightAndNamespace queries block txs for given height and namespace.
+  rpc GetBlockTxsByHeightAndNamespace(GetBlockTxsByHeightRequest) returns (GetBlockTxsByHeightResponse) {
+    option (google.api.http).get = "/cosmos/base/tendermint/v1beta1/blocks/{height}/{namespace}/txs";
+  }
+
 }
 
 // GetValidatorSetByHeightRequest is the request type for the Query/GetValidatorSetByHeight RPC method.
@@ -122,6 +134,28 @@ message GetLatestBlockResponse {
   // Since: cosmos-sdk 0.47
   Block sdk_block = 3;
 }
+
+// GetBlockTxsByHeightRequest is the request type for the Query/GetBlockTxsByHeightAndNamespace RPC method.
+message GetBlockTxsByHeightRequest {
+  int64 height = 1;
+  uint64 namespace = 2;
+}
+
+// GetBlockTxsByHeightResponse is the response type for the Query/GetBlockTxsByHeightAndNamespace RPC method.
+message GetBlockTxsByHeightResponse {
+   repeated bytes txs = 1;
+}
+
+// GetLatestBlockTxsRequest is the request type for the Query/GetLatestBlockTxsByNamespace RPC method.
+message GetLatestBlockTxsRequest {
+  uint64 namespace = 1;
+}
+
+// GetLatestBlockTxsResponse is the response type for the Query/GetLatestBlockTxsByNamespace RPC method.
+message GetLatestBlockTxsResponse {
+  repeated bytes txs = 1;
+}
+
 
 // GetSyncingRequest is the request type for the Query/GetSyncing RPC method.
 message GetSyncingRequest {}

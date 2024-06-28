@@ -216,6 +216,74 @@ func (s txServer) GetBlockWithTxs(ctx context.Context, req *txtypes.GetBlockWith
 	}, nil
 }
 
+func (s txServer) GetBlockWithTxsByNamespace(ctx context.Context, req *txtypes.GetBlockWithTxsByNamespaceRequest) (*txtypes.GetBlockWithTxsByNamespaceResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "request cannot be nil")
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	currentHeight := sdkCtx.BlockHeight()
+
+	if req.Height < 1 || req.Height > currentHeight {
+		return nil, sdkerrors.ErrInvalidHeight.Wrapf("requested height %d but height must not be less than 1 "+
+			"or greater than the current height %d", req.Height, currentHeight)
+	}
+
+	result, err := cmtservice.GetBlockTxsByNamespace(ctx, s.clientCtx, &req.Height, &req.Namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	var offset, limit uint64
+	if req.Pagination != nil {
+		offset = req.Pagination.Offset
+		limit = req.Pagination.Limit
+	} else {
+		offset = 0
+		limit = query.DefaultLimit
+	}
+
+	blockTxs := result.Txs
+	blockTxsLn := uint64(len(blockTxs))
+	txs := make([]*txtypes.Tx, 0, limit)
+	if offset >= blockTxsLn && blockTxsLn != 0 {
+		return nil, sdkerrors.ErrInvalidRequest.Wrapf("out of range: cannot paginate %d txs with offset %d and limit %d", blockTxsLn, offset, limit)
+	}
+	decodeTxAt := func(i uint64) error {
+		tx := blockTxs[i]
+		txb, err := s.clientCtx.TxConfig.TxDecoder()(tx)
+		if err != nil {
+			return err
+		}
+		p, ok := txb.(protoTxProvider)
+		if !ok {
+			return sdkerrors.ErrTxDecode.Wrapf("could not cast %T to %T", txb, txtypes.Tx{})
+		}
+		txs = append(txs, p.GetProtoTx())
+		return nil
+	}
+	if req.Pagination != nil && req.Pagination.Reverse {
+		for i, count := offset, uint64(0); i > 0 && count != limit; i, count = i-1, count+1 {
+			if err = decodeTxAt(i); err != nil {
+				return nil, err
+			}
+		}
+	} else {
+		for i, count := offset, uint64(0); i < blockTxsLn && count != limit; i, count = i+1, count+1 {
+			if err = decodeTxAt(i); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return &txtypes.GetBlockWithTxsByNamespaceResponse{
+		Txs: txs,
+		Pagination: &query.PageResponse{
+			Total: blockTxsLn,
+		},
+	}, nil
+}
+
 // BroadcastTx implements the ServiceServer.BroadcastTx RPC method.
 func (s txServer) BroadcastTx(ctx context.Context, req *txtypes.BroadcastTxRequest) (*txtypes.BroadcastTxResponse, error) {
 	return client.TxServiceBroadcast(ctx, s.clientCtx, req)

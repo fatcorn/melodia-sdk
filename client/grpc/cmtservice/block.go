@@ -2,7 +2,6 @@ package cmtservice
 
 import (
 	"context"
-
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	coretypes "github.com/cometbft/cometbft/rpc/core/types"
 
@@ -27,7 +26,15 @@ func getBlock(ctx context.Context, clientCtx client.Context, height *int64) (*co
 
 	return node.Block(ctx, height)
 }
+func GetBlockTxsByNamespace(ctx context.Context, clientCtx client.Context, height *int64, namespace *uint64) (*coretypes.ResultBlockTxs, error) {
+	// get the node
+	node, err := clientCtx.GetNode()
+	if err != nil {
+		return nil, err
+	}
 
+	return node.BlockTxsByNamespace(ctx, height, namespace)
+}
 func GetProtoBlock(ctx context.Context, clientCtx client.Context, height *int64) (cmtproto.BlockID, *cmtproto.Block, error) {
 	block, err := getBlock(ctx, clientCtx, height)
 	if err != nil {
