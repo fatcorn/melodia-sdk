@@ -20,6 +20,8 @@ type NSBlockStore interface {
 
 	LoadBlockByHash(hash []byte) *NamespaceBLock
 
+	LoadBlockByRelatedHeight(relatedHeight int64) *NamespaceBLock
+
 	SetNamespaceStateActive()
 
 	GetNamespaceState() bool
@@ -76,6 +78,10 @@ func calcBaseBlockStoreSateKey() []byte {
 
 func calcNamespaceStateKey() []byte {
 	return []byte(fmt.Sprintf("NSAS:%v", blockStoreActiveStateKey))
+}
+
+func calcBFTHeightKey(height int64) []byte {
+	return []byte(fmt.Sprintf("BFTH:%v", height))
 }
 
 func NewNamespaceBlockStore(db dbm.DB, namespaceId uint64) *NamespaceBLockStore {
@@ -153,10 +159,11 @@ func (n *NamespaceBLockStore) SaveBlock(height int64, hash []byte, block *Namesp
 	if err != nil {
 		panic(err)
 	}
-	//err = batch.Set(calcBlockStoreSateKey(), []byte(fmt.Sprintf("%d", height)))
-	//if err != nil {
-	//	panic(err)
-	//}
+
+	err = batch.Set(calcBFTHeightKey(block.RelatedCometBFTBlockHeight), []byte(fmt.Sprintf("%d", height)))
+	if err != nil {
+		panic(err)
+	}
 
 	if height != n.base {
 		n.height += 1
@@ -183,6 +190,21 @@ func (n *NamespaceBLockStore) SaveBlock(height int64, hash []byte, block *Namesp
 
 func (n *NamespaceBLockStore) LoadBlockByHash(hash []byte) *NamespaceBLock {
 	heightData, err := n.db.Get(calcBlockHashKey(hash))
+	if err != nil {
+		panic(err)
+	}
+	if heightData == nil {
+		return nil
+	}
+	height, err := strconv.Atoi(string(heightData))
+	if err != nil {
+		panic(fmt.Sprintf("Error reading block by hash %v", err))
+	}
+	return n.LoadBlock(int64(height))
+}
+
+func (n *NamespaceBLockStore) LoadBlockByRelatedHeight(relatedHeight int64) *NamespaceBLock {
+	heightData, err := n.db.Get(calcBFTHeightKey(relatedHeight))
 	if err != nil {
 		panic(err)
 	}
