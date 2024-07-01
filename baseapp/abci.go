@@ -465,6 +465,17 @@ func (app *BaseApp) ProcessProposal(req *abci.RequestProcessProposal) (resp *abc
 		return nil, errors.New("ProcessProposal called with invalid height")
 	}
 
+	if app.finalizeBlockHeight == req.Height && req.Height > app.initialHeight {
+		rms, ok := app.cms.(*rootmulti.Store)
+		if ok {
+			err := rms.RollbackToVersion(req.Height - 1)
+			if err != nil {
+				app.logger.Error("FinalizeBlock prune stores error.", "height", req.Height, "err", err)
+			}
+			app.qms = app.cms
+		}
+	}
+
 	// Always reset state given that ProcessProposal can timeout and be called
 	// again in a subsequent round.
 	header := cmtproto.Header{
@@ -864,15 +875,7 @@ func (app *BaseApp) FinalizeBlock(req *abci.RequestFinalizeBlock) (res *abci.Res
 			}
 		}
 	}()
-	if app.finalizeBlockHeight == req.Height && req.Height > app.initialHeight {
-		rms, ok := app.cms.(*rootmulti.Store)
-		if ok {
-			err := rms.RollbackToVersion(req.Height - 1)
-			if err != nil {
-				app.logger.Error("FinalizeBlock prune stores error.", "height", req.Height, "err", err)
-			}
-		}
-	}
+
 	if app.optimisticExec.Initialized() {
 		// check if the hash we got is the same as the one we are executing
 		aborted := app.optimisticExec.AbortIfNeeded(req.Hash)
