@@ -33,4 +33,5 @@ type CometRPC interface {
 		page, perPage *int,
 		orderBy string,
 	) (*coretypes.ResultBlockSearch, error)
+	BlockTxsByNamespace(ctx context.Context, height *int64, namespace *uint64) (*coretypes.ResultBlockTxs, error)
 }

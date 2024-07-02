@@ -15,4 +15,5 @@ type NamespaceGenesis struct {
 	NamespaceId types.Namespace // Additional namespaceId field
 	ChainID     *big.Int
 	ModuleName  string
+	TmWsPort    int
 }

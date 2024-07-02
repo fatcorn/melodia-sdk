@@ -101,6 +101,41 @@ func (s queryServer) GetBlockByHeight(ctx context.Context, req *GetBlockByHeight
 		SdkBlock: convertBlock(protoBlock),
 	}, nil
 }
+func (s queryServer) GetLatestBlockTxsByNamespace(ctx context.Context, req *GetLatestBlockTxsRequest) (*GetLatestBlockTxsResponse, error) {
+	blockHeight, err := getBlockHeight(ctx, s.clientCtx)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := GetBlockTxsByNamespace(ctx, s.clientCtx, &blockHeight, &req.Namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	return &GetLatestBlockTxsResponse{
+		Txs: result.Txs.ToSliceOfBytes(),
+	}, nil
+}
+
+func (s queryServer) GetBlockTxsByHeightAndNamespace(ctx context.Context, req *GetBlockTxsByHeightRequest) (*GetBlockTxsByHeightResponse, error) {
+	blockHeight, err := getBlockHeight(ctx, s.clientCtx)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Height > blockHeight {
+		return nil, status.Error(codes.InvalidArgument, "requested block height is bigger then the chain length")
+	}
+
+	result, err := GetBlockTxsByNamespace(ctx, s.clientCtx, &req.Height, &req.Namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	return &GetBlockTxsByHeightResponse{
+		Txs: result.Txs.ToSliceOfBytes(),
+	}, nil
+}
 
 // GetLatestValidatorSet implements ServiceServer.GetLatestValidatorSet
 func (s queryServer) GetLatestValidatorSet(ctx context.Context, req *GetLatestValidatorSetRequest) (*GetLatestValidatorSetResponse, error) {
