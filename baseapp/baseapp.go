@@ -419,7 +419,7 @@ func NamespaceStoresFromNSPort(indunplicateNamespace []*bfttypes.NamespacePort, 
 func ListDBNamespace(db dbm.DB) []*bfttypes.NamespacePort {
 	var nsPorts []*bfttypes.NamespacePort
 
-	namesapceIdPrefixKey := []byte("s/k:chainservice_0/fnamespace_port")
+	namesapceIdPrefixKey := []byte("s/k:chainservice_0/fnamespace_store")
 	iter, _ := db.Iterator(namesapceIdPrefixKey, storetypes.PrefixEndBytes(namesapceIdPrefixKey))
 
 	for iter.Valid() {
