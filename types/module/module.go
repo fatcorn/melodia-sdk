@@ -811,16 +811,18 @@ func (m *Manager) MakeNamespaceBlock(
 	txs [][]byte, nsTable []*tdmtypes.NamespaceTableEntries,
 	mannager *nsblockstore.NamespaceStoreManager,
 	cms storetypes.CommitMultiStore,
-) (map[uint64]appmodule.NamespaceBlockData, error) {
-	ret := make(map[uint64]appmodule.NamespaceBlockData)
+) (map[string]appmodule.NamespaceBlockData, error) {
+	ret := make(map[string]appmodule.NamespaceBlockData)
 	namespaceIDsMoudle := mannager.GetNamespaceIdsModule()
 	moudleRelatedMoudles := mannager.GetModuleRelatedModules()
 	//stores := mannager.GetNamespaceStores()
 
 	namespaceTxsMap := bfttypes.ListNamespaceTxsWithNSTable(txs, nsTable)
 	// todo, every tendermint block will generate every namespace block
-	for namespaceId, moduleName := range namespaceIDsMoudle {
-		store, ok := mannager.GetNamespaceStore(namespaceId)
+	for _, value := range namespaceIDsMoudle {
+		namespaceId := value.NamespaceId
+		moduleName := value.ModuleName
+		store, ok := mannager.GetNamespaceStore(namespaceId, moduleName)
 		// unactive namespace not produce block
 		if !store.GetNamespaceState() {
 			continue
@@ -852,10 +854,13 @@ func (m *Manager) MakeNamespaceBlock(
 			if err != nil {
 				return nil, err
 			}
-			ret[namespaceId] = namespaceBlockData
-		} else {
-			panic("Registerd namespace related moudle not found in moudles manager")
+			key := nsblockstore.CaculateStoreKey(namespaceId, moduleName)
+			ret[key] = namespaceBlockData
 		}
+		// not every module needs to generate block
+		//else {
+		//	panic("Registerd namespace related moudle not found in moudles manager")
+		//}
 	}
 
 	return ret, nil

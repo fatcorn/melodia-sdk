@@ -19,8 +19,8 @@ git.everylink.ai/public/cosmossdk-io-collections v0.4.0 h1:o20NGZYoWs2Be+0YxD/XF
 git.everylink.ai/public/cosmossdk-io-collections v0.4.0/go.mod h1:oa5lUING2dP+gdDquow+QjlF45eL1t4TJDypgGd+tv0=
 git.everylink.ai/public/cosmossdk-io-core v0.11.1-0.20240626085252-704ca8aef8ce h1:01sEJFbosC5dNW6xJtiaU/+drnDnmcGh6wY8xQy5gio=
 git.everylink.ai/public/cosmossdk-io-core v0.11.1-0.20240626085252-704ca8aef8ce/go.mod h1:LaTtayWBSoacF5xNzoF8tmLhehqlA9z1SWiPuNC6X1w=
-git.everylink.ai/public/cosmossdk-io-store v1.0.3-0.20240626085817-d95fd7ce71b0 h1:HnCflX4BiEWhlf+vdWWTeNUn7LJkpGqbgVMkasn77g8=
-git.everylink.ai/public/cosmossdk-io-store v1.0.3-0.20240626085817-d95fd7ce71b0/go.mod h1:EFtENTqVTuWwitGW1VwaBct+yDagk7oG/axBMPH+FXs=
+git.everylink.ai/public/cosmossdk-io-store v1.0.3-0.20240702064400-01a37aa68340 h1:5Hsuc6U5+j+KyICUPV6BTcPmLsA1N0Rpptn7u8N7oIk=
+git.everylink.ai/public/cosmossdk-io-store v1.0.3-0.20240702064400-01a37aa68340/go.mod h1:EFtENTqVTuWwitGW1VwaBct+yDagk7oG/axBMPH+FXs=
 github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4 h1:/vQbFIOMbk2FiG/kXiLl8BRyzTWDw7gX/Hz7Dd5eDMs=
 github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4/go.mod h1:hN7oaIRCjzsZ2dE+yG5k+rsdt3qcwykqK6HVGcKwsw4=
 github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 h1:L/gRVlceqvL25UVaW/CKtUDjefjrs0SPonmDGUVOYP0=

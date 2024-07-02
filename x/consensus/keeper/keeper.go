@@ -103,7 +103,7 @@ type ChainserviceHandler struct {
 
 // NamespaceInitGenesis namespace initializes the module's state from a provided genesis state.
 func (c ChainserviceHandler) NamespaceInitGenesis(ctx sdk.Context, genesis sdk.NamespaceGenesis) error {
-
+	ctx.SetNamespace(0)
 	ctx.Logger().Info(fmt.Sprintf("Namespace init genesis %s namespaceId= %v", types.ModuleName, genesis.NamespaceId))
 
 	var genesisState genutiltypes.ConsensusGenesis
@@ -148,6 +148,10 @@ func (c ChainserviceHandler) NamespaceInitGenesis(ctx sdk.Context, genesis sdk.N
 	}
 
 	return nil
+}
+
+func (_c ChainserviceHandler) ListDependentModulesStoreNames() []string {
+	return []string{}
 }
 
 // NewChainserviceHandler create new handler

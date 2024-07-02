@@ -369,7 +369,7 @@ func (app *BaseApp) LoadAllValidNamespaceStore(keys ...storetypes.StoreKey) []st
 	var namespaceStores []storetypes.StoreKey
 	if !app.NamespaceStoresLoaded {
 		nsPorts := ListDBNamespace(app.db)
-		namespaceStores = NamespaceStoresFromNSPort(nsPorts)
+		namespaceStores = NamespaceStoresFromNSPort(nsPorts, nil)
 		app.NamespaceStoresLoaded = true
 	}
 
@@ -393,14 +393,23 @@ func (app *BaseApp) LoadAllValidNamespaceStore(keys ...storetypes.StoreKey) []st
 }
 
 // NamespaceStoresFromNSPort create namesapce store key
-func NamespaceStoresFromNSPort(indunplicateNamespace []*bfttypes.NamespacePort) []storetypes.StoreKey {
+func NamespaceStoresFromNSPort(indunplicateNamespace []*bfttypes.NamespacePort, manager *nsblockstore.NamespaceStoreManager) []storetypes.StoreKey {
 	namespaceStores := make([]storetypes.StoreKey, 0)
+	// for avoiding namespaceStores repeat mount
+	namespaceStoresMap := make(map[string]bool)
 	for _, namesapceInfo := range indunplicateNamespace {
 		vmMoudleStoreKey := storetypes.NewKVStoreKey(namesapceInfo.Module + "_" + strconv.FormatUint(uint64(namesapceInfo.NamespaceId), 10))
-		namespaceStores = append(namespaceStores, vmMoudleStoreKey)
+		if _, ok := namespaceStoresMap[vmMoudleStoreKey.Name()]; !ok {
+			namespaceStores = append(namespaceStores, vmMoudleStoreKey)
+			namespaceStoresMap[vmMoudleStoreKey.Name()] = true
+		}
+
 		for _, dependentModule := range namesapceInfo.VMModuleDependentModules {
 			dependentModuleStoreKey := storetypes.NewKVStoreKey(dependentModule + "_" + strconv.FormatUint(uint64(namesapceInfo.NamespaceId), 10))
-			namespaceStores = append(namespaceStores, dependentModuleStoreKey)
+			if _, ok := namespaceStoresMap[dependentModuleStoreKey.Name()]; !ok {
+				namespaceStores = append(namespaceStores, dependentModuleStoreKey)
+				namespaceStoresMap[dependentModuleStoreKey.Name()] = true
+			}
 		}
 	}
 	return namespaceStores
@@ -436,12 +445,13 @@ func ListDBNamespace(db dbm.DB) []*bfttypes.NamespacePort {
 		iter.Next()
 	}
 	var induplicateNamespace []*bfttypes.NamespacePort
-	uniqueNamespaces := make(map[bfttypes.Namespace]bool)
+	uniqueNamespaces := make(map[string]bool)
 	for _, port := range nsPorts {
-		if ok := uniqueNamespaces[port.NamespaceId]; ok {
+		namespaceModuleKey := nsblockstore.CaculateStoreKey(uint64(port.NamespaceId), port.Module)
+		if ok := uniqueNamespaces[namespaceModuleKey]; ok {
 			continue
 		}
-		uniqueNamespaces[port.NamespaceId] = true
+		uniqueNamespaces[namespaceModuleKey] = true
 		induplicateNamespace = append(induplicateNamespace, port)
 	}
 
@@ -449,9 +459,9 @@ func ListDBNamespace(db dbm.DB) []*bfttypes.NamespacePort {
 }
 
 // NewNamespaceDB handle internal Event to execute related logic
-func CreateNamespaceDB(namespaceId uint64, dbRootDir string) (cmtdbm.DB, error) {
+func CreateNamespaceDB(namespaceId uint64, moudleName string, dbRootDir string) (cmtdbm.DB, error) {
 	namespaceDB, err := cmtcfg.DefaultDBProvider(&cmtcfg.DBContext{
-		ID:     "namespace" + "_" + strconv.FormatUint(namespaceId, 10),
+		ID:     "namespace" + "_" + strconv.FormatUint(namespaceId, 10) + "_" + moudleName,
 		Config: cmtcfg.DefaultConfig().SetRoot(dbRootDir).AddDBPath("namespace"),
 	})
 	return namespaceDB, err
@@ -459,12 +469,12 @@ func CreateNamespaceDB(namespaceId uint64, dbRootDir string) (cmtdbm.DB, error) 
 
 // addNewNamespaceBLockStore Create a new namespace blockdb
 func (app *BaseApp) addNewNamespaceBLockStore(namespaceID uint64, moduleName string, moduleRelatedModules []string) {
-	newNamespaceDB, err := CreateNamespaceDB(namespaceID, app.namespaceStoreManager.GetDBRootDir())
+	newNamespaceDB, err := CreateNamespaceDB(namespaceID, moduleName, app.namespaceStoreManager.GetDBRootDir())
 	if err != nil {
 		panic(fmt.Sprintf("Create namespace-%v DB failed, causev%v", namespaceID, err))
 	}
 	nsBLockStore := nsblockstore.NewNamespaceBlockStore(newNamespaceDB, namespaceID)
-	app.namespaceStoreManager.AddNamespaceStore(namespaceID, nsBLockStore)
+	app.namespaceStoreManager.AddNamespaceStore(namespaceID, moduleName, nsBLockStore)
 	app.namespaceStoreManager.AddNamespaceIdsModule(namespaceID, moduleName)
 	app.namespaceStoreManager.AddModuleRelatedModules(moduleName, moduleRelatedModules)
 }
@@ -472,20 +482,20 @@ func (app *BaseApp) addNewNamespaceBLockStore(namespaceID uint64, moduleName str
 // loadNamespaceBLockStore Load a namespace blockdb to namespace store manager
 func (app *BaseApp) loadNamespaceBLockStore(namespaceID uint64, db cmtdbm.DB, moduleName string, moduleRelatedModules []string) {
 	nsBLockStore := nsblockstore.NewNamespaceBlockStore(db, namespaceID)
-	app.namespaceStoreManager.AddNamespaceStore(namespaceID, nsBLockStore)
+	app.namespaceStoreManager.AddNamespaceStore(namespaceID, moduleName, nsBLockStore)
 	app.namespaceStoreManager.AddNamespaceIdsModule(namespaceID, moduleName)
 	app.namespaceStoreManager.AddModuleRelatedModules(moduleName, moduleRelatedModules)
-	app.namespaceStoreManager.AddNamespaceActiveState(namespaceID, nsBLockStore.GetNamespaceState())
+	app.namespaceStoreManager.AddNamespaceActiveState(namespaceID, moduleName, nsBLockStore.GetNamespaceState())
 }
 
 // activeNamespace Create a new namespace blockdb
-func (app *BaseApp) activeNamespace(namespaceID uint64) {
-	nsBlockStore, ok := app.namespaceStoreManager.GetNamespaceStore(namespaceID)
+func (app *BaseApp) activeNamespace(namespaceID uint64, moduleName string) {
+	nsBlockStore, ok := app.namespaceStoreManager.GetNamespaceStore(namespaceID, moduleName)
 	if !ok {
 		panic("not found namespace block store")
 	}
 	nsBlockStore.SetNamespaceStateActive()
-	app.namespaceStoreManager.AddNamespaceActiveState(namespaceID, true)
+	app.namespaceStoreManager.AddNamespaceActiveState(namespaceID, moduleName, true)
 }
 
 // HandleInternalEvent handle internal Event to execute related logic
@@ -503,7 +513,7 @@ func (app *BaseApp) HandleInternalEvent(events sdk.Events) {
 				if err != nil {
 					panic(fmt.Sprintf("Get InternalEventTypeNewNamespace but unmarshal value failed %v", err))
 				}
-				newNamespaceStoreKey := NamespaceStoresFromNSPort([]*bfttypes.NamespacePort{&nsPort})
+				newNamespaceStoreKey := NamespaceStoresFromNSPort([]*bfttypes.NamespacePort{&nsPort}, nil)
 				err = app.cms.DynamicAddNamesapceStore(newNamespaceStoreKey...)
 				if err != nil {
 					panic(fmt.Sprintf("Dynamic add namesapce store failed %v", err))
@@ -522,7 +532,7 @@ func (app *BaseApp) HandleInternalEvent(events sdk.Events) {
 				if err != nil {
 					panic(fmt.Sprintf("Get InternalEventTypeNewNamespace but unmarshal value failed %v", err))
 				}
-				app.activeNamespace(uint64(nsPort.NamespaceId))
+				app.activeNamespace(uint64(nsPort.NamespaceId), nsPort.Module)
 			}
 
 		}
@@ -1022,7 +1032,7 @@ func (app *BaseApp) makeNamespaceBlock(ctx context.Context, txs [][]byte, nsTabl
 			return err
 		}
 
-		for namespaceID, datum := range namespacesBLockData {
+		for storeKey, datum := range namespacesBLockData {
 			if len(datum) == 0 {
 				continue
 			}
@@ -1032,7 +1042,7 @@ func (app *BaseApp) makeNamespaceBlock(ctx context.Context, txs [][]byte, nsTabl
 				return err
 			}
 			// todo, get namespaceId height and block hash
-			namespaceBLockStore, ok := app.namespaceStoreManager.GetNamespaceStore(uint64(namespaceID))
+			namespaceBLockStore, ok := app.namespaceStoreManager.GetNamespaceStoreByKey(storeKey)
 			if !ok {
 				panic("Load namespace block store failed")
 			}

@@ -176,7 +176,7 @@ func (a *App) EndBlocker(ctx sdk.Context) (sdk.EndBlock, error) {
 }
 
 // EndBlocker application updates every end block
-func (a *App) NamespaceBlockMaker(ctx sdk.Context, txs [][]byte, nsTable []*tdmtypes.NamespaceTableEntries) (map[uint64]appmodule.NamespaceBlockData, error) {
+func (a *App) NamespaceBlockMaker(ctx sdk.Context, txs [][]byte, nsTable []*tdmtypes.NamespaceTableEntries) (map[string]appmodule.NamespaceBlockData, error) {
 	return a.ModuleManager.MakeNamespaceBlock(ctx, txs, nsTable, a.NamespaceStoreManager(), a.CommitMultiStore())
 }
 

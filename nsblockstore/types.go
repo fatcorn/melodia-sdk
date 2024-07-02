@@ -2,22 +2,33 @@ package nsblockstore
 
 import cmtdbm "github.com/cometbft/cometbft-db"
 import "sync"
+import "fmt"
+import "slices"
 
 type NamespaceStoreManager struct {
-	nsStores               map[uint64]NSBlockStore
-	namespaceIdsModule     map[uint64]string
+	nsStores               map[string]NSBlockStore
+	namespaceIdsModule     map[string]*NamespaceModule
 	moduleRelatedModules   map[string][]string
 	dbRootDir              string
-	namespaceActivateState map[uint64]bool
+	namespaceActivateState map[string]bool
 	lock                   sync.RWMutex
+}
+
+type NamespaceModule struct {
+	NamespaceId uint64
+	ModuleName  string
+}
+
+func CaculateStoreKey(namespaceId uint64, moduleName string) string {
+	return fmt.Sprintf("%v_%v", moduleName, namespaceId)
 }
 
 func NewNamespaceStoreManager() *NamespaceStoreManager {
 	return &NamespaceStoreManager{
-		nsStores:               make(map[uint64]NSBlockStore),
-		namespaceIdsModule:     make(map[uint64]string),
+		nsStores:               make(map[string]NSBlockStore),
+		namespaceIdsModule:     make(map[string]*NamespaceModule),
 		moduleRelatedModules:   make(map[string][]string),
-		namespaceActivateState: make(map[uint64]bool),
+		namespaceActivateState: make(map[string]bool),
 	}
 }
 
@@ -33,20 +44,29 @@ func (manager *NamespaceStoreManager) GetDBRootDir() string {
 	return manager.dbRootDir
 }
 
-func (manager *NamespaceStoreManager) GetNamespaceStore(namespaceId uint64) (NSBlockStore, bool) {
+func (manager *NamespaceStoreManager) GetNamespaceStore(namespaceId uint64, moduleName string) (NSBlockStore, bool) {
 	manager.lock.RLock()
 	defer manager.lock.RUnlock()
-	nsBlockStore, ok := manager.nsStores[namespaceId]
+	key := CaculateStoreKey(namespaceId, moduleName)
+	nsBlockStore, ok := manager.nsStores[key]
 	return nsBlockStore, ok
 }
 
-func (manager *NamespaceStoreManager) AddNamespaceStore(namespaceId uint64, store NSBlockStore) {
-	manager.lock.Lock()
-	defer manager.lock.Unlock()
-	manager.nsStores[namespaceId] = store
+func (manager *NamespaceStoreManager) GetNamespaceStoreByKey(key string) (NSBlockStore, bool) {
+	manager.lock.RLock()
+	defer manager.lock.RUnlock()
+	nsBlockStore, ok := manager.nsStores[key]
+	return nsBlockStore, ok
 }
 
-func (manager *NamespaceStoreManager) GetNamespaceIdsModule() map[uint64]string {
+func (manager *NamespaceStoreManager) AddNamespaceStore(namespaceId uint64, moduleName string, store NSBlockStore) {
+	manager.lock.Lock()
+	defer manager.lock.Unlock()
+	key := CaculateStoreKey(namespaceId, moduleName)
+	manager.nsStores[key] = store
+}
+
+func (manager *NamespaceStoreManager) GetNamespaceIdsModule() map[string]*NamespaceModule {
 	manager.lock.RLock()
 	defer manager.lock.RUnlock()
 	return manager.namespaceIdsModule
@@ -55,7 +75,11 @@ func (manager *NamespaceStoreManager) GetNamespaceIdsModule() map[uint64]string 
 func (manager *NamespaceStoreManager) AddNamespaceIdsModule(namespaceId uint64, moduleName string) {
 	manager.lock.Lock()
 	defer manager.lock.Unlock()
-	manager.namespaceIdsModule[namespaceId] = moduleName
+	key := CaculateStoreKey(namespaceId, moduleName)
+	manager.namespaceIdsModule[key] = &NamespaceModule{
+		NamespaceId: namespaceId,
+		ModuleName:  moduleName,
+	}
 }
 
 func (manager *NamespaceStoreManager) GetModuleRelatedModules() map[string][]string {
@@ -70,21 +94,37 @@ func (manager *NamespaceStoreManager) AddModuleRelatedModules(module string, rel
 	manager.moduleRelatedModules[module] = relatedModuleNames
 }
 
-func (manager *NamespaceStoreManager) GetNamespaceActiveState() map[uint64]bool {
+func (manager *NamespaceStoreManager) GetNamespaceActiveState() map[string]bool {
 	manager.lock.RLock()
 	defer manager.lock.RUnlock()
 	return manager.namespaceActivateState
 }
 
-func (manager *NamespaceStoreManager) AddNamespaceActiveState(namespaceId uint64, isActive bool) {
+func (manager *NamespaceStoreManager) AddNamespaceActiveState(namespaceId uint64, moduleName string, isActive bool) {
 	manager.lock.Lock()
 	defer manager.lock.Unlock()
-	manager.namespaceActivateState[namespaceId] = isActive
+	key := CaculateStoreKey(namespaceId, moduleName)
+	manager.namespaceActivateState[key] = isActive
+}
+
+func (manager *NamespaceStoreManager) IsMoudleStoreKeyExist(moudleName string, namespaceId uint64) bool {
+	manager.lock.Lock()
+	defer manager.lock.Unlock()
+	for _, value := range manager.namespaceIdsModule {
+		if value.NamespaceId == namespaceId {
+			for key, relatedMoudles := range manager.moduleRelatedModules {
+				if key == moudleName || slices.Contains(relatedMoudles, moudleName) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 type NamespaceStoreDBInfo struct {
-	NamespaceStoreDBs    map[uint64]cmtdbm.DB
+	NamespaceStoreDBs    map[string]cmtdbm.DB
 	DbRootDir            string
-	NamespacesModuleName map[uint64]string
+	NamespacesModuleName map[string]NamespaceModule
 	ModuleRelatedModules map[string][]string
 }

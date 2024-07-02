@@ -59,7 +59,7 @@ type BeginBlocker func(Context) (BeginBlock, error)
 type EndBlocker func(Context) (EndBlock, error)
 
 // NamespaceMakeBLock
-type NamespaceMakeBLock func(Context, [][]byte, []*tdmtypes.NamespaceTableEntries) (map[uint64]appmodule.NamespaceBlockData, error)
+type NamespaceMakeBLock func(Context, [][]byte, []*tdmtypes.NamespaceTableEntries) (map[string]appmodule.NamespaceBlockData, error)
 
 // EndBlock defines a type which contains endblock events and validator set updates
 type EndBlock struct {

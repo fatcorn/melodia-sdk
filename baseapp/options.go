@@ -51,10 +51,10 @@ func SetQueryGasLimit(queryGasLimit uint64) func(*BaseApp) {
 // SetNamespaceDBManager returns an option that sets a namespaceDBManager.
 func SetNamespaceDBManager(info nsblockstore.NamespaceStoreDBInfo) func(*BaseApp) {
 	return func(bapp *BaseApp) {
-		for namespaceId, db := range info.NamespaceStoreDBs {
-			moduleName := info.NamespacesModuleName[namespaceId]
-			relatedModules := info.ModuleRelatedModules[moduleName]
-			bapp.loadNamespaceBLockStore(namespaceId, db, moduleName, relatedModules)
+		for storeKey, db := range info.NamespaceStoreDBs {
+			namespaceModule := info.NamespacesModuleName[storeKey]
+			relatedModules := info.ModuleRelatedModules[namespaceModule.ModuleName]
+			bapp.loadNamespaceBLockStore(namespaceModule.NamespaceId, db, namespaceModule.ModuleName, relatedModules)
 		}
 		bapp.namespaceStoreManager.SetDBRootDir(info.DbRootDir)
 	}
