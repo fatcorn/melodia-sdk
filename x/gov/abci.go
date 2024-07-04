@@ -19,7 +19,8 @@ import (
 // EndBlocker called every block, process inflation, update validator set.
 func EndBlocker(ctx sdk.Context, keeper *keeper.Keeper) error {
 	defer telemetry.ModuleMeasureSince(types.ModuleName, time.Now(), telemetry.MetricKeyEndBlocker)
-
+	// todo, if outer EndBlocker ctx namespace unset to default namespace 0, set in here
+	//ctx.SetNamespace(0)
 	logger := ctx.Logger().With("module", "x/"+types.ModuleName)
 	// delete dead proposals from store and returns theirs deposits.
 	// A proposal is dead when it's inactive and didn't get enough deposit on time to get into voting phase.

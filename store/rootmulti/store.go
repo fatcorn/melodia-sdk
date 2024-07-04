@@ -298,6 +298,43 @@ func (rs *Store) loadVersion(ver int64, upgrades *types.StoreUpgrades) error {
 	return nil
 }
 
+func (rs *Store) DynamicAddNamesapceStore(newKeys ...types.StoreKey) error {
+	infos := make(map[string]types.StoreInfo)
+
+	rs.logger.Info("AddNamesapceStore", "add new namesapce store", newKeys)
+	//cInfo := &types.CommitInfo{}
+	//
+	//// load each Store (note this doesn't panic on unmounted keys now)
+	//newStores := make(map[types.StoreKey]types.CommitKVStore)
+
+	//storesKeys := make([]types.StoreKey, 0, len(rs.storesParams))
+	for _, key := range newKeys {
+		rs.MountStoreWithDB(key, types.StoreTypeIAVL, rs.db)
+	}
+
+	for _, key := range newKeys {
+		storeParams := rs.storesParams[key]
+		commitID := rs.getCommitID(infos, key.Name())
+
+		//// If it has been added, set the initial version
+		//if upgrades.IsAdded(key.Name()) || upgrades.RenamedFrom(key.Name()) != "" {
+		//	storeParams.initialVersion = uint64(ver) + 1
+		//} else if commitID.Version != ver && storeParams.typ == types.StoreTypeIAVL {
+		//	return fmt.Errorf("version of store %s mismatch root store's version; expected %d got %d; new stores should be added using StoreUpgrades", key.Name(), ver, commitID.Version)
+		//}
+
+		store, err := rs.loadCommitStoreFromParams(key, commitID, storeParams)
+		if err != nil {
+			return errors.New(fmt.Sprintf("Load Namespace store %s failed cause %v", key.Name(), err))
+		}
+
+		rs.stores[key] = store
+		rs.keysByName[key.Name()] = key
+	}
+
+	return nil
+}
+
 func (rs *Store) getCommitID(infos map[string]types.StoreInfo, name string) types.CommitID {
 	info, ok := infos[name]
 	if !ok {

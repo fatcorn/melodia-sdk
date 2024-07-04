@@ -23,6 +23,7 @@ type kvStoreService struct {
 }
 
 func (k kvStoreService) OpenKVStore(ctx context.Context) store.KVStore {
+	//sdkCtx := sdk.UnwrapSDKContext(ctx)
 	return newKVStore(sdk.UnwrapSDKContext(ctx).KVStore(k.key))
 }
 

@@ -2,7 +2,6 @@ package appmodule
 
 import (
 	"context"
-
 	"google.golang.org/grpc"
 
 	"cosmossdk.io/depinject"
@@ -70,4 +69,16 @@ type HasEndBlocker interface {
 	// EndBlock is a method that will be run after transactions are processed in
 	// a block.
 	EndBlock(context.Context) error
+}
+
+type NamespaceBlockData []byte
+
+// HasVMNamespaceBLockMaker is the extension interface that modules should implement to run
+// custom logic after transaction processing in a block.
+type HasVMNamespaceBLockMaker interface {
+	AppModule
+
+	// MakeBlock is a method that will be run after transactions are processed in
+	// a block.
+	MakeBlock(context.Context) (NamespaceBlockData, error)
 }

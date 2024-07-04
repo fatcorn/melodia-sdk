@@ -13,6 +13,7 @@ import (
 	"cosmossdk.io/log"
 	storetypes "cosmossdk.io/store/types"
 
+	tdmtypes "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/grpc/cmtservice"
@@ -126,6 +127,11 @@ func (a *App) Load(loadLatest bool) error {
 		a.SetBeginBlocker(a.BeginBlocker)
 	}
 
+	if len(a.config.NamespaceBlockMakers) != 0 {
+		a.ModuleManager.SetOrderNamespaceBLockMakers(a.config.NamespaceBlockMakers...)
+		a.SetNamespaceBLockMaker(a.NamespaceBlockMaker)
+	}
+
 	if len(a.config.EndBlockers) != 0 {
 		a.ModuleManager.SetOrderEndBlockers(a.config.EndBlockers...)
 		a.SetEndBlocker(a.EndBlocker)
@@ -167,6 +173,11 @@ func (a *App) BeginBlocker(ctx sdk.Context) (sdk.BeginBlock, error) {
 // EndBlocker application updates every end block
 func (a *App) EndBlocker(ctx sdk.Context) (sdk.EndBlock, error) {
 	return a.ModuleManager.EndBlock(ctx)
+}
+
+// EndBlocker application updates every end block
+func (a *App) NamespaceBlockMaker(ctx sdk.Context, txs [][]byte, nsTable []*tdmtypes.NamespaceTableEntries) (map[string]appmodule.NamespaceBlockData, error) {
+	return a.ModuleManager.MakeNamespaceBlock(ctx, txs, nsTable, a.NamespaceStoreManager(), a.CommitMultiStore())
 }
 
 // Precommiter application updates every commit

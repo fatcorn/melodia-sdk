@@ -19,6 +19,7 @@ require (
 	github.com/cockroachdb/apd/v2 v2.0.2
 	github.com/cockroachdb/errors v1.11.1
 	github.com/cometbft/cometbft v0.38.5
+	github.com/cometbft/cometbft-db v0.9.1
 	github.com/cosmos/btcutil v1.0.5
 	github.com/cosmos/cosmos-db v1.0.2
 	github.com/cosmos/cosmos-proto v1.0.0-beta.4
@@ -44,6 +45,7 @@ require (
 	github.com/magiconair/properties v1.8.7
 	github.com/manifoldco/promptui v0.9.0
 	github.com/mattn/go-isatty v0.0.20
+	github.com/near/borsh-go v0.3.1
 	github.com/prometheus/client_golang v1.18.0
 	github.com/prometheus/common v0.47.0
 	github.com/rs/zerolog v1.32.0
@@ -80,7 +82,6 @@ require (
 	github.com/cockroachdb/pebble v1.1.0 // indirect
 	github.com/cockroachdb/redact v1.1.5 // indirect
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
-	github.com/cometbft/cometbft-db v0.9.1 // indirect
 	github.com/cosmos/iavl v1.0.1 // indirect
 	github.com/cosmos/ics23/go v0.10.0 // indirect
 	github.com/danieljoos/wincred v1.1.2 // indirect
@@ -170,12 +171,15 @@ require (
 
 // Below are the long-lived replace of the Cosmos SDK
 replace (
-	cosmossdk.io/collections v0.4.0 => git.everylink.ai/public/cosmossdk-io-collections v0.4.0
-	cosmossdk.io/core v0.11.0 => git.everylink.ai/public/cosmossdk-io-core v0.11.0
-	cosmossdk.io/store v1.0.2 => git.everylink.ai/public/cosmossdk-io-store v1.0.2
+	cosmossdk.io/api v0.7.3 => git.everylink.ai/blockchain/melodiasdk-io-api v0.7.4-0.20240703080149-6c21938bf6f8
+	cosmossdk.io/collections v0.4.0 => git.everylink.ai/blockchain/melodiasdk-io-collections v0.4.0
+	cosmossdk.io/core v0.11.0 => git.everylink.ai/blockchain/melodiasdk-io-core v0.11.1-0.20240626085252-704ca8aef8ce
+	//cosmossdk.io/core v0.11.0 => ../cosmossdk-io-core
+	cosmossdk.io/store v1.0.2 => git.everylink.ai/blockchain/melodiasdk-io-store v1.0.3-0.20240702064400-01a37aa68340
+	//cosmossdk.io/store v1.0.2 => ../cosmossdk-io-store
 	// use cosmos fork of keyring
 	github.com/99designs/keyring => github.com/cosmos/keyring v1.2.0
-	github.com/cometbft/cometbft v0.38.5 => git.everylink.ai/blockchain/hotbeat-consensus v0.38.7-0.20240628060106-34e90d8f5441
+	github.com/cometbft/cometbft v0.38.5 => git.everylink.ai/blockchain/hotbeat-consensus v0.38.7-0.20240628075343-f54520839607
 	// dgrijalva/jwt-go is deprecated and doesn't receive security updates.
 	// TODO: remove it: https://github.com/cosmos/cosmos-sdk/issues/13134
 	github.com/dgrijalva/jwt-go => github.com/golang-jwt/jwt/v4 v4.4.2

@@ -824,12 +824,19 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 		default:
 			// continue
 		}
+		app.HandleInternalEvent(sdk.SdkEventsFromABCIEvent(response.Events))
 
 		txResults = append(txResults, response)
 	}
 
 	if app.finalizeBlockState.ms.TracingEnabled() {
 		app.finalizeBlockState.ms = app.finalizeBlockState.ms.SetTracingContext(nil).(storetypes.CacheMultiStore)
+	}
+
+	err = app.makeNamespaceBlock(app.finalizeBlockState.Context(), req.Txs, req.NsTable)
+
+	if err != nil {
+		return nil, err
 	}
 
 	endBlock, err := app.endBlock(app.finalizeBlockState.Context())
@@ -944,7 +951,8 @@ func (app *BaseApp) Commit() (*abci.ResponseCommit, error) {
 		rms.SetCommitHeader(header)
 	}
 
-	app.cms.Commit()
+	commintId := app.cms.Commit()
+	fmt.Printf("commintId %v", commintId)
 
 	resp := &abci.ResponseCommit{
 		RetainHeight: retainHeight,
