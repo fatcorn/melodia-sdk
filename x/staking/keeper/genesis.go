@@ -3,8 +3,6 @@ package keeper
 import (
 	"context"
 	"fmt"
-	"github.com/cosmos/cosmos-sdk/codec"
-
 	abci "github.com/cometbft/cometbft/abci/types"
 
 	"cosmossdk.io/math"
@@ -277,42 +275,4 @@ func (k Keeper) ExportGenesis(ctx sdk.Context) *types.GenesisState {
 		Redelegations:        redelegations,
 		Exported:             true,
 	}
-}
-
-// ChainserviceHandler the namespace init genesis handler
-type ChainserviceHandler struct {
-	keeper Keeper
-}
-
-// NamespaceInitGenesis namespace initializes the module's state from a provided genesis state.
-func (c ChainserviceHandler) NamespaceInitGenesis(ctx sdk.Context, genesis sdk.NamespaceGenesis) error {
-
-	ctx.Logger().Info(fmt.Sprintf("Namespace init genesis %s namespaceId= %v", types.ModuleName, genesis.NamespaceId))
-	cdc := c.keeper.GetCdc().(codec.Codec)
-
-	var genesisState types.GenesisState
-	err := cdc.UnmarshalJSON(genesis.Data, &genesisState)
-	if err != nil {
-		return err
-	}
-
-	err = genesisState.Params.Validate()
-	if err != nil {
-		return err
-	}
-
-	if err := c.keeper.SetParams(ctx, genesisState.Params); err != nil {
-		panic(err)
-	}
-
-	return nil
-}
-
-func (_c ChainserviceHandler) ListDependentModulesStoreNames() []string {
-	return []string{}
-}
-
-// NewChainserviceHandler create new handler
-func NewChainserviceHandler(k Keeper) ChainserviceHandler {
-	return ChainserviceHandler{keeper: k}
 }
