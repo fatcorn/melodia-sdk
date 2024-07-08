@@ -296,7 +296,8 @@ func NewBaseApp(
 	// Initialize with an empty interface registry to avoid nil pointer dereference.
 	// Unless SetInterfaceRegistry is called with an interface registry with proper address codecs baseapp will panic.
 	app.cdc = codec.NewProtoCodec(codectypes.NewInterfaceRegistry())
-
+	id := app.cms.LastCommitID()
+	app.finalizeBlockHeight = id.Version
 	return app
 }
 
