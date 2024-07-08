@@ -117,6 +117,7 @@ require (
 	github.com/iancoleman/strcase v0.3.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jmhodges/levigo v1.0.0 // indirect
+	github.com/kilic/bls12-381 v0.1.1-0.20210208205449-6045b0235e36 // indirect
 	github.com/klauspost/compress v1.17.7 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
@@ -175,11 +176,11 @@ replace (
 	cosmossdk.io/collections v0.4.0 => git.everylink.ai/blockchain/melodiasdk-io-collections v0.4.0
 	cosmossdk.io/core v0.11.0 => git.everylink.ai/blockchain/melodiasdk-io-core v0.11.1-0.20240626085252-704ca8aef8ce
 	//cosmossdk.io/core v0.11.0 => ../cosmossdk-io-core
-	cosmossdk.io/store v1.0.2 => git.everylink.ai/blockchain/melodiasdk-io-store v1.0.3-0.20240702064400-01a37aa68340
+	cosmossdk.io/store v1.0.2 => git.everylink.ai/blockchain/melodiasdk-io-store v1.0.3-0.20240708073330-8e20df752fa3
 	//cosmossdk.io/store v1.0.2 => ../cosmossdk-io-store
 	// use cosmos fork of keyring
 	github.com/99designs/keyring => github.com/cosmos/keyring v1.2.0
-	github.com/cometbft/cometbft v0.38.5 => git.everylink.ai/blockchain/hotbeat-consensus v0.38.7-0.20240628075343-f54520839607
+	github.com/cometbft/cometbft v0.38.5 => git.everylink.ai/blockchain/hotbeat-consensus v0.38.7-0.20240708070301-6984018336ac
 	// dgrijalva/jwt-go is deprecated and doesn't receive security updates.
 	// TODO: remove it: https://github.com/cosmos/cosmos-sdk/issues/13134
 	github.com/dgrijalva/jwt-go => github.com/golang-jwt/jwt/v4 v4.4.2

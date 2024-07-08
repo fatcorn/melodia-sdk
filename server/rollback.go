@@ -6,6 +6,7 @@ import (
 	cmtcmd "github.com/cometbft/cometbft/cmd/cometbft/commands"
 	"github.com/spf13/cobra"
 
+	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/server/types"
 )
@@ -33,6 +34,13 @@ application.
 			if err != nil {
 				return err
 			}
+
+			namespaceDBInfo, err := baseapp.LoadNamespaceStoreInfo(db, home)
+			if err != nil {
+				return err
+			}
+
+			ctx.Viper.Set(flags.FlagNamespaceDB, *namespaceDBInfo)
 			app := appCreator(ctx.Logger, db, nil, ctx.Viper)
 			// rollback CometBFT state
 			height, hash, err := cmtcmd.RollbackState(ctx.Config, removeBlock)

@@ -424,10 +424,7 @@ func ListDBNamespace(db dbm.DB) []*bfttypes.NamespacePort {
 	iter, _ := db.Iterator(namesapceIdPrefixKey, storetypes.PrefixEndBytes(namesapceIdPrefixKey))
 
 	for iter.Valid() {
-		key := iter.Key()
 		value := iter.Value()
-		fmt.Printf("%s, %v\n", string(key), key)
-		fmt.Printf("%s， %v\n", string(value), value)
 
 		validBytesStartIndex := slices.IndexFunc(value, func(val byte) bool {
 			if val == []byte("{")[0] {
@@ -441,7 +438,6 @@ func ListDBNamespace(db dbm.DB) []*bfttypes.NamespacePort {
 			fmt.Printf("Unmarshal namespacePort failed %v\n", err)
 		} else {
 			nsPorts = append(nsPorts, &nsPort)
-			fmt.Printf("nsPorts %v", nsPort)
 		}
 		iter.Next()
 	}
@@ -1433,4 +1429,32 @@ func (app *BaseApp) Close() error {
 	}
 
 	return errors.Join(errs...)
+}
+
+func LoadNamespaceStoreInfo(db dbm.DB, home string) (*nsblockstore.NamespaceStoreDBInfo, error) {
+	validNamespaces := ListDBNamespace(db)
+
+	namespacesDBMap := make(map[string]cmtdbm.DB)
+	namespacesModuleName := make(map[string]nsblockstore.NamespaceModule)
+	moduleRelatedModules := make(map[string][]string)
+	for _, namespace := range validNamespaces {
+		namespaceDB, err := CreateNamespaceDB(uint64(namespace.NamespaceId), namespace.Module, home)
+		if err != nil {
+			return nil, err
+		}
+		blockStoreKey := nsblockstore.CaculateStoreKey(uint64(namespace.NamespaceId), namespace.Module)
+		namespacesDBMap[blockStoreKey] = namespaceDB
+		namespacesModuleName[blockStoreKey] = nsblockstore.NamespaceModule{
+			NamespaceId: uint64(namespace.NamespaceId),
+			ModuleName:  namespace.Module,
+		}
+	}
+
+	namespaceDBInfo := nsblockstore.NamespaceStoreDBInfo{
+		NamespaceStoreDBs:    namespacesDBMap,
+		DbRootDir:            home,
+		NamespacesModuleName: namespacesModuleName,
+		ModuleRelatedModules: moduleRelatedModules,
+	}
+	return &namespaceDBInfo, nil
 }
