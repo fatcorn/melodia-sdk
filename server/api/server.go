@@ -53,6 +53,8 @@ func CustomGRPCHeaderMatcher(key string) (string, bool) {
 	switch strings.ToLower(key) {
 	case grpctypes.GRPCBlockHeightHeader:
 		return grpctypes.GRPCBlockHeightHeader, true
+	case grpctypes.GRPCNamespaceId:
+		return grpctypes.GRPCNamespaceId, true
 
 	default:
 		return runtime.DefaultHeaderMatcher(key)
