@@ -11,6 +11,8 @@ import (
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/staking/types"
+
+	bfttypes "github.com/cometbft/cometbft/types"
 )
 
 // InitGenesis sets the pool and parameters for the provided keeper.  For each
@@ -308,8 +310,8 @@ func (c ChainserviceHandler) NamespaceInitGenesis(ctx sdk.Context, genesis sdk.N
 	return nil
 }
 
-func (_c ChainserviceHandler) ListDependentModulesStoreNames() []string {
-	return []string{}
+func (_c ChainserviceHandler) ListDependentModulesStoreNames() []bfttypes.DependModuleStoreInfo {
+	return []bfttypes.DependModuleStoreInfo{}
 }
 
 // NewChainserviceHandler create new handler

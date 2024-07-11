@@ -406,8 +406,9 @@ func NamespaceStoresFromNSPort(indunplicateNamespace []*bfttypes.NamespacePort, 
 			namespaceStoresMap[vmMoudleStoreKey.Name()] = true
 		}
 
-		for _, dependentModule := range namesapceInfo.VMModuleDependentModules {
-			dependentModuleStoreKey := storetypes.NewKVStoreKey(dependentModule + "_" + strconv.FormatUint(uint64(namesapceInfo.NamespaceId), 10))
+		for _, info := range namesapceInfo.VMModuleDependentModules {
+			keyName := info.ModuleName + "_" + strconv.FormatUint(uint64(namesapceInfo.NamespaceId), 10)
+			dependentModuleStoreKey := storetypes.NewStoreKeyByDMStoreInfo(keyName, bfttypes.DependModuleStoreType(info.StoreType))
 			if _, ok := namespaceStoresMap[dependentModuleStoreKey.Name()]; !ok {
 				namespaceStores = append(namespaceStores, dependentModuleStoreKey)
 				namespaceStoresMap[dependentModuleStoreKey.Name()] = true
@@ -517,7 +518,7 @@ func (app *BaseApp) HandleInternalEvent(events sdk.Events) {
 					panic(fmt.Sprintf("Dynamic add namesapce store failed %v", err))
 				}
 
-				app.addNewNamespaceBLockStore(uint64(nsPort.NamespaceId), nsPort.Module, nsPort.VMModuleDependentModules)
+				app.addNewNamespaceBLockStore(uint64(nsPort.NamespaceId), nsPort.Module, nsPort.ListAllDependentMoudlesName())
 			}
 		case InternalEventTypeNamespaceActive:
 			{

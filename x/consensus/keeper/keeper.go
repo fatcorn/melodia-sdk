@@ -150,8 +150,8 @@ func (c ChainserviceHandler) NamespaceInitGenesis(ctx sdk.Context, genesis sdk.N
 	return nil
 }
 
-func (_c ChainserviceHandler) ListDependentModulesStoreNames() []string {
-	return []string{}
+func (_c ChainserviceHandler) ListDependentModulesStoreNames() []cmttypes.DependModuleStoreInfo {
+	return []cmttypes.DependModuleStoreInfo{}
 }
 
 // NewChainserviceHandler create new handler
