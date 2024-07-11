@@ -78,19 +78,7 @@ func (k Keeper) GetParams(ctx context.Context) (params types.Params, err error) 
 	}
 
 	if bz == nil {
-		sdkCtx := sdk.UnwrapSDKContext(ctx)
-		namespaceId := sdkCtx.Namespace()
-		sdkCtx = sdkCtx.WithNamepace(0)
-		store = k.namespaceStoreService.OpenNamespaceKVStore(sdkCtx)
-		bz, err = store.Get(types.ParamsKey)
-		sdkCtx = sdkCtx.WithNamepace(namespaceId)
-		if err != nil {
-			return params, err
-		}
-		if bz == nil {
-			return params, nil
-		}
-
+		return params, nil
 	}
 
 	err = k.cdc.Unmarshal(bz, &params)

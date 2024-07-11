@@ -53,7 +53,10 @@ func (app *BaseApp) RegisterGRPCServer(server gogogrpc.Server) {
 		if err != nil {
 			return nil, err
 		}
-
+		if namespaceIdIncoming := md.Get(grpctypes.GRPCNamespaceId); len(namespaceIdIncoming) > 0 {
+			namespaceId, _ := strconv.ParseUint(namespaceIdIncoming[0], 10, 64)
+			sdkCtx.SetNamespace(namespaceId)
+		}
 		// Add relevant gRPC headers
 		if height == 0 {
 			height = sdkCtx.BlockHeight() // If height was not set in the request, set it to the latest
