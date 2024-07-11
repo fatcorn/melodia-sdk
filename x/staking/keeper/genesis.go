@@ -9,8 +9,6 @@ import (
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/staking/types"
-
-	bfttypes "github.com/cometbft/cometbft/types"
 )
 
 // InitGenesis sets the pool and parameters for the provided keeper.  For each
