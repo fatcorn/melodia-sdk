@@ -951,8 +951,7 @@ func (app *BaseApp) Commit() (*abci.ResponseCommit, error) {
 		rms.SetCommitHeader(header)
 	}
 
-	commintId := app.cms.Commit()
-	fmt.Printf("commintId %v", commintId)
+	app.cms.Commit()
 
 	resp := &abci.ResponseCommit{
 		RetainHeight: retainHeight,
