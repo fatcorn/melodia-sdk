@@ -280,6 +280,100 @@ func (h *DefaultProposalHandler) PrepareProposalHandler() sdk.PrepareProposalHan
 			return &abci.ResponsePrepareProposal{Txs: h.txSelector.SelectedTxs(ctx)}, nil
 		}
 
+		nsMempool, isNsOp := h.mempool.(*mempool.NamespaceMempool)
+		if isNsOp {
+			nsIterator, nsTxs := nsMempool.SelectWithNsTable(ctx, req.Txs, req.NsTable)
+			for namespaceId, iterator := range nsIterator {
+				// If the iterator is nil use the NoOpMempool, get all namespace txs
+				if iterator == nil {
+					txs := nsTxs[namespaceId]
+					for _, txBz := range txs {
+						tx, err := h.txVerifier.TxDecode(txBz)
+						if err != nil {
+							return nil, err
+						}
+						h.txSelector.SelectTxForProposal(ctx, 0, 0, tx, txBz)
+					}
+				} else {
+					selectedTxsSignersSeqs := make(map[string]uint64)
+					var selectedTxsNums int
+
+					for iterator != nil {
+						memTx := iterator.Tx()
+						signerData, err := h.signerExtAdapter.GetSigners(memTx)
+						if err != nil {
+							return nil, err
+						}
+
+						// If the signers aren't in selectedTxsSignersSeqs then we haven't seen them before
+						// so we add them and continue given that we don't need to check the sequence.
+						shouldAdd := true
+						txSignersSeqs := make(map[string]uint64)
+						for _, signer := range signerData {
+							seq, ok := selectedTxsSignersSeqs[signer.Signer.String()]
+							if !ok {
+								txSignersSeqs[signer.Signer.String()] = signer.Sequence
+								continue
+							}
+
+							// If we have seen this signer before in this block, we must make
+							// sure that the current sequence is seq+1; otherwise is invalid
+							// and we skip it.
+							if seq+1 != signer.Sequence {
+								shouldAdd = false
+								break
+							}
+							txSignersSeqs[signer.Signer.String()] = signer.Sequence
+						}
+						if !shouldAdd {
+							iterator = iterator.Next()
+							continue
+						}
+
+						app := h.txVerifier.(*BaseApp)
+						app.SetNamespace(execModePrepareProposal, namespaceId)
+						// NOTE: Since transaction verification was already executed in CheckTx,
+						// which calls mempool.Insert, in theory everything in the pool should be
+						// valid. But some mempool implementations may insert invalid txs, so we
+						// check again.
+
+						//todo if not use the noop mempool, the tx orders would not math with NStalbe,
+						// so not set the prepareProposalState context with namespace, and we stong suggest use the
+						// noop mempoll for now.
+						txBz, err := h.txVerifier.PrepareProposalVerifyTx(memTx)
+						if err != nil {
+							err := h.mempool.Remove(memTx)
+							if err != nil && !errors.Is(err, mempool.ErrTxNotFound) {
+								return nil, err
+							}
+						} else {
+							h.txSelector.SelectTxForProposal(ctx, 0, 0, memTx, txBz)
+
+							txsLen := len(h.txSelector.SelectedTxs(ctx))
+							for sender, seq := range txSignersSeqs {
+								// If txsLen != selectedTxsNums is true, it means that we've
+								// added a new tx to the selected txs, so we need to update
+								// the sequence of the sender.
+								if txsLen != selectedTxsNums {
+									selectedTxsSignersSeqs[sender] = seq
+								} else if _, ok := selectedTxsSignersSeqs[sender]; !ok {
+									// The transaction hasn't been added but it passed the
+									// verification, so we know that the sequence is correct.
+									// So we set this sender's sequence to seq-1, in order
+									// to avoid unnecessary calls to PrepareProposalVerifyTx.
+									selectedTxsSignersSeqs[sender] = seq - 1
+								}
+							}
+							selectedTxsNums = txsLen
+						}
+
+						iterator = iterator.Next()
+					}
+				}
+			}
+			return &abci.ResponsePrepareProposal{Txs: h.txSelector.SelectedTxs(ctx)}, nil
+		}
+
 		iterator := h.mempool.Select(ctx, req.Txs)
 		selectedTxsSignersSeqs := make(map[string]uint64)
 		var selectedTxsNums int
@@ -379,7 +473,52 @@ func (h *DefaultProposalHandler) ProcessProposalHandler() sdk.ProcessProposalHan
 	if h.mempool == nil || isNoOp {
 		return NoOpProcessProposal()
 	}
+	nsMempool, isNsOp := h.mempool.(*mempool.NamespaceMempool)
+	if isNsOp {
+		return func(ctx sdk.Context, req *abci.RequestProcessProposal) (*abci.ResponseProcessProposal, error) {
+			var totalTxGas uint64
 
+			var maxBlockGas int64
+			if b := ctx.ConsensusParams().Block; b != nil {
+				maxBlockGas = b.MaxGas
+			}
+			namespaceIdList, err := consensustypes.ListTxsNamespaceIdsWithTxsAndNSTable(len(req.Txs), req.NsTable)
+			if err != nil {
+				panic("Unmatched txs with tx NS table")
+			}
+			for i, txBytes := range req.Txs {
+				namespaceId := namespaceIdList[i]
+
+				pool := nsMempool.GetPool(namespaceId)
+				if pool != nil {
+					_, isNoOpPool := pool.(mempool.NoOpMempool)
+					if isNoOpPool {
+						return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_ACCEPT}, nil
+					}
+				}
+
+				app := h.txVerifier.(*BaseApp)
+				app.SetNamespace(execModeProcessProposal, namespaceId)
+				tx, err := h.txVerifier.ProcessProposalVerifyTx(txBytes)
+				if err != nil {
+					return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
+				}
+
+				if maxBlockGas > 0 {
+					gasTx, ok := tx.(GasTx)
+					if ok {
+						totalTxGas += gasTx.GetGas()
+					}
+
+					if totalTxGas > uint64(maxBlockGas) {
+						return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
+					}
+				}
+			}
+
+			return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_ACCEPT}, nil
+		}
+	}
 	return func(ctx sdk.Context, req *abci.RequestProcessProposal) (*abci.ResponseProcessProposal, error) {
 		var totalTxGas uint64
 
@@ -393,7 +532,7 @@ func (h *DefaultProposalHandler) ProcessProposalHandler() sdk.ProcessProposalHan
 		}
 		for i, txBytes := range req.Txs {
 			app := h.txVerifier.(*BaseApp)
-			app.processProposalState.SetContext(app.processProposalState.Context().WithNamepace(namespaceIdList[i]))
+			app.SetNamespace(execModeProcessProposal, namespaceIdList[i])
 			tx, err := h.txVerifier.ProcessProposalVerifyTx(txBytes)
 			if err != nil {
 				return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
@@ -487,7 +626,12 @@ func (ts *defaultTxSelector) Clear() {
 	ts.selectedTxs = nil
 }
 
-func (ts *defaultTxSelector) SelectTxForProposal(_ context.Context, maxTxBytes, maxBlockGas uint64, memTx sdk.Tx, txBz []byte) bool {
+func (ts *defaultTxSelector) SelectTxForProposal(ctx context.Context, maxTxBytes, maxBlockGas uint64, memTx sdk.Tx, txBz []byte) bool {
+
+	if maxTxBytes == 0 && maxBlockGas == 0 {
+		return ts.SelectFullTxForProposal(ctx, memTx, txBz)
+	}
+
 	txSize := uint64(len(txBz))
 
 	var txGasLimit uint64
@@ -515,4 +659,18 @@ func (ts *defaultTxSelector) SelectTxForProposal(_ context.Context, maxTxBytes, 
 
 	// check if we've reached capacity; if so, we cannot select any more transactions
 	return ts.totalTxBytes >= maxTxBytes || (maxBlockGas > 0 && (ts.totalTxGas >= maxBlockGas))
+}
+
+func (ts *defaultTxSelector) SelectFullTxForProposal(_ context.Context, memTx sdk.Tx, txBz []byte) bool {
+	txSize := uint64(len(txBz))
+	var txGasLimit uint64
+	if memTx != nil {
+		if gasTx, ok := memTx.(GasTx); ok {
+			txGasLimit = gasTx.GetGas()
+		}
+	}
+	ts.totalTxGas += txGasLimit
+	ts.totalTxBytes += txSize
+	ts.selectedTxs = append(ts.selectedTxs, txBz)
+	return true
 }

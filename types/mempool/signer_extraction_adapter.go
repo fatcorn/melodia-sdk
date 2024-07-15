@@ -45,6 +45,22 @@ func NewDefaultSignerExtractionAdapter() DefaultSignerExtractionAdapter {
 
 // GetSigners implements the Adapter interface
 func (DefaultSignerExtractionAdapter) GetSigners(tx sdk.Tx) ([]SignerData, error) {
+
+	for _, msg := range tx.GetMsgs() {
+		sigTx, ok := msg.(sdk.SignerMsg)
+		if ok {
+			sigs := sigTx.GetSigners()
+			if sigs != nil && len(sigs) > 0 {
+				signers := make([]SignerData, 0)
+				signers = append(signers, NewSignerData(
+					sigTx.GetSigners()[0],
+					sigTx.GetNonce(),
+				))
+				return signers, nil
+			}
+		}
+	}
+
 	sigTx, ok := tx.(signing.SigVerifiableTx)
 	if !ok {
 		return nil, fmt.Errorf("tx of type %T does not implement SigVerifiableTx", tx)

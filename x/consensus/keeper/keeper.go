@@ -113,9 +113,8 @@ func (c ChainserviceHandler) NamespaceInitGenesis(ctx sdk.Context, genesis sdk.N
 	}
 
 	paramsSort := genesisState.Params.Mempool.Sort
-	if paramsSort != "queue" &&
-		paramsSort != "gas" {
-		return fmt.Errorf("not support Consensus.Params.Mempool.Sort: %s, only 'queue' or 'gas' \n", paramsSort)
+	if !types.CheckSortMode(types.SortMode(paramsSort)) {
+		return fmt.Errorf("not support Consensus.Params.Mempool.Sort: %s, eg: [%s] \n", paramsSort, types.GetAllSortModeToString())
 	}
 
 	consensusParams, err := c.keeper.ParamsStore.Get(ctx)

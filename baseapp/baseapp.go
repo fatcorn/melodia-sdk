@@ -1459,3 +1459,20 @@ func LoadNamespaceStoreInfo(db dbm.DB, home string) (*nsblockstore.NamespaceStor
 	}
 	return &namespaceDBInfo, nil
 }
+
+func (app *BaseApp) SetNamespace(mode execMode, namespaceId uint64) {
+	switch mode {
+	case execModeFinalize:
+		app.finalizeBlockState.SetContext(app.finalizeBlockState.Context().WithNamepace(namespaceId))
+
+	case execModePrepareProposal:
+		app.prepareProposalState.SetContext(app.prepareProposalState.Context().WithNamepace(namespaceId))
+
+	case execModeProcessProposal:
+		app.processProposalState.SetContext(app.processProposalState.Context().WithNamepace(namespaceId))
+
+	default:
+		app.checkState.SetContext(app.checkState.Context().WithNamepace(namespaceId))
+	}
+
+}

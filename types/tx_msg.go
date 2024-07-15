@@ -28,6 +28,12 @@ type (
 		GetSigners() []AccAddress
 	}
 
+	SignerMsg interface {
+		Msg
+		GetNonce() uint64
+		GetSigners() []AccAddress
+	}
+
 	// Fee defines an interface for an application application-defined concrete
 	// transaction type to be able to set and return the transaction fee.
 	Fee interface {
