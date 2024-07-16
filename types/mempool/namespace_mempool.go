@@ -42,10 +42,11 @@ func (nsm *NamespaceMempool) SelectWithNsTable(ctx context.Context, txs [][]byte
 		if ok {
 			wg.Add(1)
 			go func(ctx context.Context, txs [][]byte, namespaceId uint64) {
+				defer wg.Done()
+				iter := pool.Select(ctx, txs)
 				nsm.mtx.Lock()
 				defer nsm.mtx.Unlock()
-				defer wg.Done()
-				nsIter[namespaceId] = pool.Select(ctx, txs)
+				nsIter[namespaceId] = iter
 			}(ctx, namespaceTxs, namespaceId)
 		}
 	}
