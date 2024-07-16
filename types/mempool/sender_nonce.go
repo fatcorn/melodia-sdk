@@ -11,7 +11,6 @@ import (
 	"github.com/huandu/skiplist"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/cosmos/cosmos-sdk/x/auth/signing"
 )
 
 var (
@@ -32,11 +31,12 @@ var DefaultMaxTx = 0
 // Note that PrepareProposal could choose to stop iteration before reaching the
 // end if maxBytes is reached.
 type SenderNonceMempool struct {
-	mtx        sync.Mutex
-	senders    map[string]*skiplist.SkipList
-	rnd        *rand.Rand
-	maxTx      int
-	existingTx map[txKey]bool
+	mtx             sync.Mutex
+	senders         map[string]*skiplist.SkipList
+	rnd             *rand.Rand
+	maxTx           int
+	existingTx      map[txKey]bool
+	SignerExtractor SignerExtractionAdapter
 }
 
 type SenderNonceOptions func(*SenderNonceMempool)
@@ -52,9 +52,10 @@ func NewSenderNonceMempool(opts ...SenderNonceOptions) *SenderNonceMempool {
 	senderMap := make(map[string]*skiplist.SkipList)
 	existingTx := make(map[txKey]bool)
 	snp := &SenderNonceMempool{
-		senders:    senderMap,
-		maxTx:      DefaultMaxTx,
-		existingTx: existingTx,
+		senders:         senderMap,
+		maxTx:           DefaultMaxTx,
+		existingTx:      existingTx,
+		SignerExtractor: NewDefaultSignerExtractionAdapter(),
 	}
 
 	var seed int64
@@ -127,7 +128,14 @@ func (snm *SenderNonceMempool) Insert(_ context.Context, tx sdk.Tx) error {
 		return nil
 	}
 
-	sigs, err := tx.(signing.SigVerifiableTx).GetSignaturesV2()
+	//sigs, err := tx.(signing.SigVerifiableTx).GetSignaturesV2()
+	//if err != nil {
+	//	return err
+	//}
+	//if len(sigs) == 0 {
+	//	return fmt.Errorf("tx must have at least one signer")
+	//}
+	sigs, err := snm.SignerExtractor.GetSigners(tx)
 	if err != nil {
 		return err
 	}
@@ -136,7 +144,7 @@ func (snm *SenderNonceMempool) Insert(_ context.Context, tx sdk.Tx) error {
 	}
 
 	sig := sigs[0]
-	sender := sdk.AccAddress(sig.PubKey.Address()).String()
+	sender := sig.Signer.String()
 	nonce := sig.Sequence
 
 	senderTxs, found := snm.senders[sender]
@@ -200,7 +208,7 @@ func (snm *SenderNonceMempool) CountTx() int {
 func (snm *SenderNonceMempool) Remove(tx sdk.Tx) error {
 	snm.mtx.Lock()
 	defer snm.mtx.Unlock()
-	sigs, err := tx.(signing.SigVerifiableTx).GetSignaturesV2()
+	sigs, err := snm.SignerExtractor.GetSigners(tx)
 	if err != nil {
 		return err
 	}
@@ -209,7 +217,7 @@ func (snm *SenderNonceMempool) Remove(tx sdk.Tx) error {
 	}
 
 	sig := sigs[0]
-	sender := sdk.AccAddress(sig.PubKey.Address()).String()
+	sender := sig.Signer.String()
 	nonce := sig.Sequence
 
 	senderTxs, found := snm.senders[sender]
