@@ -29,8 +29,6 @@ func NewNamespaceMempool() *NamespaceMempool {
 }
 
 func (nsm *NamespaceMempool) SelectWithNsTable(ctx context.Context, txs [][]byte, nsTable []*cmtproto.NamespaceTableEntries) (map[uint64]Iterator, map[uint64][][]byte) {
-	nsm.mtx.Lock()
-	defer nsm.mtx.Unlock()
 
 	var (
 		nsIter map[uint64]Iterator
@@ -44,6 +42,8 @@ func (nsm *NamespaceMempool) SelectWithNsTable(ctx context.Context, txs [][]byte
 		if ok {
 			wg.Add(1)
 			go func(ctx context.Context, txs [][]byte, namespaceId uint64) {
+				nsm.mtx.Lock()
+				defer nsm.mtx.Unlock()
 				defer wg.Done()
 				nsIter[namespaceId] = pool.Select(ctx, txs)
 			}(ctx, namespaceTxs, namespaceId)
@@ -115,9 +115,19 @@ func (nsm *NamespaceMempool) CountTx() int {
 	}
 	return count
 }
+func (nsm *NamespaceMempool) RemoveByNamespaceId(ctx context.Context, tx sdk.Tx) error {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	if pool, ok := nsm.pools[sdkCtx.Namespace()]; ok {
+		err := pool.Remove(tx)
+		if err != nil {
+			return nsm.Remove(tx)
+		} else {
+			return nil
+		}
+	}
+	return nsm.Remove(tx)
+}
 func (nsm *NamespaceMempool) Remove(tx sdk.Tx) error {
-	nsm.mtx.Lock()
-	defer nsm.mtx.Unlock()
 	for _, mem := range nsm.pools {
 		_ = mem.Remove(tx)
 	}

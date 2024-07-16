@@ -473,51 +473,9 @@ func (h *DefaultProposalHandler) ProcessProposalHandler() sdk.ProcessProposalHan
 	if h.mempool == nil || isNoOp {
 		return NoOpProcessProposal()
 	}
-	nsMempool, isNsOp := h.mempool.(*mempool.NamespaceMempool)
+	_, isNsOp := h.mempool.(*mempool.NamespaceMempool)
 	if isNsOp {
-		return func(ctx sdk.Context, req *abci.RequestProcessProposal) (*abci.ResponseProcessProposal, error) {
-			var totalTxGas uint64
-
-			var maxBlockGas int64
-			if b := ctx.ConsensusParams().Block; b != nil {
-				maxBlockGas = b.MaxGas
-			}
-			namespaceIdList, err := consensustypes.ListTxsNamespaceIdsWithTxsAndNSTable(len(req.Txs), req.NsTable)
-			if err != nil {
-				panic("Unmatched txs with tx NS table")
-			}
-			for i, txBytes := range req.Txs {
-				namespaceId := namespaceIdList[i]
-
-				pool := nsMempool.GetPool(namespaceId)
-				if pool != nil {
-					_, isNoOpPool := pool.(mempool.NoOpMempool)
-					if isNoOpPool {
-						return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_ACCEPT}, nil
-					}
-				}
-
-				app := h.txVerifier.(*BaseApp)
-				app.SetNamespace(execModeProcessProposal, namespaceId)
-				tx, err := h.txVerifier.ProcessProposalVerifyTx(txBytes)
-				if err != nil {
-					return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
-				}
-
-				if maxBlockGas > 0 {
-					gasTx, ok := tx.(GasTx)
-					if ok {
-						totalTxGas += gasTx.GetGas()
-					}
-
-					if totalTxGas > uint64(maxBlockGas) {
-						return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
-					}
-				}
-			}
-
-			return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_ACCEPT}, nil
-		}
+		return NoOpProcessProposal()
 	}
 	return func(ctx sdk.Context, req *abci.RequestProcessProposal) (*abci.ResponseProcessProposal, error) {
 		var totalTxGas uint64

@@ -1200,7 +1200,12 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte) (gInfo sdk.GasInfo, res
 			return gInfo, nil, anteEvents, err
 		}
 	} else if mode == execModeFinalize {
-		err = app.mempool.Remove(tx)
+		nsMempool, isNsOp := app.mempool.(*mempool.NamespaceMempool)
+		if isNsOp {
+			err = nsMempool.RemoveByNamespaceId(ctx, tx)
+		} else {
+			err = app.mempool.Remove(tx)
+		}
 		if err != nil && !errors.Is(err, mempool.ErrTxNotFound) {
 			return gInfo, nil, anteEvents,
 				fmt.Errorf("failed to remove tx from mempool: %w", err)
