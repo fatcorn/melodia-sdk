@@ -330,19 +330,29 @@ func (h *DefaultProposalHandler) PrepareProposalHandler() sdk.PrepareProposalHan
 							continue
 						}
 
-						app := h.txVerifier.(*BaseApp)
-						app.SetNamespace(execModePrepareProposal, namespaceId)
 						// NOTE: Since transaction verification was already executed in CheckTx,
 						// which calls mempool.Insert, in theory everything in the pool should be
 						// valid. But some mempool implementations may insert invalid txs, so we
 						// check again.
 
-						//todo if not use the noop mempool, the tx orders would not math with NStalbe,
-						// so not set the prepareProposalState context with namespace, and we stong suggest use the
-						// noop mempoll for now.
-						txBz, err := h.txVerifier.PrepareProposalVerifyTx(memTx)
+						txBz, err := h.txVerifier.TxEncode(memTx)
+						needVerify := true
+
+						for _, msg := range memTx.GetMsgs() {
+							_, ok := msg.(sdk.SignerMsg)
+							if ok {
+								needVerify = false
+								break
+							}
+						}
+						if needVerify {
+							app := h.txVerifier.(*BaseApp)
+							app.SetNamespace(execModePrepareProposal, namespaceId)
+							txBz, err = h.txVerifier.PrepareProposalVerifyTx(memTx)
+						}
+
 						if err != nil {
-							err := h.mempool.Remove(memTx)
+							err := nsMempool.RemoveByNamespaceId(namespaceId, memTx)
 							if err != nil && !errors.Is(err, mempool.ErrTxNotFound) {
 								return nil, err
 							}
@@ -415,9 +425,6 @@ func (h *DefaultProposalHandler) PrepareProposalHandler() sdk.PrepareProposalHan
 			// valid. But some mempool implementations may insert invalid txs, so we
 			// check again.
 
-			//todo if not use the noop mempool, the tx orders would not math with NStalbe,
-			// so not set the prepareProposalState context with namespace, and we stong suggest use the
-			// noop mempoll for now.
 			txBz, err := h.txVerifier.PrepareProposalVerifyTx(memTx)
 			if err != nil {
 				err := h.mempool.Remove(memTx)

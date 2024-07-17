@@ -1202,7 +1202,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte) (gInfo sdk.GasInfo, res
 	} else if mode == execModeFinalize {
 		nsMempool, isNsOp := app.mempool.(*mempool.NamespaceMempool)
 		if isNsOp {
-			err = nsMempool.RemoveByNamespaceId(ctx, tx)
+			err = nsMempool.RemoveByNamespaceId(ctx.Namespace(), tx)
 		} else {
 			err = app.mempool.Remove(tx)
 		}
