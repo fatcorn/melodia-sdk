@@ -335,9 +335,8 @@ func (h *DefaultProposalHandler) PrepareProposalHandler() sdk.PrepareProposalHan
 						// valid. But some mempool implementations may insert invalid txs, so we
 						// check again.
 
-						txBz, err := h.txVerifier.TxEncode(memTx)
 						needVerify := true
-
+						var txBz []byte
 						for _, msg := range memTx.GetMsgs() {
 							_, ok := msg.(sdk.SignerMsg)
 							if ok {
@@ -349,6 +348,8 @@ func (h *DefaultProposalHandler) PrepareProposalHandler() sdk.PrepareProposalHan
 							app := h.txVerifier.(*BaseApp)
 							app.SetNamespace(execModePrepareProposal, namespaceId)
 							txBz, err = h.txVerifier.PrepareProposalVerifyTx(memTx)
+						} else {
+							txBz, err = h.txVerifier.TxEncode(memTx)
 						}
 
 						if err != nil {
