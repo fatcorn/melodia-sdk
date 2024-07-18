@@ -217,12 +217,12 @@ func (app *BaseApp) SetEndBlocker(endBlocker sdk.EndBlocker) {
 	app.endBlocker = endBlocker
 }
 
-func (app *BaseApp) SetNamespaceBLockMaker(namespaceBLockMaker sdk.NamespaceMakeBLock) {
+func (app *BaseApp) SetNamespaceBlockMaker(namespaceBlockMaker sdk.NamespaceMakeBlock) {
 	if app.sealed {
 		panic("SetEndBlocker() on sealed BaseApp")
 	}
 
-	app.namespaceBLockMaker = namespaceBLockMaker
+	app.namespaceBlockMaker = namespaceBlockMaker
 }
 
 func (app *BaseApp) SetPrepareCheckStater(prepareCheckStater sdk.PrepareCheckStater) {

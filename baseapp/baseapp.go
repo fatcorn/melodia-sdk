@@ -89,7 +89,7 @@ type BaseApp struct {
 	preBlocker          sdk.PreBlocker   // logic to run before BeginBlocker
 	beginBlocker        sdk.BeginBlocker // (legacy ABCI) BeginBlock handler
 	endBlocker          sdk.EndBlocker   // (legacy ABCI) EndBlock handler
-	namespaceBLockMaker sdk.NamespaceMakeBLock
+	namespaceBlockMaker sdk.NamespaceMakeBlock
 	processProposal     sdk.ProcessProposalHandler     // ABCI ProcessProposal handler
 	prepareProposal     sdk.PrepareProposalHandler     // ABCI PrepareProposal
 	extendVote          sdk.ExtendVoteHandler          // ABCI ExtendVote handler
@@ -1024,9 +1024,9 @@ func (app *BaseApp) deliverTx(tx []byte) *abci.ExecTxResult {
 // have been processed in FinalizeBlock.
 func (app *BaseApp) makeNamespaceBlock(ctx context.Context, txs [][]byte, nsTable []*cmtproto.NamespaceTableEntries) error {
 
-	if app.namespaceBLockMaker != nil {
+	if app.namespaceBlockMaker != nil {
 		namespaceMakeBLockContext := app.finalizeBlockState.Context()
-		namespacesBLockData, err := app.namespaceBLockMaker(namespaceMakeBLockContext, txs, nsTable)
+		namespacesBLockData, err := app.namespaceBlockMaker(namespaceMakeBLockContext, txs, nsTable)
 		if err != nil {
 			return err
 		}
@@ -1045,7 +1045,7 @@ func (app *BaseApp) makeNamespaceBlock(ctx context.Context, txs [][]byte, nsTabl
 			if !ok {
 				panic("Load namespace block store failed")
 			}
-			namespaceBLockStore.SaveBlock(namespaceBLock.Height, namespaceBLock.Hash, &namespaceBLock)
+			namespaceBLockStore.CacheBlock(&namespaceBLock)
 		}
 
 	}

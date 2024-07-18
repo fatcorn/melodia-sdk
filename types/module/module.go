@@ -282,7 +282,7 @@ type Manager struct {
 	OrderExportGenesis        []string
 	OrderPreBlockers          []string
 	OrderBeginBlockers        []string
-	OrderNamespaceBLockMakers []string
+	OrderNamespaceBlockMakers []string
 	OrderEndBlockers          []string
 	OrderPrepareCheckStaters  []string
 	OrderPrecommiters         []string
@@ -406,14 +406,14 @@ func (m *Manager) SetOrderBeginBlockers(moduleNames ...string) {
 }
 
 // SetOrderEndBlockers sets the order of set end-blocker calls
-func (m *Manager) SetOrderNamespaceBLockMakers(moduleNames ...string) {
+func (m *Manager) SetOrderNamespaceBlockMakers(moduleNames ...string) {
 	m.assertNoForgottenModules("SetOrderNamespaceBLockMakers", moduleNames,
 		func(moduleName string) bool {
 			module := m.Modules[moduleName]
 			_, hasVMNamespaceBLockMaker := module.(appmodule.HasVMNamespaceBLockMaker)
 			return !hasVMNamespaceBLockMaker
 		})
-	m.OrderNamespaceBLockMakers = moduleNames
+	m.OrderNamespaceBlockMakers = moduleNames
 }
 
 // SetOrderEndBlockers sets the order of set end-blocker calls
