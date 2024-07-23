@@ -65,7 +65,7 @@ $ %s gentx my-key-name 1000000stake --home=/path/to/home/dir --keyring-backend=o
 			config := serverCtx.Config
 			config.SetRoot(clientCtx.HomeDir)
 
-			nodeID, valPubKey, signPubKey, err := genutil.InitializeNodeValidatorFilesFromMnemonic(serverCtx.Config, "")
+			nodeID, valPubKey, votePubKey, votePriKey, err := genutil.InitializeNodeValidatorFilesFromMnemonic(serverCtx.Config, "")
 			if err != nil {
 				return errors.Wrap(err, "failed to initialize node validator files")
 			}
@@ -154,7 +154,7 @@ $ %s gentx my-key-name 1000000stake --home=/path/to/home/dir --keyring-backend=o
 			createValCfg.Amount = amount
 
 			// create a 'create-validator' message
-			txBldr, msg, err := cli.BuildCreateValidatorMsg(clientCtx, createValCfg, txFactory, true, valAdddressCodec, signPubKey)
+			txBldr, msg, err := cli.BuildCreateValidatorMsg(clientCtx, createValCfg, txFactory, true, valAdddressCodec, votePubKey, votePriKey)
 			if err != nil {
 				return errors.Wrap(err, "failed to build create-validator message")
 			}

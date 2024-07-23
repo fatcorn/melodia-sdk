@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"github.com/cometbft/cometbft/crypto"
 	"os"
 	"strconv"
 	"strings"
@@ -570,7 +571,7 @@ func PrepareConfigForTxCreateValidator(flagSet *flag.FlagSet, moniker, nodeID, c
 }
 
 // BuildCreateValidatorMsg makes a new MsgCreateValidator.
-func BuildCreateValidatorMsg(clientCtx client.Context, config TxCreateValidatorConfig, txBldr tx.Factory, generateOnly bool, valCodec address.Codec, signPubKey []byte) (tx.Factory, sdk.Msg, error) {
+func BuildCreateValidatorMsg(clientCtx client.Context, config TxCreateValidatorConfig, txBldr tx.Factory, generateOnly bool, valCodec address.Codec, votePubKey crypto.PubKey, votePriKey crypto.PrivKey) (tx.Factory, sdk.Msg, error) {
 	amounstStr := config.Amount
 	amount, err := sdk.ParseCoinNormalized(amounstStr)
 	if err != nil {
@@ -619,7 +620,17 @@ func BuildCreateValidatorMsg(clientCtx client.Context, config TxCreateValidatorC
 	if err != nil {
 		return txBldr, msg, err
 	}
-	msg.SignPubkey = signPubKey
+
+	if votePubKey != nil {
+		msg.VotePubkey = votePubKey.Bytes()
+	}
+	if votePriKey != nil {
+		sign, err := votePriKey.Sign(msg.VotePubkey)
+		if err != nil {
+			return txBldr, nil, err
+		}
+		msg.Signature = sign
+	}
 
 	if generateOnly {
 		ip := config.IP

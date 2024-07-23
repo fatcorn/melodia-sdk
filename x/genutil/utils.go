@@ -14,7 +14,7 @@ import (
 	cmttypes "github.com/cometbft/cometbft/types"
 	"github.com/cosmos/go-bip39"
 
-	"github.com/cometbft/cometbft/crypto/bls12"
+	"github.com/cometbft/cometbft/crypto"
 	cryptocodec "github.com/cosmos/cosmos-sdk/crypto/codec"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	"github.com/cosmos/cosmos-sdk/x/genutil/types"
@@ -46,31 +46,31 @@ func ExportGenesisFileWithTime(genFile, chainID string, validators []cmttypes.Ge
 
 // InitializeNodeValidatorFiles creates private validator and p2p configuration files.
 func InitializeNodeValidatorFiles(config *cfg.Config) (nodeID string, valPubKey cryptotypes.PubKey, err error) {
-	nodeID, valPubKey, _, err = InitializeNodeValidatorFilesFromMnemonic(config, "")
+	nodeID, valPubKey, _, _, err = InitializeNodeValidatorFilesFromMnemonic(config, "")
 	return nodeID, valPubKey, err
 }
 
 // InitializeNodeValidatorFilesFromMnemonic creates private validator and p2p configuration files using the given mnemonic.
 // If no valid mnemonic is given, a random one will be used instead.
-func InitializeNodeValidatorFilesFromMnemonic(config *cfg.Config, mnemonic string) (nodeID string, valPubKey cryptotypes.PubKey, signPubKey []byte, err error) {
+func InitializeNodeValidatorFilesFromMnemonic(config *cfg.Config, mnemonic string) (nodeID string, valPubKey cryptotypes.PubKey, votePubKey crypto.PubKey, votePriKey crypto.PrivKey, err error) {
 	if len(mnemonic) > 0 && !bip39.IsMnemonicValid(mnemonic) {
-		return "", nil, []byte{}, fmt.Errorf("invalid mnemonic")
+		return "", nil, nil, nil, fmt.Errorf("invalid mnemonic")
 	}
 	nodeKey, err := p2p.LoadOrGenNodeKey(config.NodeKeyFile())
 	if err != nil {
-		return "", nil, []byte{}, err
+		return "", nil, nil, nil, err
 	}
 
 	nodeID = string(nodeKey.ID())
 
 	pvKeyFile := config.PrivValidatorKeyFile()
 	if err := os.MkdirAll(filepath.Dir(pvKeyFile), 0o777); err != nil {
-		return "", nil, []byte{}, fmt.Errorf("could not create directory %q: %w", filepath.Dir(pvKeyFile), err)
+		return "", nil, nil, nil, fmt.Errorf("could not create directory %q: %w", filepath.Dir(pvKeyFile), err)
 	}
 
 	pvStateFile := config.PrivValidatorStateFile()
 	if err := os.MkdirAll(filepath.Dir(pvStateFile), 0o777); err != nil {
-		return "", nil, []byte{}, fmt.Errorf("could not create directory %q: %w", filepath.Dir(pvStateFile), err)
+		return "", nil, nil, nil, fmt.Errorf("could not create directory %q: %w", filepath.Dir(pvStateFile), err)
 	}
 
 	var filePV *privval.FilePV
@@ -81,22 +81,16 @@ func InitializeNodeValidatorFilesFromMnemonic(config *cfg.Config, mnemonic strin
 		filePV = privval.NewFilePV(privKey, pvKeyFile, pvStateFile)
 		filePV.Save()
 	}
-	priKey, err := filePV.GetPrivKey()
-	if err != nil {
-		return "", nil, []byte{}, err
-	}
-	blsPrivateKey := bls12.PrivateKey{}
-	blsPrivateKey.FromBytes(priKey.Bytes())
-	blsPubKey := blsPrivateKey.Public()
+
 	tmValPubKey, err := filePV.GetPubKey()
 	if err != nil {
-		return "", nil, []byte{}, err
+		return "", nil, nil, nil, err
 	}
 
 	valPubKey, err = cryptocodec.FromCmtPubKeyInterface(tmValPubKey)
 	if err != nil {
-		return "", nil, []byte{}, err
+		return "", nil, nil, nil, err
 	}
 
-	return nodeID, valPubKey, blsPubKey.ToBytes(), nil
+	return nodeID, valPubKey, filePV.GetVotePubKey(), filePV.GetVotePriKey(), nil
 }

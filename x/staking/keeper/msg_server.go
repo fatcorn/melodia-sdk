@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"github.com/cometbft/cometbft/crypto/bls12"
 	"strconv"
 	"time"
 
@@ -37,6 +38,15 @@ func (k msgServer) CreateValidator(ctx context.Context, msg *types.MsgCreateVali
 	valAddr, err := k.validatorAddressCodec.StringToBytes(msg.ValidatorAddress)
 	if err != nil {
 		return nil, sdkerrors.ErrInvalidAddress.Wrapf("invalid validator address: %s", err)
+	}
+	sign, err := bls12.RestoreAggregateSignatureByte(msg.Signature)
+	if err != nil {
+		return nil, err
+	}
+	publicKeyList := [][]byte{msg.VotePubkey}
+	base := bls12.New()
+	if !base.VerifyOne(*sign, msg.VotePubkey, publicKeyList) {
+		return nil, sdkerrors.ErrorInvalidSigner.Wrapf("invalid vote signature.")
 	}
 
 	if err := msg.Validate(k.validatorAddressCodec); err != nil {
@@ -104,7 +114,7 @@ func (k msgServer) CreateValidator(ctx context.Context, msg *types.MsgCreateVali
 	if err != nil {
 		return nil, err
 	}
-	validator.SignPubkey = msg.SignPubkey
+	validator.SignPubkey = msg.VotePubkey
 
 	commission := types.NewCommissionWithTime(
 		msg.Commission.Rate, msg.Commission.MaxRate,
