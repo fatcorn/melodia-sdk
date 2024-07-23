@@ -128,8 +128,8 @@ func (a *App) Load(loadLatest bool) error {
 	}
 
 	if len(a.config.NamespaceBlockMakers) != 0 {
-		a.ModuleManager.SetOrderNamespaceBLockMakers(a.config.NamespaceBlockMakers...)
-		a.SetNamespaceBLockMaker(a.NamespaceBlockMaker)
+		a.ModuleManager.SetOrderNamespaceBlockMakers(a.config.NamespaceBlockMakers...)
+		a.SetNamespaceBlockMaker(a.NamespaceBlockMaker)
 	}
 
 	if len(a.config.EndBlockers) != 0 {

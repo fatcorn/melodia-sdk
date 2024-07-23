@@ -6,6 +6,7 @@ import (
 	"github.com/cometbft/cometbft/types"
 	"github.com/near/borsh-go"
 	"strconv"
+	"sync"
 )
 
 // NSBlockStore defines the interface used by the ConsensusState.
@@ -15,6 +16,10 @@ type NSBlockStore interface {
 	Size() int64
 
 	LoadBlock(height int64) *NamespaceBLock
+
+	CacheBlock(block *NamespaceBLock)
+
+	Commit()
 
 	SaveBlock(height int64, hash []byte, block *NamespaceBLock)
 
@@ -57,6 +62,8 @@ type NamespaceBLockStore struct {
 	height int64
 
 	namespaceId uint64
+	cancheBlock *NamespaceBLock
+	sync.RWMutex
 }
 
 const baseBlockStoreStateKey = "base_block_state"
@@ -110,14 +117,20 @@ type NamespaceBLock struct {
 }
 
 func (n *NamespaceBLockStore) Base() int64 {
+	n.RLock()
+	defer n.RUnlock()
 	return n.base
 }
 
 func (n *NamespaceBLockStore) Height() int64 {
+	n.RLock()
+	defer n.RUnlock()
 	return n.height
 }
 
 func (n *NamespaceBLockStore) Size() int64 {
+	n.RLock()
+	defer n.RUnlock()
 	if n.height == 0 {
 		return 0
 	}
@@ -125,7 +138,9 @@ func (n *NamespaceBLockStore) Size() int64 {
 }
 
 func (n *NamespaceBLockStore) LoadBlock(height int64) *NamespaceBLock {
+	n.RLock()
 	blockData, err := n.db.Get(calcBlockDataKey(height))
+	n.RUnlock()
 	if err != nil {
 		panic(err)
 	}
@@ -165,6 +180,8 @@ func (n *NamespaceBLockStore) SaveBlock(height int64, hash []byte, block *Namesp
 		panic(err)
 	}
 
+	n.Lock()
+	defer n.Unlock()
 	if height != n.base {
 		n.height += 1
 	}
@@ -188,7 +205,25 @@ func (n *NamespaceBLockStore) SaveBlock(height int64, hash []byte, block *Namesp
 	}
 }
 
+func (n *NamespaceBLockStore) CacheBlock(block *NamespaceBLock) {
+	if n.cancheBlock != nil {
+		panic("Cach block not commit in cahch block state")
+	}
+	n.cancheBlock = block
+}
+
+func (n *NamespaceBLockStore) Commit() {
+	if n.cancheBlock == nil {
+		return
+	}
+	cacheBlock := n.cancheBlock
+	n.SaveBlock(cacheBlock.Height, cacheBlock.Hash, cacheBlock)
+	n.cancheBlock = nil
+}
+
 func (n *NamespaceBLockStore) LoadBlockByHash(hash []byte) *NamespaceBLock {
+	n.RLock()
+	defer n.RUnlock()
 	heightData, err := n.db.Get(calcBlockHashKey(hash))
 	if err != nil {
 		panic(err)
@@ -215,6 +250,8 @@ func (n *NamespaceBLockStore) LoadBlockByRelatedHeight(relatedHeight int64) *Nam
 	if err != nil {
 		panic(fmt.Sprintf("Error reading block by hash %v", err))
 	}
+	n.RLock()
+	defer n.RUnlock()
 	return n.LoadBlock(int64(height))
 }
 
@@ -243,10 +280,14 @@ func (n *NamespaceBLockStore) Close() error {
 }
 
 func (n *NamespaceBLockStore) SetNamespaceStateActive() {
+	n.Lock()
+	n.Unlock()
 	n.db.Set(calcNamespaceStateKey(), []byte{1})
 }
 
 func (n *NamespaceBLockStore) GetNamespaceState() bool {
+	n.RLock()
+	defer n.RUnlock()
 	val, err := n.db.Get(calcNamespaceStateKey())
 	if err != nil {
 		panic("Read data from db failed")

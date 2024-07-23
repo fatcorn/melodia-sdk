@@ -58,8 +58,8 @@ type BeginBlocker func(Context) (BeginBlock, error)
 // and allows for existing EndBlock functionality within applications.
 type EndBlocker func(Context) (EndBlock, error)
 
-// NamespaceMakeBLock
-type NamespaceMakeBLock func(Context, [][]byte, []*tdmtypes.NamespaceTableEntries) (map[string]appmodule.NamespaceBlockData, error)
+// NamespaceMakeBlock
+type NamespaceMakeBlock func(Context, [][]byte, []*tdmtypes.NamespaceTableEntries) (map[string]appmodule.NamespaceBlockData, error)
 
 // EndBlock defines a type which contains endblock events and validator set updates
 type EndBlock struct {

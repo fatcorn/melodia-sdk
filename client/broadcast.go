@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
@@ -123,9 +124,8 @@ func TxServiceBroadcast(_ context.Context, clientCtx Context, req *tx.BroadcastT
 	}
 
 	clientCtx = clientCtx.WithBroadcastMode(normalizeBroadcastMode(req.Mode))
-	fmt.Printf("-----unexpected invoke \n")
 	// todo, add valid namespace
-	resp, err := clientCtx.BroadcastTx(req.TxBytes, cmttypes.Namespace(101))
+	resp, err := clientCtx.BroadcastTx(req.TxBytes, cmttypes.Namespace(merkle.DefaultTxNamespaceID))
 	if err != nil {
 		return nil, err
 	}

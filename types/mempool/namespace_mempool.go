@@ -116,9 +116,8 @@ func (nsm *NamespaceMempool) CountTx() int {
 	}
 	return count
 }
-func (nsm *NamespaceMempool) RemoveByNamespaceId(ctx context.Context, tx sdk.Tx) error {
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	if pool, ok := nsm.pools[sdkCtx.Namespace()]; ok {
+func (nsm *NamespaceMempool) RemoveByNamespaceId(namespaceId uint64, tx sdk.Tx) error {
+	if pool, ok := nsm.pools[namespaceId]; ok {
 		err := pool.Remove(tx)
 		if err != nil {
 			return nsm.Remove(tx)
