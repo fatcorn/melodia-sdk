@@ -62,6 +62,10 @@ type coreKVStore struct {
 	kvStore storetypes.KVStore
 }
 
+func (store coreKVStore) GetAllKeyStrsInRange(start, end []byte) (res []string) {
+	return store.kvStore.GetAllKeyStrsInRange(start, end)
+}
+
 // NewKVStore returns a wrapper of Core/Store kvstore interface
 // Remove once store migrates to core/store kvstore interface
 func newKVStore(store storetypes.KVStore) store.KVStore {
@@ -139,6 +143,11 @@ func (store NamespaceCoreKVStore) Set(key, value []byte) error {
 	indeedKey := store.buildIndeedKey(key)
 	store.kvStore.Set(indeedKey, value)
 	return nil
+}
+
+// implement KVStore
+func (s NamespaceCoreKVStore) GetAllKeyStrsInRange(start, end []byte) (res []string) {
+	return s.kvStore.GetAllKeyStrsInRange(start, end)
 }
 
 // Delete deletes the key. Errors on nil key.
@@ -224,6 +233,11 @@ func (s kvStoreAdapter) Set(key, value []byte) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+// implement KVStore
+func (s kvStoreAdapter) GetAllKeyStrsInRange(start, end []byte) (res []string) {
+	return s.store.GetAllKeyStrsInRange(start, end)
 }
 
 func (s kvStoreAdapter) Iterator(start, end []byte) dbm.Iterator {

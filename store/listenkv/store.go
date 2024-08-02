@@ -140,3 +140,6 @@ func (s *Store) CacheWrap() types.CacheWrap {
 func (s *Store) CacheWrapWithTrace(_ io.Writer, _ types.TraceContext) types.CacheWrap {
 	panic("cannot CacheWrapWithTrace a ListenKVStore")
 }
+func (s *Store) GetAllKeyStrsInRange(start, end []byte) []string {
+	return s.parent.GetAllKeyStrsInRange(start, end)
+}

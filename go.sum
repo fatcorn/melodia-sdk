@@ -19,10 +19,6 @@ git.everylink.ai/blockchain/melodiasdk-io-api v0.7.4-0.20240703080149-6c21938bf6
 git.everylink.ai/blockchain/melodiasdk-io-api v0.7.4-0.20240703080149-6c21938bf6f8/go.mod h1:IcxpYS5fMemZGqyYtErK7OqvdM0C8kdW3dq8Q/XIG38=
 git.everylink.ai/blockchain/melodiasdk-io-collections v0.4.0 h1:ySNm/gmHPqgmL7bcsPwgPFFr6YUDrY40zyjuKPeZ/wI=
 git.everylink.ai/blockchain/melodiasdk-io-collections v0.4.0/go.mod h1:oa5lUING2dP+gdDquow+QjlF45eL1t4TJDypgGd+tv0=
-git.everylink.ai/blockchain/melodiasdk-io-core v0.11.1-0.20240626085252-704ca8aef8ce h1:5hjhKBvDAHUJqxbFVG3tfduXtF/3POXutpvOA1FG/Ss=
-git.everylink.ai/blockchain/melodiasdk-io-core v0.11.1-0.20240626085252-704ca8aef8ce/go.mod h1:LaTtayWBSoacF5xNzoF8tmLhehqlA9z1SWiPuNC6X1w=
-git.everylink.ai/blockchain/melodiasdk-io-store v1.0.3-0.20240712104617-cb86297688ce h1:wJVSYKvFytzNAYnrX+AcQhhHA7uvOcci6GeTkuKRjGQ=
-git.everylink.ai/blockchain/melodiasdk-io-store v1.0.3-0.20240712104617-cb86297688ce/go.mod h1:m5QBH7XHuA9Mfq4DZmfS89sogUY8KLag8jqlxwBY45g=
 github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4 h1:/vQbFIOMbk2FiG/kXiLl8BRyzTWDw7gX/Hz7Dd5eDMs=
 github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4/go.mod h1:hN7oaIRCjzsZ2dE+yG5k+rsdt3qcwykqK6HVGcKwsw4=
 github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 h1:L/gRVlceqvL25UVaW/CKtUDjefjrs0SPonmDGUVOYP0=

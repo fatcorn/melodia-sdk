@@ -168,3 +168,20 @@ func (cms Store) GetKVStore(key types.StoreKey) types.KVStore {
 	}
 	return store.(types.KVStore)
 }
+
+// StoreKeys returns a list of all store keys
+func (cms Store) StoreKeys() []types.StoreKey {
+	keys := make([]types.StoreKey, 0, len(cms.stores))
+	for _, key := range cms.keys {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+// SetKVStores sets the underlying KVStores via a handler for each key
+func (cms Store) SetKVStores(handler func(sk types.StoreKey, s types.KVStore) types.CacheWrap) types.MultiStore {
+	for k, s := range cms.stores {
+		cms.stores[k] = handler(k, s.(types.KVStore))
+	}
+	return cms
+}

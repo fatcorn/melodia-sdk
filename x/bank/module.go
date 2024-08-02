@@ -206,9 +206,11 @@ func init() {
 type ModuleInputs struct {
 	depinject.In
 
-	Config                *modulev1.Module
-	Cdc                   codec.Codec
-	StoreService          corestore.KVStoreService
+	Config             *modulev1.Module
+	Cdc                codec.Codec
+	StoreService       corestore.KVStoreService
+	MemoryStoreService corestore.MemoryStoreService
+
 	NamespaceStoreService corestore.NamespaceKVStoreService
 	Logger                log.Logger
 
@@ -256,6 +258,8 @@ func ProvideModule(in ModuleInputs) ModuleOutputs {
 		in.Logger,
 		in.NamespaceStoreService,
 	)
+	bankKeeper = bankKeeper.WithDeferredCache(in.MemoryStoreService)
+
 	m := NewAppModule(in.Cdc, bankKeeper, in.AccountKeeper, in.LegacySubspace)
 
 	return ModuleOutputs{BankKeeper: bankKeeper, Module: m}

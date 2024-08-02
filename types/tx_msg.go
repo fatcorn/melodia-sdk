@@ -8,6 +8,7 @@ import (
 	"github.com/cosmos/gogoproto/proto"
 	protov2 "google.golang.org/protobuf/proto"
 
+	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
@@ -100,6 +101,17 @@ type TxDecoder func(txBytes []byte) (Tx, error)
 
 // TxEncoder marshals transaction to bytes
 type TxEncoder func(tx Tx) ([]byte, error)
+
+type TransactionAddressHandler func(ctx Context, tx Tx) (bool, []string, []string)
+
+type SetMsgsHandler func(ctx Context, msgs []Msg)
+type ModifyLogIndexHandler func(ctx Context, input string, logIndex uint64) string
+
+type SetBlockBloomTransientHandler func(ctx Context, logs []string)
+
+type WriteDeferredBalancesHandler func(ctx Context) []abci.Event
+
+type AddCosmosEventsToEVMReceiptIfApplicable func(ctx Context, tx Tx, checksum [32]byte, resp *abci.ExecTxResult)
 
 // MsgTypeURL returns the TypeURL of a `sdk.Msg`.
 var MsgTypeURL = codectypes.MsgTypeURL

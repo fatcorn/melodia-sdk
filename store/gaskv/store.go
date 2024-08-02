@@ -174,3 +174,7 @@ func (gi *gasIterator) consumeSeekGas() {
 	}
 	gi.gasMeter.ConsumeGas(gi.gasConfig.IterNextCostFlat, types.GasIterNextCostFlatDesc)
 }
+
+func (gs *Store) GetAllKeyStrsInRange(start, end []byte) (res []string) {
+	return gs.parent.GetAllKeyStrsInRange(start, end)
+}

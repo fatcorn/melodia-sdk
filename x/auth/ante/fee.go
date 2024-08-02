@@ -132,7 +132,7 @@ func DeductFees(bankKeeper types.BankKeeper, ctx sdk.Context, acc sdk.AccountI, 
 		return errorsmod.Wrapf(sdkerrors.ErrInsufficientFee, "invalid fee amount: %s", fees)
 	}
 
-	err := bankKeeper.SendCoinsFromAccountToModule(ctx, acc.GetAddress(), types.FeeCollectorName, fees)
+	err := bankKeeper.DeferredSendCoinsFromAccountToModule(ctx, acc.GetAddress(), types.FeeCollectorName, fees)
 	if err != nil {
 		return errorsmod.Wrapf(sdkerrors.ErrInsufficientFunds, err.Error())
 	}

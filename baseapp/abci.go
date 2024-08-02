@@ -2,9 +2,13 @@ package baseapp
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
+	consensustypes "github.com/cometbft/cometbft/types"
+	"github.com/cosmos/cosmos-sdk/tasks"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -20,7 +24,6 @@ import (
 	snapshottypes "cosmossdk.io/store/snapshots/types"
 	storetypes "cosmossdk.io/store/types"
 
-	consensustypes "github.com/cometbft/cometbft/types"
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/telemetry"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -795,39 +798,45 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	//
 	// NOTE: Not all raw transactions may adhere to the sdk.Tx interface, e.g.
 	// vote extensions, so skip those.
-	txResults := make([]*abci.ExecTxResult, 0, len(req.Txs))
 	namespaceList, err := consensustypes.ListTxsNamespaceIdsWithTxsAndNSTable(len(req.Txs), req.NsTable)
-	for i, rawTx := range req.Txs {
-		var response *abci.ExecTxResult
-		namespaceId := namespaceList[i]
-		app.finalizeBlockState.SetContext(app.finalizeBlockState.Context().WithNamepace(namespaceId))
+	txResults := make([]*abci.ExecTxResult, len(req.Txs))
 
-		if _, err := app.txDecoder(rawTx); err == nil {
-			response = app.deliverTx(rawTx)
-		} else {
-			// In the case where a transaction included in a block proposal is malformed,
-			// we still want to return a default response to comet. This is because comet
-			// expects a response for each transaction included in a block proposal.
-			response = sdkerrors.ResponseExecTxResultWithEvents(
-				sdkerrors.ErrTxDecode,
-				0,
-				0,
-				nil,
-				false,
-			)
-		}
+	// Start use scheduler to deal Txs
+	startTime := time.Now()
 
-		// check after every tx if we should abort
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-			// continue
-		}
-		app.HandleInternalEvent(sdk.SdkEventsFromABCIEvent(response.Events))
-
-		txResults = append(txResults, response)
+	entries := make([]*sdk.DeliverTxEntry, len(req.Txs))
+	wg := sync.WaitGroup{}
+	for txIndex, rawTx := range req.Txs {
+		wg.Add(1)
+		go func(txIndex int, rawTx []byte) {
+			defer wg.Done()
+			tx, _ := app.txDecoder(rawTx)
+			deliverTxEntry := &sdk.DeliverTxEntry{
+				Request:       rawTx,
+				SdkTx:         tx,
+				Checksum:      sha256.Sum256(rawTx),
+				AbsoluteIndex: txIndex,
+			}
+			entries[txIndex] = deliverTxEntry
+		}(txIndex, rawTx)
 	}
+
+	wg.Wait()
+
+	finalizeCtx := app.getContext(execModeFinalize)
+
+	batchResult := app.DeliverTxBatch(finalizeCtx, sdk.DeliverTxBatchRequest{TxEntries: entries}, namespaceList)
+	for idx, result := range batchResult.Results {
+		txResults[idx] = &result.Response
+		app.HandleInternalEvent(sdk.SdkEventsFromABCIEvent(result.Response.Events))
+	}
+
+	// Finalize all Bank Module Transfers here so that events are included for prioritiezd txs
+	deferredWriteEvents := app.writeDeferredBalancesHandler(finalizeCtx)
+	events = append(events, deferredWriteEvents...)
+
+	// calculate time used by scheduler
+	fmt.Printf("========= Scheduler Time used: %v\n", time.Since(startTime))
 
 	if app.finalizeBlockState.ms.TracingEnabled() {
 		app.finalizeBlockState.ms = app.finalizeBlockState.ms.SetTracingContext(nil).(storetypes.CacheMultiStore)
@@ -906,7 +915,12 @@ func (app *BaseApp) FinalizeBlock(req *abci.RequestFinalizeBlock) (res *abci.Res
 	// if no OE is running, just run the block (this is either a block replay or a OE that got aborted)
 	res, err = app.internalFinalizeBlock(context.Background(), req)
 	if res != nil {
+		// calculate workingHash execute time
+		startTime := time.Now().UnixNano()
 		res.AppHash = app.workingHash()
+		endTime := time.Now().UnixNano()
+		fmt.Printf("========= WorkingHash Time used: %v\n", time.Duration(endTime-startTime))
+
 	}
 	app.finalizeBlockHeight = req.Height
 
@@ -1364,4 +1378,27 @@ func toVoteInfo(votes []abci.ExtendedVoteInfo) []abci.VoteInfo {
 	}
 
 	return legacyVotes
+}
+
+// DeliverTxBatch executes multiple txs
+func (app *BaseApp) DeliverTxBatch(ctx sdk.Context, req sdk.DeliverTxBatchRequest, namespaceList []uint64) (res sdk.DeliverTxBatchResponse) {
+	responses := make([]*sdk.DeliverTxResult, 0, len(req.TxEntries))
+
+	if len(req.TxEntries) == 0 {
+		return sdk.DeliverTxBatchResponse{Results: responses}
+	}
+
+	// avoid overhead for empty batches
+	scheduler := tasks.NewScheduler(5000, app.deliverTx, app.transactionAddressHandler, app.setMsgsHandler, app.modifyLogIndexHandler, app.setBlockBloomTransientHandler, namespaceList)
+	txRes, err := scheduler.ProcessAll(ctx, req.TxEntries)
+
+	if err != nil {
+		ctx.Logger().Error("error while processing scheduler", "err", err)
+		panic(err)
+	}
+	for _, tx := range txRes {
+		responses = append(responses, &sdk.DeliverTxResult{Response: tx})
+	}
+
+	return sdk.DeliverTxBatchResponse{Results: responses}
 }

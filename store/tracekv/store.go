@@ -200,3 +200,7 @@ func writeOperation(w io.Writer, op operation, tc types.TraceContext, key, value
 		panic(errors.Wrap(err, "failed to write newline"))
 	}
 }
+
+func (tkv *Store) GetAllKeyStrsInRange(start, end []byte) []string {
+	return tkv.parent.GetAllKeyStrsInRange(start, end)
+}

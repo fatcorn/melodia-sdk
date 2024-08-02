@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 
 	cmtprotocrypto "github.com/cometbft/cometbft/proto/tendermint/crypto"
 	dbm "github.com/cosmos/cosmos-db"
@@ -37,6 +38,8 @@ type Store struct {
 	tree    Tree
 	logger  log.Logger
 	metrics metrics.StoreMetrics
+
+	treeMtx *sync.RWMutex
 }
 
 // LoadStore returns an IAVL Store as a CommitKVStore. Internally, it will load the
@@ -80,6 +83,7 @@ func LoadStoreWithInitialVersion(db dbm.DB, logger log.Logger, key types.StoreKe
 		tree:    tree,
 		logger:  logger,
 		metrics: metrics,
+		treeMtx: &sync.RWMutex{},
 	}, nil
 }
 
@@ -93,6 +97,7 @@ func UnsafeNewStore(tree *iavl.MutableTree) *Store {
 	return &Store{
 		tree:    tree,
 		metrics: metrics.NewNoOpMetrics(),
+		treeMtx: &sync.RWMutex{},
 	}
 }
 
@@ -120,6 +125,8 @@ func (st *Store) GetImmutable(version int64) (*Store, error) {
 // Commit commits the current store state and returns a CommitID with the new
 // version and hash.
 func (st *Store) Commit() types.CommitID {
+	st.treeMtx.Lock()
+	defer st.treeMtx.Unlock()
 	defer st.metrics.MeasureSince("store", "iavl", "commit")
 
 	hash, version, err := st.tree.SaveVersion()
@@ -239,6 +246,9 @@ func (st *Store) LoadVersionForOverwriting(targetVersion int64) error {
 func (st *Store) Iterator(start, end []byte) types.Iterator {
 	iterator, err := st.tree.Iterator(start, end, true)
 	if err != nil {
+		if iterator != nil {
+			iterator.Close()
+		}
 		panic(err)
 	}
 	return iterator
@@ -248,6 +258,9 @@ func (st *Store) Iterator(start, end []byte) types.Iterator {
 func (st *Store) ReverseIterator(start, end []byte) types.Iterator {
 	iterator, err := st.tree.Iterator(start, end, false)
 	if err != nil {
+		if iterator != nil {
+			iterator.Close()
+		}
 		panic(err)
 	}
 	return iterator
@@ -379,6 +392,28 @@ func (st *Store) Query(req *types.RequestQuery) (res *types.ResponseQuery, err e
 	}
 
 	return res, err
+}
+
+func (st *Store) DeleteAll(start, end []byte) error {
+	iter := st.Iterator(start, end)
+	keys := [][]byte{}
+	for ; iter.Valid(); iter.Next() {
+		keys = append(keys, iter.Key())
+	}
+	iter.Close()
+	for _, key := range keys {
+		st.Delete(key)
+	}
+	return nil
+}
+
+func (st *Store) GetAllKeyStrsInRange(start, end []byte) (res []string) {
+	iter := st.Iterator(start, end)
+	defer iter.Close()
+	for ; iter.Valid(); iter.Next() {
+		res = append(res, string(iter.Key()))
+	}
+	return
 }
 
 // TraverseStateChanges traverses the state changes between two versions and calls the given function.

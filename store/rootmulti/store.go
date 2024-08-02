@@ -56,9 +56,11 @@ func keysFromStoreKeyMap[V any](m map[types.StoreKey]V) []types.StoreKey {
 // cacheMultiStore which is used for branching other MultiStores. It implements
 // the CommitMultiStore interface.
 type Store struct {
-	db                  dbm.DB
-	logger              log.Logger
-	lastCommitInfo      *types.CommitInfo
+	db                dbm.DB
+	logger            log.Logger
+	lastCommitInfo    *types.CommitInfo
+	lastCommitInfoMtx sync.RWMutex
+
 	pruningManager      *pruning.Manager
 	iavlCacheSize       int
 	iavlDisableFastNode bool
@@ -80,6 +82,19 @@ var (
 	_ types.CommitMultiStore = (*Store)(nil)
 	_ types.Queryable        = (*Store)(nil)
 )
+
+// keysForStoreKeyMap returns a slice of keys for the provided map lexically sorted by StoreKey.Name()
+func keysForStoreKeyMap[V any](m map[types.StoreKey]V) []types.StoreKey {
+	keys := make([]types.StoreKey, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		ki, kj := keys[i], keys[j]
+		return ki.Name() < kj.Name()
+	})
+	return keys
+}
 
 // NewStore returns a reference to a new Store object with the provided DB. The
 // store will be created with a PruneNothing pruning strategy by default. After
@@ -287,7 +302,7 @@ func (rs *Store) loadVersion(ver int64, upgrades *types.StoreUpgrades) error {
 		}
 	}
 
-	rs.lastCommitInfo = cInfo
+	rs.SetLastCommitInfo(cInfo)
 	rs.stores = newStores
 
 	// load any snapshot heights we missed from disk to be pruned on the next run
@@ -296,6 +311,12 @@ func (rs *Store) loadVersion(ver int64, upgrades *types.StoreUpgrades) error {
 	}
 
 	return nil
+}
+
+func (rs *Store) LastCommitInfo() *types.CommitInfo {
+	rs.lastCommitInfoMtx.RLock()
+	defer rs.lastCommitInfoMtx.RUnlock()
+	return rs.lastCommitInfo
 }
 
 func (rs *Store) DynamicAddNamesapceStore(newKeys ...types.StoreKey) error {
@@ -348,6 +369,8 @@ func deleteKVStore(kv types.KVStore) error {
 	// Note that we cannot write while iterating, so load all keys here, delete below
 	var keys [][]byte
 	itr := kv.Iterator(nil, nil)
+	defer itr.Close()
+
 	for itr.Valid() {
 		keys = append(keys, itr.Key())
 		itr.Next()
@@ -366,6 +389,8 @@ func deleteKVStore(kv types.KVStore) error {
 func moveKVStoreData(oldDB, newDB types.KVStore) error {
 	// we read from one and write to another
 	itr := oldDB.Iterator(nil, nil)
+	defer itr.Close()
+
 	for itr.Valid() {
 		newDB.Set(itr.Key(), itr.Value())
 		itr.Next()
@@ -516,7 +541,7 @@ func (rs *Store) Commit() types.CommitID {
 		rs.logger.Debug("commit header and version mismatch", "header_height", rs.commitHeader.Height, "version", version)
 	}
 
-	rs.lastCommitInfo = commitStores(version, rs.stores, rs.removalMap)
+	rs.SetLastCommitInfo(commitStores(version, rs.stores, rs.removalMap))
 	rs.lastCommitInfo.Timestamp = rs.commitHeader.Time
 	defer rs.flushMetadata(rs.db, version, rs.lastCommitInfo)
 
@@ -541,8 +566,14 @@ func (rs *Store) Commit() types.CommitID {
 
 	return types.CommitID{
 		Version: version,
-		Hash:    rs.lastCommitInfo.Hash(),
+		Hash:    rs.LastCommitInfo().Hash(),
 	}
+}
+
+func (rs *Store) SetLastCommitInfo(c *types.CommitInfo) {
+	rs.lastCommitInfoMtx.Lock()
+	defer rs.lastCommitInfoMtx.Unlock()
+	rs.lastCommitInfo = c
 }
 
 // WorkingHash returns the current hash of the store.
@@ -792,8 +823,9 @@ func (rs *Store) Query(req *types.RequestQuery) (*types.ResponseQuery, error) {
 	// Otherwise, we query for the commit info from disk.
 	var commitInfo *types.CommitInfo
 
-	if res.Height == rs.lastCommitInfo.Version {
-		commitInfo = rs.lastCommitInfo
+	c := rs.LastCommitInfo()
+	if res.Height == c.Version {
+		commitInfo = c
 	} else {
 		commitInfo, err = rs.GetCommitInfo(res.Height)
 		if err != nil {
@@ -1279,4 +1311,16 @@ func flushLatestVersion(batch dbm.Batch, version int64) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func (rs *Store) SetKVStores(handler func(key types.StoreKey, s types.KVStore) types.CacheWrap) types.MultiStore {
+	panic("SetKVStores is not implemented for rootmulti")
+}
+
+func (rs *Store) StoreKeys() []types.StoreKey {
+	res := make([]types.StoreKey, len(rs.keysByName))
+	for _, sk := range rs.keysByName {
+		res = append(res, sk)
+	}
+	return res
 }

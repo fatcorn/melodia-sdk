@@ -205,3 +205,15 @@ func stripPrefix(key, prefix []byte) []byte {
 func cpIncr(bz []byte) []byte {
 	return types.PrefixEndBytes(bz)
 }
+
+func (s Store) GetAllKeyStrsInRange(start, end []byte) []string {
+	newstart := cloneAppend(s.prefix, start)
+
+	var newend []byte
+	if end == nil {
+		newend = cpIncr(s.prefix)
+	} else {
+		newend = cloneAppend(s.prefix, end)
+	}
+	return s.parent.GetAllKeyStrsInRange(newstart, newend)
+}

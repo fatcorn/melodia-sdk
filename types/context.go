@@ -65,6 +65,7 @@ type Context struct {
 	streamingManager     storetypes.StreamingManager
 	cometInfo            comet.BlockInfo
 	headerInfo           header.Info
+	txIndex              int
 
 	namespaceId uint64 // The tx related namesapceId
 }
@@ -94,6 +95,7 @@ func (c Context) TransientKVGasConfig() storetypes.GasConfig    { return c.trans
 func (c Context) StreamingManager() storetypes.StreamingManager { return c.streamingManager }
 func (c Context) CometInfo() comet.BlockInfo                    { return c.cometInfo }
 func (c Context) HeaderInfo() header.Info                       { return c.headerInfo }
+func (c Context) TxIndex() int                                  { return c.txIndex }
 func (c Context) Namespace() uint64                             { return c.namespaceId }
 
 // clone the header before returning
@@ -332,6 +334,12 @@ func (c Context) IsZero() bool {
 
 func (c Context) WithValue(key, value interface{}) Context {
 	c.baseCtx = context.WithValue(c.baseCtx, key, value)
+	return c
+}
+
+// WithTxIndex returns a Context with the current transaction index that's being processed
+func (c Context) WithTxIndex(txIndex int) Context {
+	c.txIndex = txIndex
 	return c
 }
 

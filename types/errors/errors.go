@@ -140,6 +140,9 @@ var (
 	// supplied.
 	ErrInvalidGasLimit = errorsmod.Register(RootCodespace, 41, "invalid gas limit")
 
+	// ErrOCCAbort defines an error exncountered by a transaction when it encounters an OCC conflict resulting in an Abort
+	ErrOCCAbort = errorsmod.Register(RootCodespace, 42, "occ abort")
+
 	// ErrPanic should only be set when we recovering from a panic
 	ErrPanic = errorsmod.ErrPanic
 )

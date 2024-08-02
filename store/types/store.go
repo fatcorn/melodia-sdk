@@ -152,6 +152,12 @@ type MultiStore interface {
 
 	// LatestVersion returns the latest version in the store
 	LatestVersion() int64
+
+	// SetKVStores is a generalized wrapper method
+	SetKVStores(handler func(key StoreKey, s KVStore) CacheWrap) MultiStore
+
+	// StoreKeys returns a list of store keys
+	StoreKeys() []StoreKey
 }
 
 // From MultiStore.CacheMultiStore()....
@@ -263,6 +269,8 @@ type KVStore interface {
 	// CONTRACT: No writes may happen within a domain while an iterator exists over it.
 	// Exceptionally allowed for cachekv.Store, safe to write in the modules.
 	ReverseIterator(start, end []byte) Iterator
+
+	GetAllKeyStrsInRange(start, end []byte) []string
 }
 
 // Iterator is an alias db's Iterator for convenience.

@@ -88,3 +88,29 @@ func (dsa Store) CacheWrapWithTrace(w io.Writer, tc types.TraceContext) types.Ca
 
 // dbm.DB implements KVStore so we can CacheKVStore it.
 var _ types.KVStore = Store{}
+
+func (dsa Store) VersionExists(version int64) bool {
+	panic("no versioning for dbadater")
+}
+
+func (dsa Store) DeleteAll(start, end []byte) error {
+	iter := dsa.Iterator(start, end)
+	keys := [][]byte{}
+	for ; iter.Valid(); iter.Next() {
+		keys = append(keys, iter.Key())
+	}
+	iter.Close()
+	for _, key := range keys {
+		dsa.Delete(key)
+	}
+	return nil
+}
+
+func (dsa Store) GetAllKeyStrsInRange(start, end []byte) (res []string) {
+	iter := dsa.Iterator(start, end)
+	defer iter.Close()
+	for ; iter.Valid(); iter.Next() {
+		res = append(res, string(iter.Key()))
+	}
+	return
+}

@@ -2,12 +2,13 @@ package keeper
 
 import (
 	"context"
-	"fmt"
-
 	"cosmossdk.io/core/store"
 	errorsmod "cosmossdk.io/errors"
 	"cosmossdk.io/log"
 	"cosmossdk.io/math"
+	"fmt"
+	abci "github.com/cometbft/cometbft/abci/types"
+	"sort"
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -24,6 +25,7 @@ var _ Keeper = (*BaseKeeper)(nil)
 type Keeper interface {
 	SendKeeper
 	WithMintCoinsRestriction(types.MintingRestrictionFn) BaseKeeper
+	WithDeferredCache(deferredCacheStoreService store.MemoryStoreService) BaseKeeper
 
 	InitGenesis(context.Context, *types.GenesisState)
 	ExportGenesis(context.Context) *types.GenesisState
@@ -46,6 +48,12 @@ type Keeper interface {
 	MintCoins(ctx context.Context, moduleName string, amt sdk.Coins) error
 	BurnCoins(ctx context.Context, moduleName string, amt sdk.Coins) error
 
+	DeferredSendCoinsFromAccountToModule(ctx sdk.Context, senderAddr sdk.AccAddress, recipientModule string, amt sdk.Coins) error
+	DeferredSendCoinsFromModuleToAccount(ctx sdk.Context, senderModule string, recipientAddr sdk.AccAddress, amt sdk.Coins) error
+
+	WriteDeferredBalances(ctx sdk.Context) []abci.Event
+	IterateDeferredBalances(ctx sdk.Context, cb func(addr sdk.AccAddress, coin sdk.Coin) bool)
+
 	DelegateCoins(ctx context.Context, delegatorAddr, moduleAccAddr sdk.AccAddress, amt sdk.Coins) error
 	UndelegateCoins(ctx context.Context, moduleAccAddr, delegatorAddr sdk.AccAddress, amt sdk.Coins) error
 
@@ -55,7 +63,7 @@ type Keeper interface {
 // BaseKeeper manages transfers between accounts. It implements the Keeper interface.
 type BaseKeeper struct {
 	BaseSendKeeper
-
+	deferredCache          *DeferredCache
 	ak                     types.AccountKeeper
 	cdc                    codec.BinaryCodec
 	storeService           store.KVStoreService
@@ -116,6 +124,12 @@ func NewBaseKeeper(
 //	bankKeeper.WithMintCoinsRestriction(restriction1).WithMintCoinsRestriction(restriction2)
 func (k BaseKeeper) WithMintCoinsRestriction(check types.MintingRestrictionFn) BaseKeeper {
 	k.mintCoinsRestrictionFn = check.Then(k.mintCoinsRestrictionFn)
+	return k
+}
+
+// WithDeferredCache
+func (k BaseKeeper) WithDeferredCache(deferredCacheStoreService store.MemoryStoreService) BaseKeeper {
+	k.deferredCache = NewDeferredCache(k.cdc, deferredCacheStoreService)
 	return k
 }
 
@@ -470,4 +484,147 @@ func (k BaseViewKeeper) IterateTotalSupply(ctx context.Context, cb func(sdk.Coin
 	if err != nil {
 		panic(err)
 	}
+}
+
+func (k BaseKeeper) DeferredSendCoinsFromAccountToModule(
+	ctx sdk.Context, senderAddr sdk.AccAddress, recipientModule string, amount sdk.Coins,
+) error {
+	if k.deferredCache == nil {
+		panic("bank keeper created without deferred cache")
+	}
+	// Deducts Fees from the Sender Account
+	err := k.subUnlockedCoins(ctx, senderAddr, amount)
+	if err != nil {
+		return err
+	}
+	// get recipient module address
+	moduleAcc := k.ak.GetModuleAccount(ctx, recipientModule)
+	if moduleAcc == nil {
+		panic(errorsmod.Wrapf(sdkerrors.ErrUnknownAddress, "module account %s does not exist", recipientModule))
+	}
+	// get txIndex
+	txIndex := ctx.TxIndex()
+	err = k.deferredCache.UpsertBalances(ctx, moduleAcc.GetAddress(), uint64(txIndex), amount)
+	if err != nil {
+		return err
+	}
+
+	// bech32 encoding is expensive! Only do it once for fromAddr
+	fromAddrString := senderAddr.String()
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	sdkCtx.EventManager().EmitEvents(sdk.Events{
+		sdk.NewEvent(
+			types.EventTypeTransfer,
+			sdk.NewAttribute(types.AttributeKeyRecipient, moduleAcc.String()),
+			sdk.NewAttribute(types.AttributeKeySender, fromAddrString),
+			sdk.NewAttribute(sdk.AttributeKeyAmount, amount.String()),
+		),
+		sdk.NewEvent(
+			sdk.EventTypeMessage,
+			sdk.NewAttribute(types.AttributeKeySender, fromAddrString),
+		),
+	})
+
+	return nil
+}
+
+func (k BaseKeeper) DeferredSendCoinsFromModuleToAccount(ctx sdk.Context, senderModule string, recipientAddr sdk.AccAddress, amt sdk.Coins) error {
+	if k.deferredCache == nil {
+		panic("bank keeper created without deferred cache")
+	}
+
+	senderAddr := k.ak.GetModuleAccount(ctx, senderModule)
+	if senderAddr == nil {
+		panic(errorsmod.Wrapf(sdkerrors.ErrUnknownAddress, "module account %s does not exist", senderModule))
+	}
+
+	if k.BlockedAddr(recipientAddr) {
+		return errorsmod.Wrapf(sdkerrors.ErrUnauthorized, "%s is not allowed to receive funds", recipientAddr)
+	}
+
+	txIndex := ctx.TxIndex()
+	if err := k.deferredCache.UpsertBalances(ctx, senderAddr.GetAddress(), uint64(txIndex), amt); err != nil {
+		return err
+	}
+
+	if err := k.addCoins(ctx, recipientAddr, amt); err != nil {
+		return err
+	}
+
+	// bech32 encoding is expensive! Only do it once for fromAddr
+	fromAddrString := senderAddr.String()
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	sdkCtx.EventManager().EmitEvents(sdk.Events{
+		sdk.NewEvent(
+			types.EventTypeTransfer,
+			sdk.NewAttribute(types.AttributeKeyRecipient, senderAddr.String()),
+			sdk.NewAttribute(types.AttributeKeySender, fromAddrString),
+			sdk.NewAttribute(sdk.AttributeKeyAmount, amt.String()),
+		),
+		sdk.NewEvent(
+			sdk.EventTypeMessage,
+			sdk.NewAttribute(types.AttributeKeySender, fromAddrString),
+		),
+	})
+
+	return nil
+}
+
+// WriteDeferredDepositsToModuleAccounts Iterates on all the deferred deposits and deposit them into the store
+func (k BaseKeeper) WriteDeferredBalances(ctx sdk.Context) []abci.Event {
+	if k.deferredCache == nil {
+		panic("bank keeper created without deferred cache")
+	}
+	ctx = ctx.WithEventManager(sdk.NewEventManager())
+
+	// maps between bech32 stringified module account address and balance
+	moduleAddrBalanceMap := make(map[string]sdk.Coins)
+	// slice of modules to be sorted for consistent write order later
+	moduleList := []string{}
+
+	// iterate over deferred cache and accumulate totals per module
+	k.deferredCache.IterateDeferredBalances(ctx, func(moduleAddr sdk.AccAddress, amount sdk.Coin) bool {
+		currCoins, ok := moduleAddrBalanceMap[moduleAddr.String()]
+		if !ok {
+			// add to list of modules
+			moduleList = append(moduleList, moduleAddr.String())
+			// set the map value
+			moduleAddrBalanceMap[moduleAddr.String()] = sdk.NewCoins(amount)
+			return false
+		}
+		// add to currCoins
+		newCoins := currCoins.Add(amount)
+		// update map
+		moduleAddrBalanceMap[moduleAddr.String()] = newCoins
+		return false
+	})
+	// sort module list
+	sort.Strings(moduleList)
+
+	// iterate through module list and add the balance to module bank balances in sorted order
+	for _, moduleBech32Addr := range moduleList {
+		amount, ok := moduleAddrBalanceMap[moduleBech32Addr]
+		if !ok {
+			err := fmt.Errorf("Failed to get module balance for writing deferred balances for address=%s", moduleBech32Addr)
+			ctx.Logger().Error(err.Error())
+			panic(err)
+		}
+		err := k.addCoins(ctx, sdk.MustAccAddressFromBech32(moduleBech32Addr), amount)
+		if err != nil {
+			ctx.Logger().Error(fmt.Sprintf("Failed to add coin=%s to module address=%s, error is: %s", amount, moduleBech32Addr, err))
+			panic(err)
+		}
+	}
+
+	// clear deferred cache
+	k.deferredCache.Clear(ctx)
+	return ctx.EventManager().ABCIEvents()
+}
+
+func (k BaseKeeper) IterateDeferredBalances(ctx sdk.Context, cb func(addr sdk.AccAddress, coin sdk.Coin) bool) {
+	if k.deferredCache == nil {
+		panic("bank keeper created without deferred cache")
+	}
+	// pass cb to deferred cache iterator
+	k.deferredCache.IterateDeferredBalances(ctx, cb)
 }

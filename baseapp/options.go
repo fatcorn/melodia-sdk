@@ -327,6 +327,29 @@ func (app *BaseApp) SetTxEncoder(txEncoder sdk.TxEncoder) {
 	app.txEncoder = txEncoder
 }
 
+func (app *BaseApp) SetTransactionAddressHandler(transactionAddressHandler sdk.TransactionAddressHandler) {
+	app.transactionAddressHandler = transactionAddressHandler
+}
+
+func (app *BaseApp) SetWriteDeferredBalancesHandler(writeDeferredBalancesHandler sdk.WriteDeferredBalancesHandler) {
+	app.writeDeferredBalancesHandler = writeDeferredBalancesHandler
+}
+
+func (app *BaseApp) SetAddCosmosEventsToEVMReceiptIfApplicable(addCosmosEventsToEVMReceiptIfApplicable sdk.AddCosmosEventsToEVMReceiptIfApplicable) {
+	app.addCosmosEventsToEVMReceiptIfApplicable = addCosmosEventsToEVMReceiptIfApplicable
+}
+
+func (app *BaseApp) SetSetMsgsHandler(setMsgsHandler sdk.SetMsgsHandler) {
+	app.setMsgsHandler = setMsgsHandler
+}
+
+func (app *BaseApp) SetModifyLogIndexHandler(modifyLogIndexHandler sdk.ModifyLogIndexHandler) {
+	app.modifyLogIndexHandler = modifyLogIndexHandler
+}
+func (app *BaseApp) SetSetBlockBloomTransientHandler(setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler) {
+	app.setBlockBloomTransientHandler = setBlockBloomTransientHandler
+}
+
 // SetQueryMultiStore set a alternative MultiStore implementation to support grpc query service.
 //
 // Ref: https://github.com/cosmos/cosmos-sdk/issues/13317
