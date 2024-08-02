@@ -264,7 +264,8 @@ func (h *DefaultProposalHandler) PrepareProposalHandler() sdk.PrepareProposalHan
 		//
 		// Note, we still need to ensure the transactions returned respect req.MaxTxBytes.
 		_, isNoOp := h.mempool.(mempool.NoOpMempool)
-		if h.mempool == nil || isNoOp {
+		_, isNsOp := h.mempool.(*mempool.NamespaceMempool)
+		if h.mempool == nil || isNoOp || isNsOp {
 			for _, txBz := range req.Txs {
 				tx, err := h.txVerifier.TxDecode(txBz)
 				if err != nil {
@@ -274,112 +275,6 @@ func (h *DefaultProposalHandler) PrepareProposalHandler() sdk.PrepareProposalHan
 				stop := h.txSelector.SelectTxForProposal(ctx, uint64(req.MaxTxBytes), maxBlockGas, tx, txBz)
 				if stop {
 					break
-				}
-			}
-
-			return &abci.ResponsePrepareProposal{Txs: h.txSelector.SelectedTxs(ctx)}, nil
-		}
-
-		nsMempool, isNsOp := h.mempool.(*mempool.NamespaceMempool)
-		if isNsOp {
-			nsIterator, nsTxs := nsMempool.SelectWithNsTable(ctx, req.Txs, req.NsTable)
-			for namespaceId, iterator := range nsIterator {
-				// If the iterator is nil use the NoOpMempool, get all namespace txs
-				if iterator == nil {
-					txs := nsTxs[namespaceId]
-					for _, txBz := range txs {
-						tx, err := h.txVerifier.TxDecode(txBz)
-						if err != nil {
-							return nil, err
-						}
-						h.txSelector.SelectTxForProposal(ctx, 0, 0, tx, txBz)
-					}
-				} else {
-					selectedTxsSignersSeqs := make(map[string]uint64)
-					var selectedTxsNums int
-
-					for iterator != nil {
-						memTx := iterator.Tx()
-						signerData, err := h.signerExtAdapter.GetSigners(memTx)
-						if err != nil {
-							return nil, err
-						}
-
-						// If the signers aren't in selectedTxsSignersSeqs then we haven't seen them before
-						// so we add them and continue given that we don't need to check the sequence.
-						shouldAdd := true
-						txSignersSeqs := make(map[string]uint64)
-						for _, signer := range signerData {
-							seq, ok := selectedTxsSignersSeqs[signer.Signer.String()]
-							if !ok {
-								txSignersSeqs[signer.Signer.String()] = signer.Sequence
-								continue
-							}
-
-							// If we have seen this signer before in this block, we must make
-							// sure that the current sequence is seq+1; otherwise is invalid
-							// and we skip it.
-							if seq+1 != signer.Sequence {
-								shouldAdd = false
-								break
-							}
-							txSignersSeqs[signer.Signer.String()] = signer.Sequence
-						}
-						if !shouldAdd {
-							iterator = iterator.Next()
-							continue
-						}
-
-						// NOTE: Since transaction verification was already executed in CheckTx,
-						// which calls mempool.Insert, in theory everything in the pool should be
-						// valid. But some mempool implementations may insert invalid txs, so we
-						// check again.
-
-						needVerify := true
-						var txBz []byte
-						for _, msg := range memTx.GetMsgs() {
-							_, ok := msg.(sdk.SignerMsg)
-							if ok {
-								needVerify = false
-								break
-							}
-						}
-						if needVerify {
-							app := h.txVerifier.(*BaseApp)
-							app.SetNamespace(execModePrepareProposal, namespaceId)
-							txBz, err = h.txVerifier.PrepareProposalVerifyTx(memTx)
-						} else {
-							txBz, err = h.txVerifier.TxEncode(memTx)
-						}
-
-						if err != nil {
-							err := nsMempool.RemoveByNamespaceId(namespaceId, memTx)
-							if err != nil && !errors.Is(err, mempool.ErrTxNotFound) {
-								return nil, err
-							}
-						} else {
-							h.txSelector.SelectTxForProposal(ctx, 0, 0, memTx, txBz)
-
-							txsLen := len(h.txSelector.SelectedTxs(ctx))
-							for sender, seq := range txSignersSeqs {
-								// If txsLen != selectedTxsNums is true, it means that we've
-								// added a new tx to the selected txs, so we need to update
-								// the sequence of the sender.
-								if txsLen != selectedTxsNums {
-									selectedTxsSignersSeqs[sender] = seq
-								} else if _, ok := selectedTxsSignersSeqs[sender]; !ok {
-									// The transaction hasn't been added but it passed the
-									// verification, so we know that the sequence is correct.
-									// So we set this sender's sequence to seq-1, in order
-									// to avoid unnecessary calls to PrepareProposalVerifyTx.
-									selectedTxsSignersSeqs[sender] = seq - 1
-								}
-							}
-							selectedTxsNums = txsLen
-						}
-
-						iterator = iterator.Next()
-					}
 				}
 			}
 			return &abci.ResponsePrepareProposal{Txs: h.txSelector.SelectedTxs(ctx)}, nil
@@ -478,11 +373,8 @@ func (h *DefaultProposalHandler) ProcessProposalHandler() sdk.ProcessProposalHan
 	// If the mempool is nil or NoOp we simply return ACCEPT,
 	// because PrepareProposal may have included txs that could fail verification.
 	_, isNoOp := h.mempool.(mempool.NoOpMempool)
-	if h.mempool == nil || isNoOp {
-		return NoOpProcessProposal()
-	}
 	_, isNsOp := h.mempool.(*mempool.NamespaceMempool)
-	if isNsOp {
+	if h.mempool == nil || isNoOp || isNsOp {
 		return NoOpProcessProposal()
 	}
 	return func(ctx sdk.Context, req *abci.RequestProcessProposal) (*abci.ResponseProcessProposal, error) {

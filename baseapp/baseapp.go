@@ -6,6 +6,7 @@ import (
 	"math"
 	"sort"
 	"strconv"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	cmtdbm "github.com/cometbft/cometbft-db"
@@ -1363,6 +1364,68 @@ func createEvents(cdc codec.Codec, events sdk.Events, msg sdk.Msg, msgV2 protov2
 	}
 
 	return sdk.Events{msgEvent}.AppendEvents(events), nil
+}
+
+func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.ResponseSortTxs, error) {
+	startTime := time.Now()
+
+	sortTxs := make([][]byte, 0)
+	nsMempool := mempool.NewNamespaceMempool()
+	lastOffset := int32(0)
+	for _, entry := range req.NsTable {
+		namespaceTxs := req.Txs[lastOffset:entry.Offset]
+		namespaceId := entry.Namespace
+		lastOffset = entry.Offset
+		for _, txBz := range namespaceTxs {
+			tx, err := app.TxDecode(txBz)
+			if err != nil {
+				return nil, err
+			}
+			ctx = ctx.WithNamepace(namespaceId)
+			err = nsMempool.Insert(ctx, tx)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	nsIterators, nsTxs := nsMempool.SelectWithNsTable(ctx, req.Txs, req.NsTable)
+	offset := 0
+	nsTable := make([]*cmtproto.NamespaceTableEntries, 0)
+
+	for _, nsIterator := range nsIterators {
+		iterator := nsIterator.Iterator
+		namespaceId := nsIterator.NamespaceId
+		// If the iterator is nil use the NoOpMempool, get all namespace txs
+		if iterator == nil {
+			txs := nsTxs[namespaceId]
+			for _, txBz := range txs {
+				_, err := app.TxDecode(txBz)
+				if err != nil {
+					return nil, err
+				}
+				sortTxs = append(sortTxs, txBz)
+				offset++
+			}
+		} else {
+			for iterator != nil {
+				tx := iterator.Tx()
+				txBz, err := app.TxEncode(tx)
+				if err != nil {
+					return nil, err
+				}
+				sortTxs = append(sortTxs, txBz)
+				offset++
+				iterator = iterator.Next()
+			}
+		}
+		nsTable = append(nsTable, &cmtproto.NamespaceTableEntries{
+			Namespace: namespaceId,
+			Offset:    int32(offset),
+		})
+	}
+	endTime := time.Since(startTime).Milliseconds()
+	app.logger.Info("sortTxs execution time", "used", fmt.Sprintf("%v ms", endTime), "size", len(sortTxs), "nsTable", nsTable)
+	return &abci.ResponseSortTxs{Txs: sortTxs, NsTable: nsTable}, nil
 }
 
 // PrepareProposalVerifyTx performs transaction verification when a proposer is

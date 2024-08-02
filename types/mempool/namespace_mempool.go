@@ -1,12 +1,14 @@
 package mempool
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
-	"github.com/cometbft/cometbft/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	types2 "github.com/cosmos/cosmos-sdk/x/consensus/types"
+	"sort"
 	"strconv"
 	"sync"
 )
@@ -19,6 +21,12 @@ type NamespaceMempool struct {
 	pools map[uint64]Mempool
 }
 
+// NamespaceInterator  defines a namespace iterator.
+type NamespaceInterator struct {
+	NamespaceId uint64
+	Iterator    Iterator
+}
+
 // NewNamespaceMempool creates a new mempool that prioritizes transactions by
 // nonce, the lowest first, picking a random sender on each iteration.
 func NewNamespaceMempool() *NamespaceMempool {
@@ -28,16 +36,20 @@ func NewNamespaceMempool() *NamespaceMempool {
 	return nsm
 }
 
-func (nsm *NamespaceMempool) SelectWithNsTable(ctx context.Context, txs [][]byte, nsTable []*cmtproto.NamespaceTableEntries) (map[uint64]Iterator, map[uint64][][]byte) {
+func (nsm *NamespaceMempool) SelectWithNsTable(ctx context.Context, txs [][]byte, nsTable []*cmtproto.NamespaceTableEntries) ([]NamespaceInterator, map[uint64][][]byte) {
 
 	var (
-		nsIter map[uint64]Iterator
-		wg     sync.WaitGroup
+		nsIters []NamespaceInterator
+		nsTxs   map[uint64][][]byte
+		wg      sync.WaitGroup
 	)
 
-	nsIter = make(map[uint64]Iterator)
-	nsTxs := types.ListNamespaceTxsWithNSTable(txs, nsTable)
-	for namespaceId, namespaceTxs := range nsTxs {
+	nsIters = make([]NamespaceInterator, 0)
+	nsTxs = make(map[uint64][][]byte)
+	lastOffset := int32(0)
+	for _, entry := range nsTable {
+		namespaceTxs := txs[lastOffset:entry.Offset]
+		namespaceId := entry.Namespace
 		pool, ok := nsm.pools[namespaceId]
 		if ok {
 			wg.Add(1)
@@ -46,12 +58,25 @@ func (nsm *NamespaceMempool) SelectWithNsTable(ctx context.Context, txs [][]byte
 				iter := pool.Select(ctx, txs)
 				nsm.mtx.Lock()
 				defer nsm.mtx.Unlock()
-				nsIter[namespaceId] = iter
+				nsIters = append(nsIters, NamespaceInterator{
+					NamespaceId: namespaceId,
+					Iterator:    iter,
+				})
 			}(ctx, namespaceTxs, namespaceId)
 		}
+		nsTxs[namespaceId] = namespaceTxs
+		lastOffset = entry.Offset
 	}
+
 	wg.Wait()
-	return nsIter, nsTxs
+
+	sort.Slice(nsIters, func(i, j int) bool {
+		iBytes := binary.LittleEndian.AppendUint64([]byte{}, nsIters[i].NamespaceId)
+		jBytes := binary.LittleEndian.AppendUint64([]byte{}, nsIters[j].NamespaceId)
+		return bytes.Compare(iBytes, jBytes) < 0
+	})
+
+	return nsIters, nsTxs
 }
 
 func (nsm *NamespaceMempool) Init(ctx context.Context) Mempool {
@@ -65,7 +90,7 @@ func (nsm *NamespaceMempool) Init(ctx context.Context) Mempool {
 	if !init {
 		// If the namespaceId does not exist, initialize it
 		sortMode := types2.SortModeNonce
-		if len(sdkCtx.ConsensusParams().Mempool.Sort) > 0 {
+		if sdkCtx.ConsensusParams().Mempool != nil && len(sdkCtx.ConsensusParams().Mempool.Sort) > 0 {
 			poolSort := make(map[string]string)
 			_ = json.Unmarshal([]byte(sdkCtx.ConsensusParams().Mempool.Sort), &poolSort)
 			sortType, _ := poolSort[strconv.FormatUint(namespaceId, 10)]

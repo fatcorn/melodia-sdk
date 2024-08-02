@@ -58,6 +58,7 @@ type (
 		senderIndices  map[string]*skiplist.SkipList
 		scores         map[txMeta[C]]txMeta[C]
 		cfg            PriorityNonceMempoolConfig[C]
+		scoresMtx      sync.RWMutex
 	}
 
 	// PriorityNonceIterator defines an iterator that is used for mempool iteration
@@ -106,7 +107,24 @@ type (
 // the defining transaction priority.
 func NewDefaultTxPriority() TxPriority[int64] {
 	return TxPriority[int64]{
-		GetTxPriority: func(goCtx context.Context, _ sdk.Tx) int64 {
+		GetTxPriority: func(goCtx context.Context, tx sdk.Tx) int64 {
+			feeTx, ok := tx.(sdk.FeeTx)
+			if ok {
+				fee := feeTx.GetFee()
+				gas := feeTx.GetGas()
+				var priority int64
+				for _, c := range fee {
+					p := int64(math.MaxInt64)
+					gasPrice := c.Amount.QuoRaw(int64(gas))
+					if gasPrice.IsInt64() {
+						p = gasPrice.Int64()
+					}
+					if priority == 0 || p < priority {
+						priority = p
+					}
+				}
+				return priority
+			}
 			return sdk.UnwrapSDKContext(goCtx).Priority()
 		},
 		Compare: func(a, b int64) int {
@@ -268,7 +286,9 @@ func (mp *PriorityNonceMempool[C]) Insert(ctx context.Context, tx sdk.Tx) error 
 	// existing key.
 	key.senderElement = senderIndex.Set(key, tx)
 
+	mp.scoresMtx.Lock()
 	mp.scores[sk] = txMeta[C]{priority: priority}
+	mp.scoresMtx.Unlock()
 	mp.priorityIndex.Set(key, tx)
 
 	return nil
@@ -327,7 +347,9 @@ func (i *PriorityNonceIterator[C]) Next() Iterator {
 	} else if i.priorityNode.Next() != nil && i.mempool.cfg.TxPriority.Compare(key.priority, i.nextPriority) == 0 {
 		// Weight is incorporated into the priority index key only (not sender index)
 		// so we must fetch it here from the scores map.
+		i.mempool.scoresMtx.RLock()
 		weight := i.mempool.scores[txMeta[C]{nonce: key.nonce, sender: key.sender}].weight
+		i.mempool.scoresMtx.RUnlock()
 		if i.mempool.cfg.TxPriority.Compare(weight, i.priorityNode.Next().Key().(txMeta[C]).weight) < 0 {
 			return i.iteratePriority()
 		}
@@ -392,7 +414,9 @@ func (mp *PriorityNonceMempool[C]) reorderPriorityTies() {
 		mp.priorityIndex.Remove(k.deleteKey)
 		delete(mp.scores, txMeta[C]{nonce: k.deleteKey.nonce, sender: k.deleteKey.sender})
 		mp.priorityIndex.Set(k.insertKey, k.tx)
+		mp.scoresMtx.Lock()
 		mp.scores[txMeta[C]{nonce: k.insertKey.nonce, sender: k.insertKey.sender}] = k.insertKey
+		mp.scoresMtx.Unlock()
 	}
 }
 
