@@ -49,11 +49,12 @@ func (DefaultSignerExtractionAdapter) GetSigners(tx sdk.Tx) ([]SignerData, error
 	for _, msg := range tx.GetMsgs() {
 		sigTx, ok := msg.(sdk.SignerMsg)
 		if ok {
-			sigs := sigTx.GetSigners()
-			if sigs != nil && len(sigs) > 0 {
+			//sigs := sigTx.GetSigners()
+			feeTx, isFeeTx := tx.(sdk.FeeTx)
+			if isFeeTx {
 				signers := make([]SignerData, 0)
 				signers = append(signers, NewSignerData(
-					sigTx.GetSigners()[0],
+					feeTx.FeePayer(),
 					sigTx.GetNonce(),
 				))
 				return signers, nil

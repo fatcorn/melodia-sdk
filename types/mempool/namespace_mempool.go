@@ -98,7 +98,7 @@ func (nsm *NamespaceMempool) Init(ctx context.Context) Mempool {
 		}
 		switch sortMode {
 		case types2.SortModeGasPrice:
-			pool = DefaultPriorityMempool()
+			pool = DefaultPriceNonceMempool()
 		case types2.SortModeQueue:
 			pool = NoOpMempool{}
 		case types2.SortModeNonce:

@@ -6,6 +6,7 @@ import (
 	"math"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -1372,22 +1373,25 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 	sortTxs := make([][]byte, 0)
 	nsMempool := mempool.NewNamespaceMempool()
 	lastOffset := int32(0)
+	var wg sync.WaitGroup
 	for _, entry := range req.NsTable {
 		namespaceTxs := req.Txs[lastOffset:entry.Offset]
 		namespaceId := entry.Namespace
 		lastOffset = entry.Offset
-		for _, txBz := range namespaceTxs {
-			tx, err := app.TxDecode(txBz)
-			if err != nil {
-				return nil, err
+
+		wg.Add(1)
+		go func(ctx sdk.Context, namespaceTxs [][]byte, namespaceId uint64) {
+			defer wg.Done()
+			singleStartTime := time.Now()
+			for _, txBz := range namespaceTxs {
+				tx, _ := app.TxDecode(txBz)
+				ctx = ctx.WithNamepace(namespaceId)
+				_ = nsMempool.Insert(ctx, tx)
 			}
-			ctx = ctx.WithNamepace(namespaceId)
-			err = nsMempool.Insert(ctx, tx)
-			if err != nil {
-				return nil, err
-			}
-		}
+			app.logger.Info("sortTxs single namespace insert time", "used", fmt.Sprintf("%v ms", time.Since(singleStartTime).Milliseconds()), "size", len(namespaceTxs), "namespaceId", namespaceId)
+		}(ctx, namespaceTxs, namespaceId)
 	}
+	wg.Wait()
 	nsIterators, nsTxs := nsMempool.SelectWithNsTable(ctx, req.Txs, req.NsTable)
 	offset := 0
 	nsTable := make([]*cmtproto.NamespaceTableEntries, 0)
@@ -1399,10 +1403,6 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 		if iterator == nil {
 			txs := nsTxs[namespaceId]
 			for _, txBz := range txs {
-				_, err := app.TxDecode(txBz)
-				if err != nil {
-					return nil, err
-				}
 				sortTxs = append(sortTxs, txBz)
 				offset++
 			}
@@ -1423,8 +1423,7 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 			Offset:    int32(offset),
 		})
 	}
-	endTime := time.Since(startTime).Milliseconds()
-	app.logger.Info("sortTxs execution time", "used", fmt.Sprintf("%v ms", endTime), "size", len(sortTxs), "nsTable", nsTable)
+	app.logger.Info("sortTxs total time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable)
 	return &abci.ResponseSortTxs{Txs: sortTxs, NsTable: nsTable}, nil
 }
 
