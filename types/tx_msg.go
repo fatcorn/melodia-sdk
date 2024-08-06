@@ -9,6 +9,7 @@ import (
 	protov2 "google.golang.org/protobuf/proto"
 
 	abci "github.com/cometbft/cometbft/abci/types"
+	consensustypes "github.com/cometbft/cometbft/types"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
@@ -112,6 +113,8 @@ type SetBlockBloomTransientHandler func(ctx Context, logs []string)
 type WriteDeferredBalancesHandler func(ctx Context) []abci.Event
 
 type AddCosmosEventsToEVMReceiptIfApplicable func(ctx Context, tx Tx, checksum [32]byte, resp *abci.ExecTxResult)
+
+type GetAllNamespacePortsHandler func(ctx Context) []consensustypes.Namespace
 
 // MsgTypeURL returns the TypeURL of a `sdk.Msg`.
 var MsgTypeURL = codectypes.MsgTypeURL

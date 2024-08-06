@@ -217,6 +217,7 @@ type BaseApp struct {
 	setMsgsHandler                          sdk.SetMsgsHandler
 	modifyLogIndexHandler                   sdk.ModifyLogIndexHandler
 	setBlockBloomTransientHandler           sdk.SetBlockBloomTransientHandler
+	getAllNamespacePortsHandler             sdk.GetAllNamespacePortsHandler
 	deliverTxHooks                          []DeliverTxHook
 }
 

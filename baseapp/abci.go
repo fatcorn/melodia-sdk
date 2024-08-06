@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"github.com/cometbft/cometbft/crypto/merkle"
 	consensustypes "github.com/cometbft/cometbft/types"
 	"github.com/cosmos/cosmos-sdk/tasks"
 	"sort"
@@ -831,9 +832,16 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 		app.HandleInternalEvent(sdk.SdkEventsFromABCIEvent(result.Response.Events))
 	}
 
-	// Finalize all Bank Module Transfers here so that events are included for prioritiezd txs
-	deferredWriteEvents := app.writeDeferredBalancesHandler(finalizeCtx)
-	events = append(events, deferredWriteEvents...)
+	// Finalize all Bank Module Transfers here so that events are included for txs
+	// TODO: Since the fee collection rules have not yet been finalized, fees are temporarily stored in the store under the transaction's associated namespace.
+	namespaceIds := app.getAllNamespacePortsHandler(finalizeCtx)
+	for _, namespaceId := range namespaceIds {
+		deferredWriteEvents := app.writeDeferredBalancesHandler(finalizeCtx.WithNamepace(uint64(namespaceId)))
+		events = append(events, deferredWriteEvents...)
+	}
+	// default namespace fee.
+	defaultDeferredWriteEvents := app.writeDeferredBalancesHandler(finalizeCtx.WithNamepace(merkle.DefaultTxNamespaceID))
+	events = append(events, defaultDeferredWriteEvents...)
 
 	// calculate time used by scheduler
 	fmt.Printf("========= Scheduler Time used: %v\n", time.Since(startTime))

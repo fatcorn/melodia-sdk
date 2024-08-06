@@ -346,8 +346,13 @@ func (app *BaseApp) SetSetMsgsHandler(setMsgsHandler sdk.SetMsgsHandler) {
 func (app *BaseApp) SetModifyLogIndexHandler(modifyLogIndexHandler sdk.ModifyLogIndexHandler) {
 	app.modifyLogIndexHandler = modifyLogIndexHandler
 }
+
 func (app *BaseApp) SetSetBlockBloomTransientHandler(setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler) {
 	app.setBlockBloomTransientHandler = setBlockBloomTransientHandler
+}
+
+func (app *BaseApp) SetGetAllNamespacePortsHandler(getAllNamespacePortsHandler sdk.GetAllNamespacePortsHandler) {
+	app.getAllNamespacePortsHandler = getAllNamespacePortsHandler
 }
 
 // SetQueryMultiStore set a alternative MultiStore implementation to support grpc query service.

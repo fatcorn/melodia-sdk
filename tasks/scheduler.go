@@ -55,6 +55,7 @@ type deliverTxTask struct {
 	Response      *abci.ExecTxResult
 	VersionStores map[storetypes.StoreKey]*multiversion.VersionIndexedStore
 	IsEVMTx       bool
+	NamespaceId   uint64
 	//TxTracer      sdk.TxTracer
 }
 
@@ -135,7 +136,6 @@ func NewScheduler(workers int, deliverTxFunc func(tx []byte, opts ...sdk.Context
 		modifyLogIndexHandler:         modifyLogIndexHandler,
 		setBlockBloomTransientHandler: setBlockBloomTransientHandler,
 		namespaceList:                 namespaceList,
-		//tracingInfo: tracingInfo,
 	}
 }
 
@@ -276,6 +276,7 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) ([
 		if !t.IsEVMTx {
 			continue
 		}
+
 		for _, e := range t.Response.Events {
 
 			if e.Type == "ethereum_tx" {
@@ -634,11 +635,8 @@ func (s *scheduler) prepareTask(task *deliverTxTask) {
 		ctx = ctx.WithMultiStore(ms)
 		namespaceId := s.namespaceList[task.AbsoluteIndex]
 		ctx = ctx.WithNamepace(namespaceId)
+		task.NamespaceId = namespaceId
 	}
-
-	//if task.TxTracer != nil {
-	//	ctx = task.TxTracer.InjectInContext(ctx)
-	//}
 
 	task.AbortCh = abortCh
 	task.Ctx = ctx

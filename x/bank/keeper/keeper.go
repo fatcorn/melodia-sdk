@@ -614,6 +614,8 @@ func (k BaseKeeper) WriteDeferredBalances(ctx sdk.Context) []abci.Event {
 			ctx.Logger().Error(fmt.Sprintf("Failed to add coin=%s to module address=%s, error is: %s", amount, moduleBech32Addr, err))
 			panic(err)
 		}
+		// log namespaceId
+		ctx.Logger().Info(fmt.Sprintf("NamespaceId: %d, Defferred Success add coin=%s to module address=%s", ctx.Namespace(), amount, moduleBech32Addr))
 	}
 
 	// clear deferred cache

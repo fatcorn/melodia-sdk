@@ -35,5 +35,6 @@ type DeliverTxResult struct {
 // DeliverTxBatchResponse represents a response object for a batch of transactions.
 // This can be extended to include response-level tracing or metadata
 type DeliverTxBatchResponse struct {
-	Results []*DeliverTxResult
+	Results      []*DeliverTxResult
+	NamespaceIds []uint64
 }
