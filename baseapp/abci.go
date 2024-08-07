@@ -899,6 +899,7 @@ func (app *BaseApp) FinalizeBlock(req *abci.RequestFinalizeBlock) (res *abci.Res
 			}
 		}
 	}()
+	finalizeStartTime := time.Now().UnixNano()
 
 	if app.optimisticExec.Initialized() {
 		// check if the hash we got is the same as the one we are executing
@@ -931,7 +932,8 @@ func (app *BaseApp) FinalizeBlock(req *abci.RequestFinalizeBlock) (res *abci.Res
 
 	}
 	app.finalizeBlockHeight = req.Height
-
+	finalizeEndTime := time.Now().UnixNano()
+	fmt.Printf("========= FinalizeBlock Time used: %v\n", time.Duration(finalizeStartTime-finalizeEndTime))
 	return res, err
 }
 
