@@ -933,7 +933,7 @@ func (app *BaseApp) FinalizeBlock(req *abci.RequestFinalizeBlock) (res *abci.Res
 	}
 	app.finalizeBlockHeight = req.Height
 	finalizeEndTime := time.Now().UnixNano()
-	fmt.Printf("========= FinalizeBlock Time used: %v\n", time.Duration(finalizeStartTime-finalizeEndTime))
+	fmt.Printf("========= FinalizeBlock Time used: %v\n", time.Duration(finalizeEndTime-finalizeStartTime))
 	return res, err
 }
 
