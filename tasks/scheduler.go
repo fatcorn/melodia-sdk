@@ -613,7 +613,6 @@ func (s *scheduler) prepareTask(task *deliverTxTask) {
 	abortCh := make(chan occ.Abort, len(s.multiVersionStores))
 
 	// print len(s.multiVersionStores)
-	fmt.Printf("======len(s.multiVersionStores): %d\n", len(s.multiVersionStores))
 
 	// if there are no stores, don't try to wrap, because there's nothing to wrap
 	if len(s.multiVersionStores) > 0 {
