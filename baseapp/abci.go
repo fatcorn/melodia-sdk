@@ -1399,7 +1399,7 @@ func (app *BaseApp) DeliverTxBatch(ctx sdk.Context, req sdk.DeliverTxBatchReques
 	}
 
 	// avoid overhead for empty batches
-	scheduler := tasks.NewScheduler(5000, app.deliverTx, app.transactionAddressHandler, app.setMsgsHandler, app.modifyLogIndexHandler, app.setBlockBloomTransientHandler, namespaceList)
+	scheduler := tasks.NewScheduler(app.ConcurrencyWorkers(), app.deliverTx, app.transactionAddressHandler, app.setMsgsHandler, app.modifyLogIndexHandler, app.setBlockBloomTransientHandler, namespaceList)
 	txRes, err := scheduler.ProcessAll(ctx, req.TxEntries)
 
 	if err != nil {

@@ -3,6 +3,8 @@ package tasks
 import (
 	"context"
 	"fmt"
+	"runtime"
+	"runtime/pprof"
 	"strconv"
 
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -38,6 +40,8 @@ const (
 	// maximumIterations before we revert to sequential (for high conflict rates)
 	maximumIterations = 10
 )
+
+var threadProfile *pprof.Profile
 
 type deliverTxTask struct {
 	Ctx     sdk.Context
@@ -127,6 +131,8 @@ type scheduler struct {
 // NewScheduler creates a new scheduler
 // func NewScheduler(workers int, deliverTxFunc func(ctx sdk.Context, req []byte, tx sdk.Tx, checksum [32]byte) (res abci.ExecTxResult)) Scheduler {
 func NewScheduler(workers int, deliverTxFunc func(tx []byte, opts ...sdk.Context) *abci.ExecTxResult, transactionAddressHandler sdk.TransactionAddressHandler, setMsgsHandler sdk.SetMsgsHandler, modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, namespaceList []uint64) Scheduler {
+	threadProfile = pprof.Lookup("threadcreate")
+
 	return &scheduler{
 		workers:                       workers,
 		deliverTx:                     deliverTxFunc,
@@ -410,6 +416,8 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 	workerCtx, cancel := context.WithCancel(ctx.Context())
 	defer cancel()
 
+	printSystemStats("before process")
+
 	// execution tasks are limited by workers
 	start(workerCtx, s.executeCh, workers)
 
@@ -456,6 +464,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 	ctx.Logger().Info("occ scheduler", "height", ctx.BlockHeight(), "txs", len(tasks), "latency_ms", time.Since(startTime).Milliseconds(), "retries", s.metrics.retries, "maxIncarnation", s.maxIncarnation, "iterations", iterations, "sync", s.synchronous, "workers", workers)
 
 	res, evmTxs := s.collectResponses(ctx, tasks)
+	printSystemStats("after process")
 
 	s.setMsgsHandler(ctx, evmTxs)
 
@@ -551,6 +560,8 @@ func (s *scheduler) validateAll(ctx sdk.Context, tasks []*deliverTxTask) ([]*del
 			}
 		})
 	}
+	printSystemStats("validating")
+
 	wg.Wait()
 
 	return res, nil
@@ -576,6 +587,7 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 			s.prepareAndRunTask(wg, ctx, t)
 		})
 	}
+	printSystemStats("executing")
 
 	wg.Wait()
 
@@ -689,4 +701,18 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 	for _, v := range task.VersionStores {
 		v.WriteToMultiVersionStore()
 	}
+}
+
+func printSystemStats(desc string) {
+	fmt.Printf("Stage: %s\n", desc)
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	fmt.Printf("Goroutines: %d\n", runtime.NumGoroutine())
+	fmt.Printf("CPUs: %d\n", runtime.NumCPU())
+	fmt.Printf("GOMAXPROCS: %d\n", runtime.GOMAXPROCS(0))
+	fmt.Printf("Threads: %d\n", threadProfile.Count())
+	fmt.Printf("Memory Alloc = %v MiB\n", m.Alloc/1024/1024)
+	fmt.Printf("TotalAlloc = %v MiB\n", m.TotalAlloc/1024/1024)
+	fmt.Printf("Sys = %v MiB\n", m.Sys/1024/1024)
+	fmt.Printf("NumGC = %v\n", m.NumGC)
 }

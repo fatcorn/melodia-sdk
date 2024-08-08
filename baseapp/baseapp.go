@@ -219,6 +219,7 @@ type BaseApp struct {
 	setBlockBloomTransientHandler           sdk.SetBlockBloomTransientHandler
 	getAllNamespacePortsHandler             sdk.GetAllNamespacePortsHandler
 	deliverTxHooks                          []DeliverTxHook
+	concurrencyWorkers                      int
 }
 
 //type NamespaceStoreManager struct {
@@ -310,6 +311,9 @@ func NewBaseApp(
 	app.cdc = codec.NewProtoCodec(codectypes.NewInterfaceRegistry())
 	id := app.cms.LastCommitID()
 	app.finalizeBlockHeight = id.Version
+	if app.concurrencyWorkers == 0 {
+		app.concurrencyWorkers = 60
+	}
 	return app
 }
 
@@ -659,6 +663,11 @@ func (app *BaseApp) AnteHandler() sdk.AnteHandler {
 // Mempool returns the Mempool of the app.
 func (app *BaseApp) Mempool() mempool.Mempool {
 	return app.mempool
+}
+
+// ConcurrencyWorkers return concurrencyWorkers of the app
+func (app *BaseApp) ConcurrencyWorkers() int {
+	return app.concurrencyWorkers
 }
 
 // Init initializes the app. It seals the app, preventing any

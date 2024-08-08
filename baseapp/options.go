@@ -421,3 +421,7 @@ func (app *BaseApp) SetStreamingManager(manager storetypes.StreamingManager) {
 func (app *BaseApp) SetDisableBlockGasMeter(disableBlockGasMeter bool) {
 	app.disableBlockGasMeter = disableBlockGasMeter
 }
+
+func (app *BaseApp) SetConcurrencyWorkers(workers int) {
+	app.concurrencyWorkers = workers
+}
