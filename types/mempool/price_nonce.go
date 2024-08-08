@@ -117,14 +117,17 @@ func (mp *PriceNonceMempool[C]) Insert(_ context.Context, tx sdk.Tx) error {
 	return nil
 }
 func (mp *PriceNonceMempool[C]) Select(context.Context, [][]byte) Iterator {
+	accKeys := mp.GetOrderSenders()
 	// Separate the transactions by account and sort by nonce
 	byNonce := mp.senderTxs
-	for _, accTxs := range byNonce {
+	for _, acc := range accKeys {
+		accTxs := byNonce[acc]
 		sort.Sort(TxByNonce[C](accTxs))
 	}
 	// Initialize a price based heap with the head transactions
 	byPrice := make(TxByPrice[C], 0, len(byNonce))
-	for acc, accTxs := range byNonce {
+	for _, acc := range accKeys {
+		accTxs := byNonce[acc]
 		byPrice = append(byPrice, accTxs[0])
 		byNonce[acc] = accTxs[1:]
 	}
@@ -158,11 +161,15 @@ func (mp *PriceNonceMempool[C]) CountTx() int {
 	return count
 }
 func (mp *PriceNonceMempool[C]) Remove(tx sdk.Tx) error {
-
-	//for _, txs := range mp.txs {
-	//	count += len(txs)
-	//}
 	panic("implement me")
+}
+func (mp *PriceNonceMempool[C]) GetOrderSenders() []string {
+	senders := make([]string, 0, len(mp.senderTxs))
+	for sender, _ := range mp.senderTxs {
+		senders = append(senders, sender)
+	}
+	sort.Strings(senders)
+	return senders
 }
 
 func (mp *PriceNonceMempool[C]) ToTransaction(tx sdk.Tx) (Transaction[C], error) {

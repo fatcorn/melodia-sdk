@@ -1423,7 +1423,7 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 			Offset:    int32(offset),
 		})
 	}
-	app.logger.Info("sortTxs total time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable)
+	app.logger.Info("sortTxs total time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "req-size", len(req.Txs), "req-nsTable", req.NsTable)
 	return &abci.ResponseSortTxs{Txs: sortTxs, NsTable: nsTable}, nil
 }
 
