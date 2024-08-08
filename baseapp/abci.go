@@ -844,8 +844,8 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	events = append(events, defaultDeferredWriteEvents...)
 
 	// calculate time used by scheduler
-	//fmt.Printf("========= Scheduler Time used: %v\n", time.Since(startTime))
-	app.logger.Info("FinalizeBlock", "schedulerTime", time.Since(startTime))
+	fmt.Printf("========= Scheduler Time used: %v\n", time.Since(startTime))
+	//app.logger.Info("FinalizeBlock", "schedulerTime", time.Since(startTime))
 
 	if app.finalizeBlockState.ms.TracingEnabled() {
 		app.finalizeBlockState.ms = app.finalizeBlockState.ms.SetTracingContext(nil).(storetypes.CacheMultiStore)
@@ -929,14 +929,14 @@ func (app *BaseApp) FinalizeBlock(req *abci.RequestFinalizeBlock) (res *abci.Res
 		startTime := time.Now().UnixNano()
 		res.AppHash = app.workingHash()
 		endTime := time.Now().UnixNano()
-		//fmt.Printf("========= WorkingHash Time used: %v\n", time.Duration(endTime-startTime))
-		app.logger.Info("FinalizeBlock", "appHash", fmt.Sprintf("%X", time.Duration(endTime-startTime)))
+		fmt.Printf("========= WorkingHash Time used: %v\n", time.Duration(endTime-startTime))
+		//app.logger.Info("FinalizeBlock", "appHash", fmt.Sprintf("%X", time.Duration(endTime-startTime)))
 
 	}
 	app.finalizeBlockHeight = req.Height
 	finalizeEndTime := time.Now().UnixNano()
-	//fmt.Printf("========= FinalizeBlock Time used: %v\n", time.Duration(finalizeEndTime-finalizeStartTime))
-	app.logger.Info("FinalizeBlock", "time", time.Duration(finalizeEndTime-finalizeStartTime))
+	fmt.Printf("========= FinalizeBlock Time used: %v\n", time.Duration(finalizeEndTime-finalizeStartTime))
+	//app.logger.Info("FinalizeBlock", "time", time.Duration(finalizeEndTime-finalizeStartTime))
 	return res, err
 }
 
