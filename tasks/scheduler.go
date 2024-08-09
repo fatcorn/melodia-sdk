@@ -422,7 +422,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 	start(workerCtx, s.executeCh, workers)
 
 	// validation tasks uses length of tasks to avoid blocking on validation
-	start(workerCtx, s.validateCh, len(tasks))
+	start(workerCtx, s.validateCh, workers)
 
 	//start(workerCtx, s.collectCh, len(tasks))
 
