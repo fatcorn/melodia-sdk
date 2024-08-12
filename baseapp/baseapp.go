@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	cmttime "github.com/cometbft/cometbft/types/time"
 	"math"
 	"sort"
 	"strconv"
@@ -1214,7 +1215,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			anteCtx sdk.Context
 			msCache storetypes.CacheMultiStore
 		)
-
+		now := cmttime.Now()
 		// Branch context before AnteHandler call in case it aborts.
 		// This is required for both CheckTx and DeliverTx.
 		// Ref: https://github.com/cosmos/cosmos-sdk/issues/2772
@@ -1225,7 +1226,10 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 		anteCtx, msCache = app.cacheTxContext(ctx, txBytes)
 		anteCtx = anteCtx.WithEventManager(sdk.NewEventManager())
 		newCtx, err := app.anteHandler(anteCtx, tx, mode == execModeSimulate)
-
+		if mode == execModeSimulate {
+			sleepDuration := cmttime.Now().Sub(now)
+			println("stage1 task: ", ctx.TxIndex(), " time: ", sleepDuration, " from: ", now.String())
+		}
 		if !newCtx.IsZero() {
 			// At this point, newCtx.MultiStore() is a store branch, or something else
 			// replaced by the AnteHandler. We want the original multistore.
@@ -1245,10 +1249,16 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			return gInfo, nil, nil, err
 		}
 
+		now = cmttime.Now()
 		msCache.Write()
 		anteEvents = events.ToABCIEvents()
+		if mode == execModeSimulate {
+			sleepDuration := cmttime.Now().Sub(now)
+			println("stage2 task: ", ctx.TxIndex(), " time: ", sleepDuration, " from: ", now.String())
+		}
 	}
 
+	now := cmttime.Now()
 	if mode == execModeCheck {
 		err = app.mempool.Insert(ctx, tx)
 		if err != nil {
@@ -1266,7 +1276,11 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 				fmt.Errorf("failed to remove tx from mempool: %w", err)
 		}
 	}
-
+	if mode == execModeSimulate {
+		sleepDuration := cmttime.Now().Sub(now)
+		println("stage3 task: ", ctx.TxIndex(), " time: ", sleepDuration, " from: ", now.String())
+	}
+	now = cmttime.Now()
 	// Create a new Context based off of the existing Context with a MultiStore branch
 	// in case message processing fails. At this point, the MultiStore
 	// is a branch of a branch.
@@ -1279,7 +1293,10 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	if err == nil {
 		result, err = app.runMsgs(runMsgCtx, msgs, msgsV2, mode)
 	}
-
+	if mode == execModeSimulate {
+		sleepDuration := cmttime.Now().Sub(now)
+		println("stage4 task: ", ctx.TxIndex(), " time: ", sleepDuration, " from: ", now.String())
+	}
 	// Run optional postHandlers (should run regardless of the execution result).
 	//
 	// Note: If the postHandler fails, we also revert the runMsgs state.
@@ -1300,7 +1317,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 		}
 		result.Events = append(result.Events, newCtx.EventManager().ABCIEvents()...)
 	}
-
+	now = cmttime.Now()
 	if err == nil {
 		if mode == execModeFinalize {
 			// When block gas exceeds, it'll panic and won't commit the cached store.
@@ -1314,7 +1331,10 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			result.Events = append(anteEvents, result.Events...)
 		}
 	}
-
+	if mode == execModeSimulate {
+		sleepDuration := cmttime.Now().Sub(now)
+		println("stage5 task: ", ctx.TxIndex(), " time: ", sleepDuration, " from: ", now.String())
+	}
 	return gInfo, result, anteEvents, err
 }
 
