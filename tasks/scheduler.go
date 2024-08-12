@@ -1,13 +1,23 @@
 package tasks
 
+/*
+#include <pthread.h>
+#include <stdio.h>
+
+void printThreadID() {
+    pthread_t tid = pthread_self();
+    printf("Current Thread ID: %lu\n", (unsigned long)tid);
+}
+*/
+import "C"
 import (
 	"context"
 	"fmt"
+	abci "github.com/cometbft/cometbft/abci/types"
+	cmttime "github.com/cometbft/cometbft/types/time"
 	"runtime"
 	"runtime/pprof"
 	"strconv"
-
-	abci "github.com/cometbft/cometbft/abci/types"
 
 	"cosmossdk.io/store"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -124,6 +134,7 @@ type scheduler struct {
 	modifyLogIndexHandler         sdk.ModifyLogIndexHandler
 	setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler
 	namespaceList                 []uint64
+	threadIds                     []int
 	//tracingInfo        *tracing.Info
 
 }
@@ -153,7 +164,7 @@ func (s *scheduler) invalidateTask(task *deliverTxTask) {
 	}
 }
 
-func start(ctx context.Context, ch chan func(), workers int) {
+func (s *scheduler) start(ctx context.Context, ch chan func(), workers int) {
 	for i := 0; i < workers; i++ {
 		go func() {
 			for {
@@ -161,6 +172,7 @@ func start(ctx context.Context, ch chan func(), workers int) {
 				case <-ctx.Done():
 					return
 				case work := <-ch:
+					//printThreadID()
 					work()
 				}
 			}
@@ -400,7 +412,9 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 	// prefill estimates
 	// This "optimization" path is being disabled because we don't have a strong reason to have it given that it
 	//s.PrefillEstimates(reqs)
+	toTaskStartTime := time.Now()
 	tasks, tasksMap := toTasks(ctx, reqs, s.transactionAddressHandler)
+	fmt.Printf("========= toTasks Time used: %v\n", time.Since(toTaskStartTime))
 	s.allTasks = tasks
 	s.allTasksMap = tasksMap
 	s.executeCh = make(chan func(), len(tasks))
@@ -419,10 +433,10 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 	printSystemStats("before process")
 
 	// execution tasks are limited by workers
-	start(workerCtx, s.executeCh, workers)
+	s.start(workerCtx, s.executeCh, workers)
 
 	// validation tasks uses length of tasks to avoid blocking on validation
-	start(workerCtx, s.validateCh, workers)
+	s.start(workerCtx, s.validateCh, workers)
 
 	//start(workerCtx, s.collectCh, len(tasks))
 
@@ -597,10 +611,15 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 func (s *scheduler) prepareAndRunTask(wg *sync.WaitGroup, ctx sdk.Context, task *deliverTxTask) {
 	//eCtx, eSpan := s.traceSpan(ctx, "SchedulerExecute", task)
 	//defer eSpan.End()
+	defer wg.Done()
 
+	C.printThreadID() // 打印线程ID
+	now := cmttime.Now()
 	task.Ctx = ctx
 	s.executeTask(task)
-	wg.Done()
+
+	sleepDuration := cmttime.Now().Sub(now)
+	println("prepareAndRunTask task: ", task.AbsoluteIndex, " time: ", sleepDuration, " from: ", now.String())
 }
 
 //func (s *scheduler) traceSpan(ctx sdk.Context, name string, task *deliverTxTask) (sdk.Context, trace.Span) {
@@ -675,13 +694,22 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 			task.Increment()
 		}
 	}
+	prepareTaskNow := cmttime.Now()
 
 	s.prepareTask(task)
+	prepareTaskSleepDuration := cmttime.Now().Sub(prepareTaskNow)
+	println("prepareTaskNow task: ", task.AbsoluteIndex, " time: ", prepareTaskSleepDuration, " from: ", prepareTaskNow.String())
 
+	now := cmttime.Now()
 	resp := s.deliverTx(task.Request, task.Ctx)
+	sleepDuration := cmttime.Now().Sub(now)
+	println("deliverTx task: ", task.AbsoluteIndex, " time: ", sleepDuration, " from: ", now.String())
+
 	// close the abort channel
 	close(task.AbortCh)
 	abort, ok := <-task.AbortCh
+
+	estimateNow := cmttime.Now()
 	if ok {
 		// if there is an abort item that means we need to wait on the dependent tx
 		task.SetStatus(statusAborted)
@@ -693,14 +721,19 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 		}
 		return
 	}
+	estimateSleepDuration := cmttime.Now().Sub(estimateNow)
+	println("EstimateSleepDuration task: ", task.AbsoluteIndex, " time: ", estimateSleepDuration, " from: ", estimateNow.String())
 
 	task.SetStatus(statusExecuted)
 	task.Response = resp
 
+	writeNow := cmttime.Now()
 	// write from version store to multiversion stores
 	for _, v := range task.VersionStores {
 		v.WriteToMultiVersionStore()
 	}
+	writeSleepDuration := cmttime.Now().Sub(writeNow)
+	println("WriteToMultiVersionStore task: ", task.AbsoluteIndex, " time: ", writeSleepDuration, " from: ", writeNow.String())
 }
 
 func printSystemStats(desc string) {
