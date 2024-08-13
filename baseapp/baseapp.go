@@ -1226,7 +1226,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 		anteCtx, msCache = app.cacheTxContext(ctx, txBytes)
 		anteCtx = anteCtx.WithEventManager(sdk.NewEventManager())
 		newCtx, err := app.anteHandler(anteCtx, tx, mode == execModeSimulate)
-		if mode == execModeSimulate {
+		if mode == execModeFinalize {
 			sleepDuration := cmttime.Now().Sub(now)
 			println("stage1 task: ", ctx.TxIndex(), " time: ", sleepDuration, " from: ", now.String())
 		}
@@ -1252,7 +1252,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 		now = cmttime.Now()
 		msCache.Write()
 		anteEvents = events.ToABCIEvents()
-		if mode == execModeSimulate {
+		if mode == execModeFinalize {
 			sleepDuration := cmttime.Now().Sub(now)
 			println("stage2 task: ", ctx.TxIndex(), " time: ", sleepDuration, " from: ", now.String())
 		}
@@ -1276,7 +1276,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 				fmt.Errorf("failed to remove tx from mempool: %w", err)
 		}
 	}
-	if mode == execModeSimulate {
+	if mode == execModeFinalize {
 		sleepDuration := cmttime.Now().Sub(now)
 		println("stage3 task: ", ctx.TxIndex(), " time: ", sleepDuration, " from: ", now.String())
 	}
@@ -1293,7 +1293,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	if err == nil {
 		result, err = app.runMsgs(runMsgCtx, msgs, msgsV2, mode)
 	}
-	if mode == execModeSimulate {
+	if mode == execModeFinalize {
 		sleepDuration := cmttime.Now().Sub(now)
 		println("stage4 task: ", ctx.TxIndex(), " time: ", sleepDuration, " from: ", now.String())
 	}
@@ -1331,7 +1331,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			result.Events = append(anteEvents, result.Events...)
 		}
 	}
-	if mode == execModeSimulate {
+	if mode == execModeFinalize {
 		sleepDuration := cmttime.Now().Sub(now)
 		println("stage5 task: ", ctx.TxIndex(), " time: ", sleepDuration, " from: ", now.String())
 	}
