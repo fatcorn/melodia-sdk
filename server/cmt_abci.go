@@ -32,6 +32,10 @@ func (w cometABCIWrapper) InitChain(_ context.Context, req *abci.RequestInitChai
 	return w.app.InitChain(req)
 }
 
+func (w cometABCIWrapper) SortTxs(_ context.Context, req *abci.RequestSortTxs) (*abci.ResponseSortTxs, error) {
+	return w.app.SortTxs(req)
+}
+
 func (w cometABCIWrapper) PrepareProposal(_ context.Context, req *abci.RequestPrepareProposal) (*abci.ResponsePrepareProposal, error) {
 	return w.app.PrepareProposal(req)
 }

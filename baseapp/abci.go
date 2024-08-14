@@ -366,6 +366,28 @@ func (app *BaseApp) CheckTx(req *abci.RequestCheckTx) (*abci.ResponseCheckTx, er
 		Events:    sdk.MarkEventsToIndex(result.Events, app.indexEvents),
 	}, nil
 }
+func (app *BaseApp) SortTxs(req *abci.RequestSortTxs) (resp *abci.ResponseSortTxs, err error) {
+	defer func() {
+		if err := recover(); err != nil {
+			app.logger.Error(
+				"panic recovered in SortTxs",
+				"panic", err,
+			)
+
+			resp = &abci.ResponseSortTxs{Txs: req.Txs, NsTable: req.NsTable}
+		}
+	}()
+	app.checkState.SetContext(app.checkState.Context().
+		WithConsensusParams(app.GetConsensusParams(app.checkState.Context())))
+
+	resp, err = app.sortTxs(app.checkState.Context(), req)
+	if err != nil {
+		app.logger.Error("failed to sort txs", "err", err)
+		return &abci.ResponseSortTxs{Txs: req.Txs, NsTable: req.NsTable}, nil
+	}
+
+	return resp, nil
+}
 
 // PrepareProposal implements the PrepareProposal ABCI method and returns a
 // ResponsePrepareProposal object to the client. The PrepareProposal method is
