@@ -7,6 +7,8 @@ import (
 	"math"
 	"sort"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	cmtdbm "github.com/cometbft/cometbft-db"
@@ -1437,6 +1439,66 @@ func createEvents(cdc codec.Codec, events sdk.Events, msg sdk.Msg, msgV2 protov2
 	}
 
 	return sdk.Events{msgEvent}.AppendEvents(events), nil
+}
+
+func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.ResponseSortTxs, error) {
+	startTime := time.Now()
+
+	sortTxs := make([][]byte, 0)
+	nsMempool := mempool.NewNamespaceMempool()
+	lastOffset := int32(0)
+	var wg sync.WaitGroup
+	for _, entry := range req.NsTable {
+		namespaceTxs := req.Txs[lastOffset:entry.Offset]
+		namespaceId := entry.Namespace
+		lastOffset = entry.Offset
+
+		wg.Add(1)
+		go func(ctx sdk.Context, namespaceTxs [][]byte, namespaceId uint64) {
+			defer wg.Done()
+			singleStartTime := time.Now()
+			for _, txBz := range namespaceTxs {
+				tx, _ := app.TxDecode(txBz)
+				ctx = ctx.WithNamepace(namespaceId)
+				_ = nsMempool.Insert(ctx, tx)
+			}
+			app.logger.Info("sortTxs single namespace insert time", "used", fmt.Sprintf("%v ms", time.Since(singleStartTime).Milliseconds()), "size", len(namespaceTxs), "namespaceId", namespaceId)
+		}(ctx, namespaceTxs, namespaceId)
+	}
+	wg.Wait()
+	nsIterators, nsTxs := nsMempool.SelectWithNsTable(ctx, req.Txs, req.NsTable)
+	offset := 0
+	nsTable := make([]*cmtproto.NamespaceTableEntries, 0)
+
+	for _, nsIterator := range nsIterators {
+		iterator := nsIterator.Iterator
+		namespaceId := nsIterator.NamespaceId
+		// If the iterator is nil use the NoOpMempool, get all namespace txs
+		if iterator == nil {
+			txs := nsTxs[namespaceId]
+			for _, txBz := range txs {
+				sortTxs = append(sortTxs, txBz)
+				offset++
+			}
+		} else {
+			for iterator != nil {
+				tx := iterator.Tx()
+				txBz, err := app.TxEncode(tx)
+				if err != nil {
+					return nil, err
+				}
+				sortTxs = append(sortTxs, txBz)
+				offset++
+				iterator = iterator.Next()
+			}
+		}
+		nsTable = append(nsTable, &cmtproto.NamespaceTableEntries{
+			Namespace: namespaceId,
+			Offset:    int32(offset),
+		})
+	}
+	app.logger.Info("sortTxs total time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "req-size", len(req.Txs), "req-nsTable", req.NsTable)
+	return &abci.ResponseSortTxs{Txs: sortTxs, NsTable: nsTable}, nil
 }
 
 // PrepareProposalVerifyTx performs transaction verification when a proposer is

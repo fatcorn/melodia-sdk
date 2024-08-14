@@ -27,6 +27,8 @@ type validator struct {
 	Details           string
 	CommissionRates   types.CommissionRates
 	MinSelfDelegation math.Int
+	SignPubKey        string
+	Signature         string
 }
 
 func parseAndValidateValidatorJSON(cdc codec.Codec, path string) (validator, error) {
@@ -42,6 +44,8 @@ func parseAndValidateValidatorJSON(cdc codec.Codec, path string) (validator, err
 		CommissionMaxRate   string          `json:"commission-max-rate"`
 		CommissionMaxChange string          `json:"commission-max-change-rate"`
 		MinSelfDelegation   string          `json:"min-self-delegation"`
+		SignPubKey          string          `json:"sign-pubkey"`
+		Signature           string          `json:"signature"`
 	}
 
 	contents, err := os.ReadFile(path)
@@ -98,6 +102,8 @@ func parseAndValidateValidatorJSON(cdc codec.Codec, path string) (validator, err
 		Details:           v.Details,
 		CommissionRates:   commissionRates,
 		MinSelfDelegation: minSelfDelegation,
+		SignPubKey:        v.SignPubKey,
+		Signature:         v.Signature,
 	}, nil
 }
 
