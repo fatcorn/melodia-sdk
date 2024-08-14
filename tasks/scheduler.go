@@ -436,7 +436,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 	workerCtx, cancel := context.WithCancel(ctx.Context())
 	defer cancel()
 
-	printSystemStats("before process")
+	//printSystemStats("before process")
 
 	// execution tasks are limited by workers
 	s.start(workerCtx, s.executeCh, workers)
@@ -505,7 +505,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 	ctx.Logger().Info("occ scheduler", "height", ctx.BlockHeight(), "txs", len(tasks), "latency_ms", time.Since(startTime).Milliseconds(), "retries", s.metrics.retries, "maxIncarnation", s.maxIncarnation, "iterations", iterations, "sync", s.synchronous, "workers", workers)
 
 	res, evmTxs := s.collectResponses(ctx, tasks)
-	printSystemStats("after process")
+	//printSystemStats("after process")
 
 	s.setMsgsHandler(ctx, evmTxs)
 
@@ -601,7 +601,7 @@ func (s *scheduler) validateAll(ctx sdk.Context, tasks []*deliverTxTask) ([]*del
 			}
 		})
 	}
-	printSystemStats("validating")
+	//printSystemStats("validating")
 
 	wg.Wait()
 
@@ -623,7 +623,7 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 	wg.Add(len(tasks))
 
 	for _, task := range tasks {
-		if task.IsStatus(statusWaiting) {
+		if !s.synchronous && task.IsStatus(statusWaiting) {
 			continue
 		}
 		t := task
@@ -631,7 +631,7 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 			s.prepareAndRunTask(wg, ctx, t)
 		})
 	}
-	printSystemStats("executing")
+	//printSystemStats("executing")
 
 	wg.Wait()
 
