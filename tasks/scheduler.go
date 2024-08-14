@@ -15,8 +15,10 @@ import (
 	"fmt"
 	abci "github.com/cometbft/cometbft/abci/types"
 	cmttime "github.com/cometbft/cometbft/types/time"
+	"os"
 	"runtime"
 	"runtime/pprof"
+	"runtime/trace"
 	"strconv"
 
 	"cosmossdk.io/store"
@@ -231,7 +233,7 @@ func (s *scheduler) findConflicts(task *deliverTxTask) (bool, []int) {
 func toTasks(ctx sdk.Context, reqs []*sdk.DeliverTxEntry, addressHandler sdk.TransactionAddressHandler) ([]*deliverTxTask, map[int]*deliverTxTask) {
 	tasksMap := make(map[int]*deliverTxTask)
 	allTasks := make([]*deliverTxTask, 0, len(reqs))
-	addressToTxIndex := make(map[string]int)
+	addressToTxIndex := make(map[string][]int)
 
 	for _, r := range reqs {
 		task := &deliverTxTask{
@@ -250,17 +252,21 @@ func toTasks(ctx sdk.Context, reqs []*sdk.DeliverTxEntry, addressHandler sdk.Tra
 
 		// find dependencies based on cosmos addresses
 		for _, cosmosAddress := range cosmosAddresses {
-			if lastTxIndex, found := addressToTxIndex[cosmosAddress]; found {
-				dependencies[lastTxIndex] = struct{}{}
+			if lastTxIndexes, found := addressToTxIndex[cosmosAddress]; found {
+				for _, lastTxIndex := range lastTxIndexes {
+					dependencies[lastTxIndex] = struct{}{}
+				}
 			}
-			addressToTxIndex[cosmosAddress] = r.AbsoluteIndex
+			addressToTxIndex[cosmosAddress] = append(addressToTxIndex[cosmosAddress], r.AbsoluteIndex)
 		}
 		// find dependencies based on evm addresses
 		for _, evmAddress := range evmAddresses {
-			if lastTxIndex, found := addressToTxIndex[evmAddress]; found {
-				dependencies[lastTxIndex] = struct{}{}
+			if lastTxIndexes, found := addressToTxIndex[evmAddress]; found {
+				for _, lastTxIndex := range lastTxIndexes {
+					dependencies[lastTxIndex] = struct{}{}
+				}
 			}
-			addressToTxIndex[evmAddress] = r.AbsoluteIndex
+			addressToTxIndex[evmAddress] = append(addressToTxIndex[evmAddress], r.AbsoluteIndex)
 		}
 
 		// if there are dependencies, set the task to waiting
@@ -453,6 +459,14 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 			toExecute = tasks[startIdx:]
 		}
 
+		// 打开文件保存 trace 数据
+		f, _ := os.Create("/tmp/trace1.out")
+
+		// 开始 trace
+		if err := trace.Start(f); err != nil {
+			panic(err)
+		}
+
 		// execute sets statuses of tasks to either executed or aborted
 		if err := s.executeAll(ctx, toExecute); err != nil {
 			return nil, err
@@ -462,6 +476,8 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 		// note this processes ALL tasks, not just those recently executed
 		var err error
 		toExecute, err = s.validateAll(ctx, tasks)
+		// 停止 trace
+		trace.Stop()
 		if err != nil {
 			return nil, err
 		}
@@ -596,6 +612,9 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 	wg.Add(len(tasks))
 
 	for _, task := range tasks {
+		if task.IsStatus(statusWaiting) {
+			continue
+		}
 		t := task
 		s.DoExecute(func() {
 			s.prepareAndRunTask(wg, ctx, t)
