@@ -471,6 +471,17 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 		if err := s.executeAll(ctx, toExecute); err != nil {
 			return nil, err
 		}
+		//writeNow := cmttime.Now()
+		// write from version store to multiversion stores
+		for _, task := range toExecute {
+			if task.IsStatus(statusExecuted) {
+				for _, v := range task.VersionStores {
+					v.WriteToMultiVersionStore()
+				}
+			}
+		}
+		//writeSleepDuration := cmttime.Now().Sub(writeNow)
+		//println("WriteToMultiVersionStore time: ", writeSleepDuration, " from: ", writeNow.String())
 
 		// validate returns any that should be re-executed
 		// note this processes ALL tasks, not just those recently executed
@@ -746,13 +757,13 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 	task.SetStatus(statusExecuted)
 	task.Response = resp
 
-	writeNow := cmttime.Now()
-	// write from version store to multiversion stores
-	for _, v := range task.VersionStores {
-		v.WriteToMultiVersionStore()
-	}
-	writeSleepDuration := cmttime.Now().Sub(writeNow)
-	println("WriteToMultiVersionStore task: ", task.AbsoluteIndex, " time: ", writeSleepDuration, " from: ", writeNow.String())
+	//writeNow := cmttime.Now()
+	//// write from version store to multiversion stores
+	//for _, v := range task.VersionStores {
+	//	v.WriteToMultiVersionStore()
+	//}
+	//writeSleepDuration := cmttime.Now().Sub(writeNow)
+	//println("WriteToMultiVersionStore task: ", task.AbsoluteIndex, " time: ", writeSleepDuration, " from: ", writeNow.String())
 }
 
 func printSystemStats(desc string) {
