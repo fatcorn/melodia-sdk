@@ -14,7 +14,6 @@ import (
 	"context"
 	"fmt"
 	abci "github.com/cometbft/cometbft/abci/types"
-	cmttime "github.com/cometbft/cometbft/types/time"
 	"os"
 	"runtime"
 	"runtime/pprof"
@@ -644,12 +643,12 @@ func (s *scheduler) prepareAndRunTask(wg *sync.WaitGroup, ctx sdk.Context, task 
 	defer wg.Done()
 
 	C.printThreadID() // 打印线程ID
-	now := cmttime.Now()
+	//now := cmttime.Now()
 	task.Ctx = ctx
 	s.executeTask(task)
 
-	sleepDuration := cmttime.Now().Sub(now)
-	println("prepareAndRunTask task: ", task.AbsoluteIndex, " time: ", sleepDuration, " from: ", now.String())
+	//sleepDuration := cmttime.Now().Sub(now)
+	//println("prepareAndRunTask task: ", task.AbsoluteIndex, " time: ", sleepDuration, " from: ", now.String())
 }
 
 //func (s *scheduler) traceSpan(ctx sdk.Context, name string, task *deliverTxTask) (sdk.Context, trace.Span) {
@@ -724,22 +723,22 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 			task.Increment()
 		}
 	}
-	prepareTaskNow := cmttime.Now()
+	//prepareTaskNow := cmttime.Now()
 
 	s.prepareTask(task)
-	prepareTaskSleepDuration := cmttime.Now().Sub(prepareTaskNow)
-	println("prepareTaskNow task: ", task.AbsoluteIndex, " time: ", prepareTaskSleepDuration, " from: ", prepareTaskNow.String())
+	//prepareTaskSleepDuration := cmttime.Now().Sub(prepareTaskNow)
+	//println("prepareTaskNow task: ", task.AbsoluteIndex, " time: ", prepareTaskSleepDuration, " from: ", prepareTaskNow.String())
 
-	now := cmttime.Now()
+	//now := cmttime.Now()
 	resp := s.deliverTx(task.Request, task.Ctx)
-	sleepDuration := cmttime.Now().Sub(now)
-	println("deliverTx task: ", task.AbsoluteIndex, " time: ", sleepDuration, " from: ", now.String())
+	//sleepDuration := cmttime.Now().Sub(now)
+	//println("deliverTx task: ", task.AbsoluteIndex, " time: ", sleepDuration, " from: ", now.String())
 
 	// close the abort channel
 	close(task.AbortCh)
 	abort, ok := <-task.AbortCh
 
-	estimateNow := cmttime.Now()
+	//estimateNow := cmttime.Now()
 	if ok {
 		// if there is an abort item that means we need to wait on the dependent tx
 		task.SetStatus(statusAborted)
@@ -751,8 +750,8 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 		}
 		return
 	}
-	estimateSleepDuration := cmttime.Now().Sub(estimateNow)
-	println("EstimateSleepDuration task: ", task.AbsoluteIndex, " time: ", estimateSleepDuration, " from: ", estimateNow.String())
+	//estimateSleepDuration := cmttime.Now().Sub(estimateNow)
+	//println("EstimateSleepDuration task: ", task.AbsoluteIndex, " time: ", estimateSleepDuration, " from: ", estimateNow.String())
 
 	task.SetStatus(statusExecuted)
 	task.Response = resp
