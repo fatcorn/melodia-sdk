@@ -458,10 +458,10 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 			toExecute = tasks[startIdx:]
 		}
 
-		// 打开文件保存 trace 数据
+		// set trace store file
 		f, _ := os.Create("/tmp/trace1.out")
 
-		// 开始 trace
+		// start trace
 		if err := trace.Start(f); err != nil {
 			panic(err)
 		}
@@ -486,7 +486,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 		// note this processes ALL tasks, not just those recently executed
 		var err error
 		toExecute, err = s.validateAll(ctx, tasks)
-		// 停止 trace
+		// end trace
 		trace.Stop()
 		if err != nil {
 			return nil, err
