@@ -434,7 +434,15 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 
 	workerCtx, cancel := context.WithCancel(ctx.Context())
 	defer cancel()
+	// set trace store file
+	now := time.Now().UnixMilli()
+	nowTime := strconv.Itoa(int(now))
+	f, _ := os.Create("trace" + nowTime + ".out")
 
+	// start trace
+	if err := trace.Start(f); err != nil {
+		panic(err)
+	}
 	//printSystemStats("before process")
 
 	// execution tasks are limited by workers
@@ -458,14 +466,6 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 			toExecute = tasks[startIdx:]
 		}
 
-		// set trace store file
-		f, _ := os.Create("/tmp/trace1.out")
-
-		// start trace
-		if err := trace.Start(f); err != nil {
-			panic(err)
-		}
-
 		// execute sets statuses of tasks to either executed or aborted
 		if err := s.executeAll(ctx, toExecute); err != nil {
 			return nil, err
@@ -486,8 +486,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 		// note this processes ALL tasks, not just those recently executed
 		var err error
 		toExecute, err = s.validateAll(ctx, tasks)
-		// end trace
-		trace.Stop()
+
 		if err != nil {
 			return nil, err
 		}
@@ -499,6 +498,8 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 	for _, mv := range s.multiVersionStores {
 		mv.WriteLatestToStore()
 	}
+	// end trace
+	trace.Stop()
 	s.metrics.maxIncarnation = s.maxIncarnation
 
 	ctx.Logger().Info("occ scheduler", "height", ctx.BlockHeight(), "txs", len(tasks), "latency_ms", time.Since(startTime).Milliseconds(), "retries", s.metrics.retries, "maxIncarnation", s.maxIncarnation, "iterations", iterations, "sync", s.synchronous, "workers", workers)

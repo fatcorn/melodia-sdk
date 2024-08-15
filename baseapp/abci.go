@@ -7,7 +7,9 @@ import (
 	"github.com/cometbft/cometbft/crypto/merkle"
 	consensustypes "github.com/cometbft/cometbft/types"
 	"github.com/cosmos/cosmos-sdk/tasks"
+	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1423,8 +1425,17 @@ func (app *BaseApp) DeliverTxBatch(ctx sdk.Context, req sdk.DeliverTxBatchReques
 		return sdk.DeliverTxBatchResponse{Results: responses}
 	}
 
+	workers := 100
+	workersEnv := os.Getenv("WORKERS")
+	if workersEnv != "" {
+		workersInt, err := strconv.Atoi(workersEnv)
+		if err != nil {
+			ctx.Logger().Error("Invalid WORKERS value: %s\n", workersEnv)
+		}
+		workers = workersInt
+	}
 	// avoid overhead for empty batches
-	scheduler := tasks.NewScheduler(2000, app.deliverTx, app.transactionAddressHandler, app.setMsgsHandler, app.modifyLogIndexHandler, app.setBlockBloomTransientHandler, namespaceList)
+	scheduler := tasks.NewScheduler(workers, app.deliverTx, app.transactionAddressHandler, app.setMsgsHandler, app.modifyLogIndexHandler, app.setBlockBloomTransientHandler, namespaceList)
 	txRes, err := scheduler.ProcessAll(ctx, req.TxEntries)
 
 	if err != nil {
