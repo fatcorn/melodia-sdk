@@ -197,7 +197,11 @@ func (s *scheduler) DoExecute(work func()) {
 	s.executeCh <- work
 }
 
-func (s *scheduler) DoCollect(work func()) {
+func (s *scheduler) DoWrite(work func()) {
+	if s.synchronous {
+		work()
+		return
+	}
 	s.collectCh <- work
 }
 
@@ -424,6 +428,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 	s.allTasksMap = tasksMap
 	s.executeCh = make(chan func(), len(tasks))
 	s.validateCh = make(chan func(), len(tasks))
+	s.collectCh = make(chan func(), 1)
 	//defer s.emitMetrics()
 
 	// default to number of tasks if workers is negative or 0 by this point
@@ -451,7 +456,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 	// validation tasks uses length of tasks to avoid blocking on validation
 	s.start(workerCtx, s.validateCh, workers)
 
-	//start(workerCtx, s.collectCh, len(tasks))
+	s.start(workerCtx, s.collectCh, 1)
 
 	toExecute := tasks
 	for !allValidated(tasks) {
@@ -647,6 +652,12 @@ func (s *scheduler) prepareAndRunTask(wg *sync.WaitGroup, ctx sdk.Context, task 
 	//now := cmttime.Now()
 	task.Ctx = ctx
 	s.executeTask(task)
+
+	s.DoWrite(func() {
+		for _, v := range task.VersionStores {
+			v.WriteToMultiVersionStore()
+		}
+	})
 
 	//sleepDuration := cmttime.Now().Sub(now)
 	//println("prepareAndRunTask task: ", task.AbsoluteIndex, " time: ", sleepDuration, " from: ", now.String())
