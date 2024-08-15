@@ -642,7 +642,6 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 
 	return nil
 }
-
 func (s *scheduler) prepareAndRunTask(wg *sync.WaitGroup, ctx sdk.Context, task *deliverTxTask) {
 	//eCtx, eSpan := s.traceSpan(ctx, "SchedulerExecute", task)
 	//defer eSpan.End()
@@ -653,7 +652,9 @@ func (s *scheduler) prepareAndRunTask(wg *sync.WaitGroup, ctx sdk.Context, task 
 	task.Ctx = ctx
 	s.executeTask(task)
 
+	wg.Add(1)
 	s.DoWrite(func() {
+		defer wg.Done()
 		for _, v := range task.VersionStores {
 			v.WriteToMultiVersionStore()
 		}
