@@ -220,6 +220,7 @@ type BaseApp struct {
 	modifyLogIndexHandler                   sdk.ModifyLogIndexHandler
 	setBlockBloomTransientHandler           sdk.SetBlockBloomTransientHandler
 	getAllNamespacePortsHandler             sdk.GetAllNamespacePortsHandler
+	contractStaticAnalysisHandler           sdk.ContractStaticAnalysisHandler
 	deliverTxHooks                          []DeliverTxHook
 	concurrencyWorkers                      int
 }

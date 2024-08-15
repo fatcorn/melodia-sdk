@@ -116,6 +116,8 @@ type AddCosmosEventsToEVMReceiptIfApplicable func(ctx Context, tx Tx, checksum [
 
 type GetAllNamespacePortsHandler func(ctx Context) []consensustypes.Namespace
 
+type ContractStaticAnalysisHandler func(ctx Context, tx Tx, sender string)
+
 // MsgTypeURL returns the TypeURL of a `sdk.Msg`.
 var MsgTypeURL = codectypes.MsgTypeURL
 

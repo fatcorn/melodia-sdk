@@ -355,6 +355,10 @@ func (app *BaseApp) SetGetAllNamespacePortsHandler(getAllNamespacePortsHandler s
 	app.getAllNamespacePortsHandler = getAllNamespacePortsHandler
 }
 
+func (app *BaseApp) SetContractStaticAnalysisHandler(contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler) {
+	app.contractStaticAnalysisHandler = contractStaticAnalysisHandler
+}
+
 // SetQueryMultiStore set a alternative MultiStore implementation to support grpc query service.
 //
 // Ref: https://github.com/cosmos/cosmos-sdk/issues/13317

@@ -114,6 +114,7 @@ func (dt *deliverTxTask) Increment() {
 // Scheduler processes tasks concurrently
 type Scheduler interface {
 	ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]abci.ExecTxResult, error)
+	SetSchedulerHandlers(transactionAddressHandler sdk.TransactionAddressHandler, setMsgsHandler sdk.SetMsgsHandler, modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler)
 }
 
 // tx []byte
@@ -134,6 +135,7 @@ type scheduler struct {
 	setMsgsHandler                sdk.SetMsgsHandler
 	modifyLogIndexHandler         sdk.ModifyLogIndexHandler
 	setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler
+	contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler
 	namespaceList                 []uint64
 	threadIds                     []int
 	//tracingInfo        *tracing.Info
@@ -142,19 +144,23 @@ type scheduler struct {
 
 // NewScheduler creates a new scheduler
 // func NewScheduler(workers int, deliverTxFunc func(ctx sdk.Context, req []byte, tx sdk.Tx, checksum [32]byte) (res abci.ExecTxResult)) Scheduler {
-func NewScheduler(workers int, deliverTxFunc func(tx []byte, opts ...sdk.Context) *abci.ExecTxResult, transactionAddressHandler sdk.TransactionAddressHandler, setMsgsHandler sdk.SetMsgsHandler, modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, namespaceList []uint64) Scheduler {
+func NewScheduler(workers int, deliverTxFunc func(tx []byte, opts ...sdk.Context) *abci.ExecTxResult, namespaceList []uint64) Scheduler {
 	threadProfile = pprof.Lookup("threadcreate")
 
 	return &scheduler{
-		workers:                       workers,
-		deliverTx:                     deliverTxFunc,
-		metrics:                       &schedulerMetrics{},
-		transactionAddressHandler:     transactionAddressHandler,
-		setMsgsHandler:                setMsgsHandler,
-		modifyLogIndexHandler:         modifyLogIndexHandler,
-		setBlockBloomTransientHandler: setBlockBloomTransientHandler,
-		namespaceList:                 namespaceList,
+		workers:       workers,
+		deliverTx:     deliverTxFunc,
+		metrics:       &schedulerMetrics{},
+		namespaceList: namespaceList,
 	}
+}
+
+func (s *scheduler) SetSchedulerHandlers(transactionAddressHandler sdk.TransactionAddressHandler, setMsgsHandler sdk.SetMsgsHandler, modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler) {
+	s.transactionAddressHandler = transactionAddressHandler
+	s.setMsgsHandler = setMsgsHandler
+	s.modifyLogIndexHandler = modifyLogIndexHandler
+	s.setBlockBloomTransientHandler = setBlockBloomTransientHandler
+	s.contractStaticAnalysisHandler = contractStaticAnalysisHandler
 }
 
 func (s *scheduler) invalidateTask(task *deliverTxTask) {
@@ -320,6 +326,23 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) ([
 					e.Attributes[i].Value = newLog
 					txLogs = append(txLogs, newLog)
 					logSize++
+				}
+			} else if e.Type == "message" {
+				var isEVM bool
+				for _, attr := range e.Attributes {
+					if attr.Key == "module" && attr.Value == "evm" {
+						isEVM = true
+						break
+					}
+				}
+
+				if isEVM {
+					for _, attr := range e.Attributes {
+						if attr.Key == "sender" {
+							s.contractStaticAnalysisHandler(ctx, t.SdkTx, attr.Value)
+							break
+						}
+					}
 				}
 			}
 		}
