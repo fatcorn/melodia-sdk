@@ -647,7 +647,7 @@ func (s *scheduler) prepareAndRunTask(wg *sync.WaitGroup, ctx sdk.Context, task 
 	//defer eSpan.End()
 	defer wg.Done()
 
-	C.printThreadID() // 打印线程ID
+	C.printThreadID()
 	//now := cmttime.Now()
 	task.Ctx = ctx
 	s.executeTask(task)
