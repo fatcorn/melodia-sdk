@@ -181,6 +181,22 @@ func (s *scheduler) start(ctx context.Context, ch chan func(), workers int) {
 	}
 }
 
+func (s *scheduler) startVal(ctx context.Context, ch chan func(), workers int) {
+	for i := 0; i < workers; i++ {
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case work := <-ch:
+					//printThreadID()
+					work()
+				}
+			}
+		}()
+	}
+}
+
 func (s *scheduler) DoValidate(work func()) {
 	if s.synchronous {
 		work()
@@ -195,6 +211,7 @@ func (s *scheduler) DoExecute(work func()) {
 		return
 	}
 	s.executeCh <- work
+	//go work()
 }
 
 func (s *scheduler) DoWrite(work func()) {
@@ -453,10 +470,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 	// execution tasks are limited by workers
 	s.start(workerCtx, s.executeCh, workers)
 
-	// validation tasks uses length of tasks to avoid blocking on validation
-	s.start(workerCtx, s.validateCh, workers)
-
-	s.start(workerCtx, s.collectCh, 1)
+	//s.start(workerCtx, s.collectCh, 1)
 
 	toExecute := tasks
 	for !allValidated(tasks) {
@@ -477,18 +491,22 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 		}
 		//writeNow := cmttime.Now()
 		// write from version store to multiversion stores
-		for _, task := range toExecute {
-			if task.IsStatus(statusExecuted) {
-				for _, v := range task.VersionStores {
-					v.WriteToMultiVersionStore()
-				}
-			}
-		}
+
+		//for _, task := range toExecute {
+		//	if task.IsStatus(statusExecuted) {
+		//		for _, v := range task.VersionStores {
+		//			v.WriteToMultiVersionStore()
+		//		}
+		//	}
+		//}
 		//writeSleepDuration := cmttime.Now().Sub(writeNow)
 		//println("WriteToMultiVersionStore time: ", writeSleepDuration, " from: ", writeNow.String())
 
 		// validate returns any that should be re-executed
 		// note this processes ALL tasks, not just those recently executed
+		// validation tasks uses length of tasks to avoid blocking on validation
+		s.startVal(workerCtx, s.validateCh, len(tasks))
+
 		var err error
 		toExecute, err = s.validateAll(ctx, tasks)
 
@@ -647,18 +665,18 @@ func (s *scheduler) prepareAndRunTask(wg *sync.WaitGroup, ctx sdk.Context, task 
 	//defer eSpan.End()
 	defer wg.Done()
 
-	C.printThreadID() // 打印线程ID
+	//C.printThreadID() // 打印线程ID
 	//now := cmttime.Now()
 	task.Ctx = ctx
 	s.executeTask(task)
 
-	wg.Add(1)
-	s.DoWrite(func() {
-		defer wg.Done()
-		for _, v := range task.VersionStores {
-			v.WriteToMultiVersionStore()
-		}
-	})
+	//wg.Add(1)
+	//s.DoWrite(func() {
+	//	defer wg.Done()
+	//	for _, v := range task.VersionStores {
+	//		v.WriteToMultiVersionStore()
+	//	}
+	//})
 
 	//sleepDuration := cmttime.Now().Sub(now)
 	//println("prepareAndRunTask task: ", task.AbsoluteIndex, " time: ", sleepDuration, " from: ", now.String())
@@ -743,8 +761,11 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 	//println("prepareTaskNow task: ", task.AbsoluteIndex, " time: ", prepareTaskSleepDuration, " from: ", prepareTaskNow.String())
 
 	//now := cmttime.Now()
+	t0 := time.Now()
+	//now := cmttime.Now()
 	resp := s.deliverTx(task.Request, task.Ctx)
-	//sleepDuration := cmttime.Now().Sub(now)
+	t1 := time.Now()
+	//println("deliver tx=============", "start time", t0.String(), "end time", t1.String(), "sub", t1.Sub(t0).String()) //sleepDuration := cmttime.Now().Sub(now)
 	//println("deliverTx task: ", task.AbsoluteIndex, " time: ", sleepDuration, " from: ", now.String())
 
 	// close the abort channel
@@ -774,6 +795,9 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 	//for _, v := range task.VersionStores {
 	//	v.WriteToMultiVersionStore()
 	//}
+	for _, v := range task.VersionStores {
+		v.WriteToMultiVersionStore()
+	}
 	//writeSleepDuration := cmttime.Now().Sub(writeNow)
 	//println("WriteToMultiVersionStore task: ", task.AbsoluteIndex, " time: ", writeSleepDuration, " from: ", writeNow.String())
 }
