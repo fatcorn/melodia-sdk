@@ -484,7 +484,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 			}
 			toExecute = tasks[startIdx:]
 		}
-		printSystemStats("start ")
+		//printSystemStats("start ")
 		// execute sets statuses of tasks to either executed or aborted
 		if err := s.executeAll(ctx, toExecute); err != nil {
 			return nil, err
@@ -800,6 +800,9 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 	for _, v := range task.VersionStores {
 		v.WriteToMultiVersionStore()
 	}
+	if task.AbsoluteIndex%50 == 0 {
+		printSystemStats("task==")
+	}
 	//writeSleepDuration := cmttime.Now().Sub(writeNow)
 	//println("WriteToMultiVersionStore task: ", task.AbsoluteIndex, " time: ", writeSleepDuration, " from: ", writeNow.String())
 }
@@ -833,6 +836,6 @@ func printCpu() {
 }
 
 func GetCpuPercent(perCpu bool) []float64 {
-	percent, _ := cpu.Percent(time.Second, perCpu)
+	percent, _ := cpu.Percent(time.Millisecond, perCpu)
 	return percent
 }
