@@ -15,6 +15,7 @@ import (
 	"fmt"
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/shirou/gopsutil/cpu"
+	"github.com/shirou/gopsutil/docker"
 	"os"
 	"runtime"
 	"runtime/pprof"
@@ -831,6 +832,7 @@ func printSystemStats(desc string) {
 }
 
 func printCpu() {
+	GetDockerCpuPercent()
 	percent := GetCpuPercent(true)
 	for ind, per := range percent {
 		sprintf := fmt.Sprintf("%.2f", per)
@@ -845,5 +847,20 @@ func printCpu() {
 
 func GetCpuPercent(perCpu bool) []float64 {
 	percent, _ := cpu.Percent(time.Millisecond, perCpu)
+
 	return percent
+}
+
+func GetDockerCpuPercent() {
+	stats, err := docker.GetDockerStat()
+	if err != nil {
+		println("err", "", err.Error())
+	}
+	for _, stat := range stats {
+		cpuDocker, err := docker.CgroupCPUDocker(stat.ContainerID)
+		if err != nil {
+			println("err", "", err.Error())
+		}
+		println("docker cpu", "docker id", stat.String(), "cpu", cpuDocker.String())
+	}
 }
