@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	abci "github.com/cometbft/cometbft/abci/types"
+	"github.com/shirou/gopsutil/cpu"
 	"os"
 	"runtime"
 	"runtime/pprof"
@@ -483,7 +484,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 			}
 			toExecute = tasks[startIdx:]
 		}
-
+		printSystemStats("start ")
 		// execute sets statuses of tasks to either executed or aborted
 		if err := s.executeAll(ctx, toExecute); err != nil {
 			return nil, err
@@ -508,6 +509,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 
 		var err error
 		toExecute, err = s.validateAll(ctx, tasks)
+		printSystemStats("end ")
 
 		if err != nil {
 			return nil, err
@@ -779,6 +781,7 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 		task.AppendDependencies([]int{abort.DependentTxIdx})
 		// write from version store to multiversion stores
 		for _, v := range task.VersionStores {
+			println(" set estimates =======", "index", abort.DependentTxIdx)
 			v.WriteEstimatesToMultiVersionStore()
 		}
 		return
@@ -813,4 +816,23 @@ func printSystemStats(desc string) {
 	fmt.Printf("TotalAlloc = %v MiB\n", m.TotalAlloc/1024/1024)
 	fmt.Printf("Sys = %v MiB\n", m.Sys/1024/1024)
 	fmt.Printf("NumGC = %v\n", m.NumGC)
+	printCpu()
+}
+
+func printCpu() {
+	percent := GetCpuPercent(true)
+	for ind, per := range percent {
+		sprintf := fmt.Sprintf("%.2f", per)
+		println("Cpu Percent", "index", ind, "percent", sprintf+"%")
+	}
+	totalPercent := GetCpuPercent(false)
+	for _, per := range totalPercent {
+		sprintf := fmt.Sprintf("%.2f", per)
+		println("Cpu Percent", "Total percent", sprintf+"%")
+	}
+}
+
+func GetCpuPercent(perCpu bool) []float64 {
+	percent, _ := cpu.Percent(time.Second, perCpu)
+	return percent
 }
