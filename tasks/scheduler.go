@@ -211,7 +211,6 @@ func (s *scheduler) DoExecute(work func()) {
 		return
 	}
 	s.executeCh <- work
-	//go work()
 }
 
 func (s *scheduler) DoWrite(work func()) {
@@ -761,10 +760,10 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 	//println("prepareTaskNow task: ", task.AbsoluteIndex, " time: ", prepareTaskSleepDuration, " from: ", prepareTaskNow.String())
 
 	//now := cmttime.Now()
-	t0 := time.Now()
+	//t0 := time.Now()
 	//now := cmttime.Now()
 	resp := s.deliverTx(task.Request, task.Ctx)
-	t1 := time.Now()
+	//t1 := time.Now()
 	//println("deliver tx=============", "start time", t0.String(), "end time", t1.String(), "sub", t1.Sub(t0).String()) //sleepDuration := cmttime.Now().Sub(now)
 	//println("deliverTx task: ", task.AbsoluteIndex, " time: ", sleepDuration, " from: ", now.String())
 
