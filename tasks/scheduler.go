@@ -857,7 +857,7 @@ func printCpu() {
 		log.Fatal(err)
 	}
 
-	cpuPercent, err := p.Percent(time.Millisecond * 300)
+	cpuPercent, err := p.Percent(time.Millisecond * 10)
 	if err != nil {
 		log.Fatal(err)
 	}
