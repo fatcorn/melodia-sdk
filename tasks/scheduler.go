@@ -843,8 +843,6 @@ func printCpu() {
 	var pid int
 	for _, p := range processes {
 		if strings.Contains(p.Executable(), "melod") {
-			fmt.Println(p.Executable())
-			fmt.Println(p.Pid())
 			pid = p.Pid()
 		}
 	}
