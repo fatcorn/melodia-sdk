@@ -14,13 +14,17 @@ import (
 	"context"
 	"fmt"
 	abci "github.com/cometbft/cometbft/abci/types"
+	"github.com/mitchellh/go-ps"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/docker"
+	"github.com/shirou/gopsutil/process"
+	"log"
 	"os"
 	"runtime"
 	"runtime/pprof"
 	"runtime/trace"
 	"strconv"
+	"strings"
 
 	"cosmossdk.io/store"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -832,17 +836,38 @@ func printSystemStats(desc string) {
 }
 
 func printCpu() {
-	GetDockerCpuPercent()
-	percent := GetCpuPercent(true)
-	for ind, per := range percent {
-		sprintf := fmt.Sprintf("%.2f", per)
-		println("Cpu Percent", "index", ind, "percent", sprintf+"%")
+	//GetDockerCpuPercent()
+	processes, err2 := ps.Processes()
+	if err2 != nil {
+		log.Fatalf("%v", err2)
 	}
-	totalPercent := GetCpuPercent(false)
-	for _, per := range totalPercent {
-		sprintf := fmt.Sprintf("%.2f", per)
-		println("Cpu Percent", "Total percent", sprintf+"%")
+	var pid int
+	for _, p := range processes {
+		if strings.Contains(p.Executable(), "melod") {
+			fmt.Println(p.Executable())
+			fmt.Println(p.Pid())
+			pid = p.Pid()
+		}
 	}
+
+	p, err := process.NewProcess(int32(pid))
+	if err != nil {
+		log.Fatal(err)
+	}
+	counts, err2 := cpu.Counts(true)
+	if err2 != nil {
+		log.Fatalf("%v\n", err2)
+	}
+	println("print cpu count", "counts=", counts, "pid", pid, "start time", time.Now().String())
+	cpuPercent, err := p.Percent(time.Millisecond * 300)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("PID: %d\n", pid)
+	fmt.Printf("CPU percent: %.2f%%\n", cpuPercent)
+	println("print end", "pid", pid, "end time", time.Now().String())
+
 }
 
 func GetCpuPercent(perCpu bool) []float64 {
