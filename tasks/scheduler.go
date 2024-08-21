@@ -813,9 +813,9 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 	//println("WriteToMultiVersionStore task: ", task.AbsoluteIndex, " time: ", writeSleepDuration, " from: ", writeNow.String())
 }
 func printCpuCount() {
-	for i := 0; i < 12; i++ {
-		printSystemStats(string(i))
-		time.Sleep(300 * time.Millisecond)
+	for i := 0; i < 35; i++ {
+		printCpu()
+		time.Sleep(100 * time.Millisecond)
 	}
 
 }
@@ -836,7 +836,6 @@ func printSystemStats(desc string) {
 }
 
 func printCpu() {
-	//GetDockerCpuPercent()
 	processes, err2 := ps.Processes()
 	if err2 != nil {
 		log.Fatalf("%v", err2)
@@ -854,19 +853,13 @@ func printCpu() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	counts, err2 := cpu.Counts(true)
-	if err2 != nil {
-		log.Fatalf("%v\n", err2)
-	}
-	println("print cpu count", "counts=", counts, "pid", pid, "start time", time.Now().String())
+
 	cpuPercent, err := p.Percent(time.Millisecond * 300)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Printf("PID: %d\n", pid)
 	fmt.Printf("CPU percent: %.2f%%\n", cpuPercent)
-	println("print end", "pid", pid, "end time", time.Now().String())
 
 }
 
