@@ -464,7 +464,12 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 	// set trace store file
 	now := time.Now().UnixMilli()
 	nowTime := strconv.Itoa(int(now))
-	f, _ := os.Create("trace" + nowTime + ".out")
+	tracePath := "trace" + nowTime + ".out"
+	tracePathEnv := os.Getenv("tracePath")
+	if tracePathEnv != "" {
+		tracePath = tracePathEnv + tracePath
+	}
+	f, _ := os.Create(tracePath)
 
 	// start trace
 	if err := trace.Start(f); err != nil {
