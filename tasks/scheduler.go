@@ -14,11 +14,17 @@ import (
 	"context"
 	"fmt"
 	abci "github.com/cometbft/cometbft/abci/types"
+	"github.com/mitchellh/go-ps"
+	"github.com/shirou/gopsutil/cpu"
+	"github.com/shirou/gopsutil/docker"
+	"github.com/shirou/gopsutil/process"
+	"log"
 	"os"
 	"runtime"
 	"runtime/pprof"
 	"runtime/trace"
 	"strconv"
+	"strings"
 
 	"cosmossdk.io/store"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -187,6 +193,22 @@ func (s *scheduler) start(ctx context.Context, ch chan func(), workers int) {
 	}
 }
 
+func (s *scheduler) startVal(ctx context.Context, ch chan func(), workers int) {
+	for i := 0; i < workers; i++ {
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case work := <-ch:
+					//printThreadID()
+					work()
+				}
+			}
+		}()
+	}
+}
+
 func (s *scheduler) DoValidate(work func()) {
 	if s.synchronous {
 		work()
@@ -203,7 +225,11 @@ func (s *scheduler) DoExecute(work func()) {
 	s.executeCh <- work
 }
 
-func (s *scheduler) DoCollect(work func()) {
+func (s *scheduler) DoWrite(work func()) {
+	if s.synchronous {
+		work()
+		return
+	}
 	s.collectCh <- work
 }
 
@@ -447,6 +473,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 	s.allTasksMap = tasksMap
 	s.executeCh = make(chan func(), len(tasks))
 	s.validateCh = make(chan func(), len(tasks))
+	s.collectCh = make(chan func(), 1)
 	//defer s.emitMetrics()
 
 	// default to number of tasks if workers is negative or 0 by this point
@@ -457,16 +484,26 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 
 	workerCtx, cancel := context.WithCancel(ctx.Context())
 	defer cancel()
+	// set trace store file
+	now := time.Now().UnixMilli()
+	nowTime := strconv.Itoa(int(now))
+	tracePath := "trace" + nowTime + ".out"
+	tracePathEnv := os.Getenv("tracePath")
+	if tracePathEnv != "" {
+		tracePath = tracePathEnv + tracePath
+	}
+	f, _ := os.Create(tracePath)
 
+	// start trace
+	if err := trace.Start(f); err != nil {
+		panic(err)
+	}
 	//printSystemStats("before process")
 
 	// execution tasks are limited by workers
 	s.start(workerCtx, s.executeCh, workers)
 
-	// validation tasks uses length of tasks to avoid blocking on validation
-	s.start(workerCtx, s.validateCh, workers)
-
-	//start(workerCtx, s.collectCh, len(tasks))
+	//s.start(workerCtx, s.collectCh, 1)
 
 	toExecute := tasks
 	for !allValidated(tasks) {
@@ -480,37 +517,34 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 			}
 			toExecute = tasks[startIdx:]
 		}
-
-		// set trace store file
-		f, _ := os.Create("/tmp/trace1.out")
-
-		// start trace
-		if err := trace.Start(f); err != nil {
-			panic(err)
-		}
-
+		go printCpuCount()
+		//printSystemStats("start ")
 		// execute sets statuses of tasks to either executed or aborted
 		if err := s.executeAll(ctx, toExecute); err != nil {
 			return nil, err
 		}
 		//writeNow := cmttime.Now()
 		// write from version store to multiversion stores
-		for _, task := range toExecute {
-			if task.IsStatus(statusExecuted) {
-				for _, v := range task.VersionStores {
-					v.WriteToMultiVersionStore()
-				}
-			}
-		}
+
+		//for _, task := range toExecute {
+		//	if task.IsStatus(statusExecuted) {
+		//		for _, v := range task.VersionStores {
+		//			v.WriteToMultiVersionStore()
+		//		}
+		//	}
+		//}
 		//writeSleepDuration := cmttime.Now().Sub(writeNow)
 		//println("WriteToMultiVersionStore time: ", writeSleepDuration, " from: ", writeNow.String())
 
 		// validate returns any that should be re-executed
 		// note this processes ALL tasks, not just those recently executed
+		// validation tasks uses length of tasks to avoid blocking on validation
+		s.startVal(workerCtx, s.validateCh, len(tasks))
+
 		var err error
 		toExecute, err = s.validateAll(ctx, tasks)
-		// end trace
-		trace.Stop()
+		printSystemStats("end ")
+
 		if err != nil {
 			return nil, err
 		}
@@ -522,6 +556,8 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 	for _, mv := range s.multiVersionStores {
 		mv.WriteLatestToStore()
 	}
+	// end trace
+	trace.Stop()
 	s.metrics.maxIncarnation = s.maxIncarnation
 
 	ctx.Logger().Info("occ scheduler", "height", ctx.BlockHeight(), "txs", len(tasks), "latency_ms", time.Since(startTime).Milliseconds(), "retries", s.metrics.retries, "maxIncarnation", s.maxIncarnation, "iterations", iterations, "sync", s.synchronous, "workers", workers)
@@ -659,16 +695,23 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 
 	return nil
 }
-
 func (s *scheduler) prepareAndRunTask(wg *sync.WaitGroup, ctx sdk.Context, task *deliverTxTask) {
 	//eCtx, eSpan := s.traceSpan(ctx, "SchedulerExecute", task)
 	//defer eSpan.End()
 	defer wg.Done()
 
-	C.printThreadID() // 打印线程ID
+	//C.printThreadID() // 打印线程ID
 	//now := cmttime.Now()
 	task.Ctx = ctx
 	s.executeTask(task)
+
+	//wg.Add(1)
+	//s.DoWrite(func() {
+	//	defer wg.Done()
+	//	for _, v := range task.VersionStores {
+	//		v.WriteToMultiVersionStore()
+	//	}
+	//})
 
 	//sleepDuration := cmttime.Now().Sub(now)
 	//println("prepareAndRunTask task: ", task.AbsoluteIndex, " time: ", sleepDuration, " from: ", now.String())
@@ -753,8 +796,11 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 	//println("prepareTaskNow task: ", task.AbsoluteIndex, " time: ", prepareTaskSleepDuration, " from: ", prepareTaskNow.String())
 
 	//now := cmttime.Now()
+	//t0 := time.Now()
+	//now := cmttime.Now()
 	resp := s.deliverTx(task.Request, task.Ctx)
-	//sleepDuration := cmttime.Now().Sub(now)
+	//t1 := time.Now()
+	//println("deliver tx=============", "start time", t0.String(), "end time", t1.String(), "sub", t1.Sub(t0).String()) //sleepDuration := cmttime.Now().Sub(now)
 	//println("deliverTx task: ", task.AbsoluteIndex, " time: ", sleepDuration, " from: ", now.String())
 
 	// close the abort channel
@@ -769,6 +815,7 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 		task.AppendDependencies([]int{abort.DependentTxIdx})
 		// write from version store to multiversion stores
 		for _, v := range task.VersionStores {
+			println(" set estimates =======", "index", abort.DependentTxIdx)
 			v.WriteEstimatesToMultiVersionStore()
 		}
 		return
@@ -784,8 +831,21 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 	//for _, v := range task.VersionStores {
 	//	v.WriteToMultiVersionStore()
 	//}
+	for _, v := range task.VersionStores {
+		v.WriteToMultiVersionStore()
+	}
+	//if task.AbsoluteIndex%50 == 0 {
+	//	printSystemStats("task==")
+	//}
 	//writeSleepDuration := cmttime.Now().Sub(writeNow)
 	//println("WriteToMultiVersionStore task: ", task.AbsoluteIndex, " time: ", writeSleepDuration, " from: ", writeNow.String())
+}
+func printCpuCount() {
+	for i := 0; i < 35; i++ {
+		printCpu()
+		time.Sleep(100 * time.Millisecond)
+	}
+
 }
 
 func printSystemStats(desc string) {
@@ -800,4 +860,53 @@ func printSystemStats(desc string) {
 	fmt.Printf("TotalAlloc = %v MiB\n", m.TotalAlloc/1024/1024)
 	fmt.Printf("Sys = %v MiB\n", m.Sys/1024/1024)
 	fmt.Printf("NumGC = %v\n", m.NumGC)
+	printCpu()
+}
+
+func printCpu() {
+	processes, err2 := ps.Processes()
+	if err2 != nil {
+		log.Fatalf("%v", err2)
+	}
+	var pid int
+	for _, p := range processes {
+		if strings.Contains(p.Executable(), "melod") {
+			pid = p.Pid()
+		}
+	}
+
+	p, err := process.NewProcess(int32(pid))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	cpuPercent, err := p.Percent(time.Millisecond * 10)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("CPU percent: %.2f%%\n", cpuPercent)
+
+}
+
+func GetCpuPercent(perCpu bool) []float64 {
+	percent, _ := cpu.Percent(time.Millisecond, perCpu)
+
+	return percent
+}
+
+func GetDockerCpuPercent() {
+	stats, err := docker.GetDockerStat()
+	if err != nil {
+		println("get docker stat err", "", err.Error())
+	}
+	for _, stat := range stats {
+		println("docker cpu", "docker id", stat.String())
+
+		cpuDocker, err := docker.CgroupCPUDocker(stat.ContainerID)
+		if err != nil {
+			println("get cpu docker err", "", err.Error())
+		}
+		println("docker cpu", "docker id", stat.String(), "cpu", cpuDocker.String())
+	}
 }
