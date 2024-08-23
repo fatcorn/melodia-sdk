@@ -358,6 +358,13 @@ func (app *BaseApp) SetGetAllNamespacePortsHandler(getAllNamespacePortsHandler s
 func (app *BaseApp) SetContractStaticAnalysisHandler(contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler) {
 	app.contractStaticAnalysisHandler = contractStaticAnalysisHandler
 }
+func (app *BaseApp) SetContractStaticAnalysisResultHandler(contractStaticAnalysisResultHandler sdk.ContractStaticAnalysisResultHandler) {
+	app.contractStaticAnalysisResultHandler = contractStaticAnalysisResultHandler
+}
+
+func (app *BaseApp) SetTxAccountInfoHandler(txAccountInfoHandler sdk.TxAccountInfoHandler) {
+	app.txAccountInfoHandler = txAccountInfoHandler
+}
 
 // SetQueryMultiStore set a alternative MultiStore implementation to support grpc query service.
 //

@@ -46,19 +46,15 @@ func NewDefaultSignerExtractionAdapter() DefaultSignerExtractionAdapter {
 // GetSigners implements the Adapter interface
 func (DefaultSignerExtractionAdapter) GetSigners(tx sdk.Tx) ([]SignerData, error) {
 
-	for _, msg := range tx.GetMsgs() {
-		sigTx, ok := msg.(sdk.SignerMsg)
-		if ok {
-			//sigs := sigTx.GetSigners()
-			feeTx, isFeeTx := tx.(sdk.FeeTx)
-			if isFeeTx {
-				signers := make([]SignerData, 0)
-				signers = append(signers, NewSignerData(
-					feeTx.FeePayer(),
-					sigTx.GetNonce(),
-				))
-				return signers, nil
-			}
+	accTx, isAccTx := tx.(sdk.TxWithAccountInfo)
+	if isAccTx {
+		if accTx.GetFrom() != nil && len(accTx.GetFrom().Bytes()) > 0 {
+			signers := make([]SignerData, 0)
+			signers = append(signers, NewSignerData(
+				accTx.GetFrom(),
+				accTx.GetNonce(),
+			))
+			return signers, nil
 		}
 	}
 

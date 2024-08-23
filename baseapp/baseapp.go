@@ -221,6 +221,8 @@ type BaseApp struct {
 	setBlockBloomTransientHandler           sdk.SetBlockBloomTransientHandler
 	getAllNamespacePortsHandler             sdk.GetAllNamespacePortsHandler
 	contractStaticAnalysisHandler           sdk.ContractStaticAnalysisHandler
+	contractStaticAnalysisResultHandler     sdk.ContractStaticAnalysisResultHandler
+	txAccountInfoHandler                    sdk.TxAccountInfoHandler
 	deliverTxHooks                          []DeliverTxHook
 	concurrencyWorkers                      int
 }
@@ -1445,43 +1447,122 @@ func createEvents(cdc codec.Codec, events sdk.Events, msg sdk.Msg, msgV2 protov2
 func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.ResponseSortTxs, error) {
 	startTime := time.Now()
 
-	sortTxs := make([][]byte, 0)
-	nsMempool := mempool.NewNamespaceMempool()
-	lastOffset := int32(0)
-	var wg sync.WaitGroup
-	for _, entry := range req.NsTable {
-		namespaceTxs := req.Txs[lastOffset:entry.Offset]
-		namespaceId := entry.Namespace
-		lastOffset = entry.Offset
-
-		wg.Add(1)
-		go func(ctx sdk.Context, namespaceTxs [][]byte, namespaceId uint64) {
+	var (
+		sortTxs            = make([][]byte, 0)
+		lastOffset         = int32(0)
+		wg                 sync.WaitGroup
+		nsMempool          = mempool.NewNamespaceMempool()
+		nsMempoolInsertTxs = func(ctx sdk.Context, namespaceTxs [][]byte, namespaceId uint64) {
 			defer wg.Done()
 			singleStartTime := time.Now()
 			for _, txBz := range namespaceTxs {
-				tx, _ := app.TxDecode(txBz)
+				tx, err := app.TxDecode(txBz)
+				if err != nil {
+					continue
+				}
 				ctx = ctx.WithNamepace(namespaceId)
 				_ = nsMempool.Insert(ctx, tx)
 			}
 			app.logger.Info("sortTxs single namespace insert time", "used", fmt.Sprintf("%v ms", time.Since(singleStartTime).Milliseconds()), "size", len(namespaceTxs), "namespaceId", namespaceId)
-		}(ctx, namespaceTxs, namespaceId)
+		}
+	)
+	for _, entry := range req.NsTable {
+		namespaceTxs := req.Txs[lastOffset:entry.Offset]
+		namespaceId := entry.Namespace
+		lastOffset = entry.Offset
+		wg.Add(1)
+		go nsMempoolInsertTxs(ctx, namespaceTxs, namespaceId)
 	}
 	wg.Wait()
+
 	nsIterators, nsTxs := nsMempool.SelectWithNsTable(ctx, req.Txs, req.NsTable)
-	offset := 0
-	nsTable := make([]*cmtproto.NamespaceTableEntries, 0)
+	var (
+		offset  = 0
+		nsTable = make([]*cmtproto.NamespaceTableEntries, 0)
+		orders  = &cmtproto.Orders{
+			NsTransactionOrders: &cmtproto.NsTransactionOrders{
+				Entries: make([]*cmtproto.NsTransactionOrderEntry, 0)},
+			NsInterChainTransactionOrders: &cmtproto.NsInterChainTransactionOrders{
+				Entries: make([]*cmtproto.NsInterChainTransactionOrderEntry, 0),
+			},
+		}
+		staticAnalysisResult = &sync.Map{}
+	)
+	if app.contractStaticAnalysisResultHandler != nil {
+		staticAnalysisResult = app.contractStaticAnalysisResultHandler(ctx)
+	}
 
 	for _, nsIterator := range nsIterators {
 		iterator := nsIterator.Iterator
 		namespaceId := nsIterator.NamespaceId
+
+		// Static analysis
+		var (
+			fromIndexMap          = make(map[string]int)
+			toIndexMap            = make(map[string]int)
+			staticToSerialIndexes = make([]int32, 0)
+			staticToSerialIndex   int32
+			nsTransactionIndexes  = make([]*cmtproto.NsTransactionIndexes, 0)
+			txIndex               = 0
+		)
+		handleNsTransactionOrders := func(txBz []byte) {
+			// Static analysis
+			tx, _ := app.TxDecode(txBz)
+			from, to := app.txAccountInfoHandler(tx)
+			//1、from the same must be serial
+			if idx, exists := fromIndexMap[from]; exists {
+				nsTransactionIndexes[idx].Indexes = append(nsTransactionIndexes[idx].Indexes, int32(txIndex))
+				txIndex++
+				return
+			}
+			//2、to the same must be serial
+			if to != "" {
+				if idx, exists := toIndexMap[to]; exists {
+					nsTransactionIndexes[idx].Indexes = append(nsTransactionIndexes[idx].Indexes, int32(txIndex))
+					txIndex++
+					return
+				}
+				//3、to contract static analysis must be serial
+				if staticToSerial, exists := staticAnalysisResult.Load(to); exists {
+					if !staticToSerial.(bool) {
+						if len(staticToSerialIndexes) > 0 {
+							staticToSerialIndexes = append(staticToSerialIndexes, int32(txIndex))
+							nsTransactionIndexes[staticToSerialIndex].Indexes = staticToSerialIndexes
+						} else {
+							staticToSerialIndexes = append(staticToSerialIndexes, int32(txIndex))
+							nsTransactionIndexes = append(nsTransactionIndexes, &cmtproto.NsTransactionIndexes{
+								Indexes: staticToSerialIndexes,
+							})
+							staticToSerialIndex = int32(len(nsTransactionIndexes) - 1)
+						}
+						txIndex++
+						return
+					}
+				}
+			}
+			indexes := make([]int32, 1)
+			indexes[0] = int32(txIndex)
+			newIndex := &cmtproto.NsTransactionIndexes{Indexes: indexes}
+			nsTransactionIndexes = append(nsTransactionIndexes, newIndex)
+			fromIndexMap[from] = len(nsTransactionIndexes) - 1
+			if to != "" {
+				toIndexMap[to] = len(nsTransactionIndexes) - 1
+			}
+			txIndex++
+		}
+
 		// If the iterator is nil use the NoOpMempool, get all namespace txs
 		if iterator == nil {
 			txs := nsTxs[namespaceId]
 			for _, txBz := range txs {
+
 				sortTxs = append(sortTxs, txBz)
 				offset++
+
+				handleNsTransactionOrders(txBz)
 			}
 		} else {
+
 			for iterator != nil {
 				tx := iterator.Tx()
 				txBz, err := app.TxEncode(tx)
@@ -1491,15 +1572,21 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 				sortTxs = append(sortTxs, txBz)
 				offset++
 				iterator = iterator.Next()
+
+				handleNsTransactionOrders(txBz)
 			}
 		}
 		nsTable = append(nsTable, &cmtproto.NamespaceTableEntries{
 			Namespace: namespaceId,
 			Offset:    int32(offset),
 		})
+		orders.NsTransactionOrders.Entries = append(orders.NsTransactionOrders.Entries, &cmtproto.NsTransactionOrderEntry{
+			Namespace: namespaceId,
+			Indexes:   nsTransactionIndexes,
+		})
 	}
-	app.logger.Info("sortTxs total time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "req-size", len(req.Txs), "req-nsTable", req.NsTable)
-	return &abci.ResponseSortTxs{Txs: sortTxs, NsTable: nsTable}, nil
+	app.logger.Info("sortTxs total time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "orders", orders)
+	return &abci.ResponseSortTxs{Txs: sortTxs, NsTable: nsTable, Orders: orders}, nil
 }
 
 // PrepareProposalVerifyTx performs transaction verification when a proposer is

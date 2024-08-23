@@ -144,6 +144,9 @@ message AuthInfo {
   //
   // Since: cosmos-sdk 0.46
   Tip tip = 3 [deprecated = true];
+
+
+  AccountInfo account_info = 4;
 }
 
 // SignerInfo describes the public key and signing mode of a single top-level
@@ -257,4 +260,10 @@ message AuxSignerData {
   cosmos.tx.signing.v1beta1.SignMode mode = 3;
   // sig is the signature of the sign doc.
   bytes sig = 4;
+}
+
+message AccountInfo {
+  string from = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  string to = 2 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  uint64 nonce = 3;
 }
