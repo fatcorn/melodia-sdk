@@ -89,7 +89,7 @@ func (nsm *NamespaceMempool) Init(ctx context.Context) Mempool {
 	pool, init := nsm.pools[namespaceId]
 	if !init {
 		// If the namespaceId does not exist, initialize it
-		sortMode := types2.SortModeNonce
+		sortMode := types2.SortModeGasPrice
 		if sdkCtx.ConsensusParams().Mempool != nil && len(sdkCtx.ConsensusParams().Mempool.Sort) > 0 {
 			poolSort := make(map[string]string)
 			_ = json.Unmarshal([]byte(sdkCtx.ConsensusParams().Mempool.Sort), &poolSort)
@@ -101,10 +101,8 @@ func (nsm *NamespaceMempool) Init(ctx context.Context) Mempool {
 			pool = DefaultPriceNonceMempool()
 		case types2.SortModeQueue:
 			pool = NoOpMempool{}
-		case types2.SortModeNonce:
-			pool = NewSenderNonceMempool()
 		default:
-			pool = NewSenderNonceMempool()
+			pool = DefaultPriceNonceMempool()
 		}
 		nsm.pools[namespaceId] = pool
 	}

@@ -14,7 +14,6 @@ type (
 
 const (
 	SortModeGasPrice SortMode = "gas"
-	SortModeNonce    SortMode = "nonce"
 	SortModeQueue    SortMode = "queue"
 )
 
@@ -22,14 +21,12 @@ func CheckSortMode(sortMode SortMode) bool {
 	switch sortMode {
 	case SortModeGasPrice:
 		return true
-	case SortModeNonce:
-		return true
 	case SortModeQueue:
 		return true
 	}
 	return false
 }
 func GetAllSortModeToString() string {
-	str := SortModeGasPrice + "," + SortModeNonce + "," + SortModeQueue
+	str := SortModeGasPrice + "," + SortModeQueue
 	return string(str)
 }
