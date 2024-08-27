@@ -123,6 +123,7 @@ type GetAllNamespacePortsHandler func(ctx Context) []consensustypes.Namespace
 type ContractStaticAnalysisHandler func(ctx Context, tx Tx, sender string)
 
 type ContractStaticAnalysisResultHandler func(ctx Context) *sync.Map
+type IsEVMTxHandler func(ctx Context, tx Tx) bool
 
 // MsgTypeURL returns the TypeURL of a `sdk.Msg`.
 var MsgTypeURL = codectypes.MsgTypeURL

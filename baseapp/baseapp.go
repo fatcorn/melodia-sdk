@@ -222,6 +222,7 @@ type BaseApp struct {
 	getAllNamespacePortsHandler             sdk.GetAllNamespacePortsHandler
 	contractStaticAnalysisHandler           sdk.ContractStaticAnalysisHandler
 	contractStaticAnalysisResultHandler     sdk.ContractStaticAnalysisResultHandler
+	isEVMTxHandler                          sdk.IsEVMTxHandler
 	txAccountInfoHandler                    sdk.TxAccountInfoHandler
 	deliverTxHooks                          []DeliverTxHook
 	concurrencyWorkers                      int
@@ -1487,6 +1488,7 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 			},
 		}
 		staticAnalysisResult = &sync.Map{}
+		txIndex              = 0
 	)
 	if app.contractStaticAnalysisResultHandler != nil {
 		staticAnalysisResult = app.contractStaticAnalysisResultHandler(ctx)
@@ -1503,7 +1505,6 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 			staticToSerialIndexes = make([]int32, 0)
 			staticToSerialIndex   int32
 			nsTransactionIndexes  = make([]*cmtproto.NsTransactionIndexes, 0)
-			txIndex               = 0
 		)
 		handleNsTransactionOrders := func(txBz []byte) {
 			// Static analysis

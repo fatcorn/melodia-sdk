@@ -331,6 +331,10 @@ func (app *BaseApp) SetTransactionAddressHandler(transactionAddressHandler sdk.T
 	app.transactionAddressHandler = transactionAddressHandler
 }
 
+func (app *BaseApp) SetIsEVMTxHandler(isEVMTxHandler sdk.IsEVMTxHandler) {
+	app.isEVMTxHandler = isEVMTxHandler
+}
+
 func (app *BaseApp) SetWriteDeferredBalancesHandler(writeDeferredBalancesHandler sdk.WriteDeferredBalancesHandler) {
 	app.writeDeferredBalancesHandler = writeDeferredBalancesHandler
 }
