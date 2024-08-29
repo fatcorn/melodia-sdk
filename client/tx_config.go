@@ -50,6 +50,7 @@ type (
 		SetTimeoutHeight(height uint64)
 		SetFeeGranter(feeGranter sdk.AccAddress)
 		AddAuxSignerData(tx.AuxSignerData) error
+		SetAccountInfo(accountInfo tx.AccountInfo)
 	}
 
 	// ExtendedTxBuilder extends the TxBuilder interface,

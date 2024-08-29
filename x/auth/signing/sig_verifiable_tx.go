@@ -24,4 +24,5 @@ type Tx interface {
 	types.FeeTx
 	types.TxWithTimeoutHeight
 	types.HasValidateBasic
+	types.TxWithAccountInfo
 }

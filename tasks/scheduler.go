@@ -12,9 +12,10 @@ void printThreadID() {
 import "C"
 import (
 	"context"
+	"cosmossdk.io/store"
 	"fmt"
 	abci "github.com/cometbft/cometbft/abci/types"
-	"github.com/mitchellh/go-ps"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/docker"
 	"github.com/shirou/gopsutil/process"
@@ -23,6 +24,7 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"runtime/trace"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -120,7 +122,8 @@ func (dt *deliverTxTask) Increment() {
 
 // Scheduler processes tasks concurrently
 type Scheduler interface {
-	ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]abci.ExecTxResult, error)
+	ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]abci.ExecTxResult, error)
+	SetSchedulerHandlers(transactionAddressHandler sdk.TransactionAddressHandler, setMsgsHandler sdk.SetMsgsHandler, modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler, isEVMTxHandler sdk.IsEVMTxHandler)
 }
 
 // tx []byte
@@ -141,6 +144,8 @@ type scheduler struct {
 	setMsgsHandler                sdk.SetMsgsHandler
 	modifyLogIndexHandler         sdk.ModifyLogIndexHandler
 	setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler
+	contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler
+	isEVMTxHandler                sdk.IsEVMTxHandler
 	namespaceList                 []uint64
 	threadIds                     []int
 	//tracingInfo        *tracing.Info
@@ -149,19 +154,23 @@ type scheduler struct {
 
 // NewScheduler creates a new scheduler
 // func NewScheduler(workers int, deliverTxFunc func(ctx sdk.Context, req []byte, tx sdk.Tx, checksum [32]byte) (res abci.ExecTxResult)) Scheduler {
-func NewScheduler(workers int, deliverTxFunc func(tx []byte, opts ...sdk.Context) *abci.ExecTxResult, transactionAddressHandler sdk.TransactionAddressHandler, setMsgsHandler sdk.SetMsgsHandler, modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, namespaceList []uint64) Scheduler {
+func NewScheduler(workers int, deliverTxFunc func(tx []byte, opts ...sdk.Context) *abci.ExecTxResult, namespaceList []uint64) Scheduler {
 	threadProfile = pprof.Lookup("threadcreate")
 
 	return &scheduler{
-		workers:                       workers,
-		deliverTx:                     deliverTxFunc,
-		metrics:                       &schedulerMetrics{},
-		transactionAddressHandler:     transactionAddressHandler,
-		setMsgsHandler:                setMsgsHandler,
-		modifyLogIndexHandler:         modifyLogIndexHandler,
-		setBlockBloomTransientHandler: setBlockBloomTransientHandler,
-		namespaceList:                 namespaceList,
+		workers:       workers,
+		deliverTx:     deliverTxFunc,
+		metrics:       &schedulerMetrics{},
+		namespaceList: namespaceList,
 	}
+}
+func (s *scheduler) SetSchedulerHandlers(transactionAddressHandler sdk.TransactionAddressHandler, setMsgsHandler sdk.SetMsgsHandler, modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler, isEVMTxHandler sdk.IsEVMTxHandler) {
+	s.transactionAddressHandler = transactionAddressHandler
+	s.setMsgsHandler = setMsgsHandler
+	s.modifyLogIndexHandler = modifyLogIndexHandler
+	s.setBlockBloomTransientHandler = setBlockBloomTransientHandler
+	s.contractStaticAnalysisHandler = contractStaticAnalysisHandler
+	s.isEVMTxHandler = isEVMTxHandler
 }
 
 func (s *scheduler) invalidateTask(task *deliverTxTask) {
@@ -218,7 +227,6 @@ func (s *scheduler) DoExecute(work func()) {
 		return
 	}
 	s.executeCh <- work
-	//go work()
 }
 
 func (s *scheduler) DoWrite(work func()) {
@@ -227,7 +235,6 @@ func (s *scheduler) DoWrite(work func()) {
 		return
 	}
 	s.collectCh <- work
-	//go work()
 }
 
 func (s *scheduler) findConflicts(task *deliverTxTask) (bool, []int) {
@@ -258,13 +265,16 @@ func (s *scheduler) findConflicts(task *deliverTxTask) (bool, []int) {
 	return valid, conflicts
 }
 
-func toTasks(ctx sdk.Context, reqs []*sdk.DeliverTxEntry, addressHandler sdk.TransactionAddressHandler) ([]*deliverTxTask, map[int]*deliverTxTask) {
+func toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest, addressHandler sdk.TransactionAddressHandler) ([]*deliverTxTask, map[int]*deliverTxTask) {
+	reqs := req.TxEntries
+	orders := req.Orders
 	tasksMap := make(map[int]*deliverTxTask)
 	allTasks := make([]*deliverTxTask, 0, len(reqs))
 	addressToTxIndex := make(map[string][]int)
+	totalTask := len(reqs)
 
 	totalTask := len(reqs)
-	for _, r := range reqs {
+	addTxTask := func(dependIdx int, r *sdk.DeliverTxEntry, status status) {
 		task := &deliverTxTask{
 			Request:       r.Request,
 			SdkTx:         r.SdkTx,
@@ -273,42 +283,39 @@ func toTasks(ctx sdk.Context, reqs []*sdk.DeliverTxEntry, addressHandler sdk.Tra
 			Status:        statusPending,
 			Dependencies:  map[int]struct{}{},
 			TotalTask:     totalTask,
+			IsEVMTx:       false,
+
 			//TxTracer:      r.TxTracer,
 		}
 
-		isEVMTx, cosmosAddresses, evmAddresses := addressHandler(ctx, r.SdkTx)
-		task.IsEVMTx = isEVMTx
-		dependencies := map[int]struct{}{}
-
-		// find dependencies based on cosmos addresses
-		for _, cosmosAddress := range cosmosAddresses {
-			if lastTxIndexes, found := addressToTxIndex[cosmosAddress]; found {
-				for _, lastTxIndex := range lastTxIndexes {
-					dependencies[lastTxIndex] = struct{}{}
-				}
-			}
-			addressToTxIndex[cosmosAddress] = append(addressToTxIndex[cosmosAddress], r.AbsoluteIndex)
-		}
-		// find dependencies based on evm addresses
-		for _, evmAddress := range evmAddresses {
-			if lastTxIndexes, found := addressToTxIndex[evmAddress]; found {
-				for _, lastTxIndex := range lastTxIndexes {
-					dependencies[lastTxIndex] = struct{}{}
-				}
-			}
-			addressToTxIndex[evmAddress] = append(addressToTxIndex[evmAddress], r.AbsoluteIndex)
-		}
-
 		// if there are dependencies, set the task to waiting
-		if len(dependencies) > 0 {
+		if status == statusWaiting {
+			dependencies := map[int]struct{}{}
+			dependencies[dependIdx] = struct{}{}
 			task.Status = statusWaiting
 			task.Dependencies = dependencies
 		}
-
 		tasksMap[r.AbsoluteIndex] = task
 		allTasks = append(allTasks, task)
-
 	}
+
+	if orders.NsTransactionOrders != nil {
+		for _, orderEntry := range orders.NsTransactionOrders.Entries {
+			for _, idxes := range orderEntry.Indexes {
+				for i, idx := range idxes.Indexes {
+					if i > 0 {
+						addTxTask(int(idxes.Indexes[i-1]), reqs[idx], statusWaiting)
+					} else {
+						addTxTask(-1, reqs[idx], statusPending)
+					}
+				}
+			}
+		}
+	}
+	if len(allTasks) != len(reqs) {
+		panic(fmt.Errorf("toTasks NsTransactionOrders total.Size(%s) != txs.Size(%s)", len(allTasks), len(reqs)))
+	}
+
 	return allTasks, tasksMap
 }
 
@@ -326,6 +333,8 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) ([
 
 	for _, t := range tasks {
 		res = append(res, *t.Response)
+
+		t.IsEVMTx = s.isEVMTxHandler(ctx, t.SdkTx)
 
 		if !t.IsEVMTx {
 			continue
@@ -351,6 +360,23 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) ([
 					e.Attributes[i].Value = newLog
 					txLogs = append(txLogs, newLog)
 					logSize++
+				}
+			} else if e.Type == "message" {
+				var isEVM bool
+				for _, attr := range e.Attributes {
+					if attr.Key == "module" && attr.Value == "evm" {
+						isEVM = true
+						break
+					}
+				}
+
+				if isEVM {
+					for _, attr := range e.Attributes {
+						if attr.Key == "sender" {
+							s.contractStaticAnalysisHandler(ctx, t.SdkTx, attr.Value)
+							break
+						}
+					}
 				}
 			}
 		}
@@ -446,7 +472,7 @@ type schedulerMetrics struct {
 //	telemetry.IncrCounter(float32(s.metrics.maxIncarnation), "scheduler", "incarnations")
 //}
 
-func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]abci.ExecTxResult, error) {
+func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]abci.ExecTxResult, error) {
 	startTime := time.Now()
 	var iterations int
 	// initialize mutli-version stores if they haven't been initialized yet
@@ -455,7 +481,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 	// This "optimization" path is being disabled because we don't have a strong reason to have it given that it
 	//s.PrefillEstimates(reqs)
 	toTaskStartTime := time.Now()
-	tasks, tasksMap := toTasks(ctx, reqs, s.transactionAddressHandler)
+	tasks, tasksMap := toTasks(ctx, req, s.transactionAddressHandler)
 	fmt.Printf("========= toTasks Time used: %v\n", time.Since(toTaskStartTime))
 	s.allTasks = tasks
 	s.allTasksMap = tasksMap

@@ -850,7 +850,7 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 
 	finalizeCtx := app.getContext(execModeFinalize)
 
-	batchResult := app.DeliverTxBatch(finalizeCtx, sdk.DeliverTxBatchRequest{TxEntries: entries}, namespaceList)
+	batchResult := app.DeliverTxBatch(finalizeCtx, sdk.DeliverTxBatchRequest{TxEntries: entries, Orders: req.Orders}, namespaceList)
 	for idx, result := range batchResult.Results {
 		txResults[idx] = &result.Response
 		app.HandleInternalEvent(sdk.SdkEventsFromABCIEvent(result.Response.Events))
@@ -1435,8 +1435,10 @@ func (app *BaseApp) DeliverTxBatch(ctx sdk.Context, req sdk.DeliverTxBatchReques
 		workers = workersInt
 	}
 	// avoid overhead for empty batches
-	scheduler := tasks.NewScheduler(workers, app.deliverTx, app.transactionAddressHandler, app.setMsgsHandler, app.modifyLogIndexHandler, app.setBlockBloomTransientHandler, namespaceList)
-	txRes, err := scheduler.ProcessAll(ctx, req.TxEntries)
+	scheduler := tasks.NewScheduler(workers, app.deliverTx, namespaceList)
+	scheduler.SetSchedulerHandlers(app.transactionAddressHandler, app.setMsgsHandler, app.modifyLogIndexHandler, app.setBlockBloomTransientHandler, app.contractStaticAnalysisHandler, app.isEVMTxHandler)
+
+	txRes, err := scheduler.ProcessAll(ctx, req)
 
 	if err != nil {
 		ctx.Logger().Error("error while processing scheduler", "err", err)

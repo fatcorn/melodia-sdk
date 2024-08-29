@@ -4,6 +4,7 @@ import (
 	"cosmossdk.io/store/multiversion"
 	sdk "cosmossdk.io/store/types"
 	abci "github.com/cometbft/cometbft/abci/types"
+	"github.com/cometbft/cometbft/proto/tendermint/types"
 )
 
 // DeliverTxEntry represents an individual transaction's request within a batch.
@@ -24,6 +25,7 @@ type MappedWritesets map[sdk.StoreKey]multiversion.WriteSet
 // This can be extended to include request-level tracing or metadata
 type DeliverTxBatchRequest struct {
 	TxEntries []*DeliverTxEntry
+	Orders    *types.Orders
 }
 
 // DeliverTxResult represents an individual transaction's response within a batch.
