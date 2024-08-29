@@ -77,6 +77,7 @@ type deliverTxTask struct {
 	VersionStores map[storetypes.StoreKey]*multiversion.VersionIndexedStore
 	IsEVMTx       bool
 	NamespaceId   uint64
+	TotalTask     int
 	//TxTracer      sdk.TxTracer
 }
 
@@ -165,7 +166,7 @@ func NewScheduler(workers int, deliverTxFunc func(tx []byte, opts ...sdk.Context
 
 func (s *scheduler) invalidateTask(task *deliverTxTask) {
 	for _, mv := range s.multiVersionStores {
-		mv.InvalidateWriteset(task.AbsoluteIndex, task.Incarnation)
+		mv.InvalidateWriteset(task.AbsoluteIndex, task.Incarnation, task.TotalTask)
 		mv.ClearReadset(task.AbsoluteIndex)
 		mv.ClearIterateset(task.AbsoluteIndex)
 	}
@@ -217,6 +218,7 @@ func (s *scheduler) DoExecute(work func()) {
 		return
 	}
 	s.executeCh <- work
+	//go work()
 }
 
 func (s *scheduler) DoWrite(work func()) {
@@ -225,6 +227,7 @@ func (s *scheduler) DoWrite(work func()) {
 		return
 	}
 	s.collectCh <- work
+	//go work()
 }
 
 func (s *scheduler) findConflicts(task *deliverTxTask) (bool, []int) {
@@ -260,6 +263,7 @@ func toTasks(ctx sdk.Context, reqs []*sdk.DeliverTxEntry, addressHandler sdk.Tra
 	allTasks := make([]*deliverTxTask, 0, len(reqs))
 	addressToTxIndex := make(map[string][]int)
 
+	totalTask := len(reqs)
 	for _, r := range reqs {
 		task := &deliverTxTask{
 			Request:       r.Request,
@@ -268,6 +272,7 @@ func toTasks(ctx sdk.Context, reqs []*sdk.DeliverTxEntry, addressHandler sdk.Tra
 			AbsoluteIndex: r.AbsoluteIndex,
 			Status:        statusPending,
 			Dependencies:  map[int]struct{}{},
+			TotalTask:     totalTask,
 			//TxTracer:      r.TxTracer,
 		}
 
@@ -368,14 +373,20 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) ([
 	return res, evmTxs
 }
 
-func (s *scheduler) tryInitMultiVersionStore(ctx sdk.Context) {
+func (s *scheduler) tryInitMultiVersionStore(ctx sdk.Context, totalTask int) {
 	if s.multiVersionStores != nil {
 		return
 	}
 	mvs := make(map[storetypes.StoreKey]multiversion.MultiVersionStore)
 	keys := ctx.MultiStore().StoreKeys()
+	listStore := os.Getenv("listStore")
+
 	for _, sk := range keys {
-		mvs[sk] = multiversion.NewMultiVersionStore(ctx.MultiStore().GetKVStore(sk))
+		if listStore != "" {
+			mvs[sk] = multiversion.NewMultiVersionListStore(ctx.MultiStore().GetKVStore(sk), totalTask)
+		} else {
+			mvs[sk] = multiversion.NewMultiVersionStore(ctx.MultiStore().GetKVStore(sk))
+		}
 	}
 	s.multiVersionStores = mvs
 }
@@ -439,7 +450,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 	startTime := time.Now()
 	var iterations int
 	// initialize mutli-version stores if they haven't been initialized yet
-	s.tryInitMultiVersionStore(ctx)
+	s.tryInitMultiVersionStore(ctx, len(reqs))
 	// prefill estimates
 	// This "optimization" path is being disabled because we don't have a strong reason to have it given that it
 	//s.PrefillEstimates(reqs)
@@ -450,7 +461,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 	s.allTasksMap = tasksMap
 	s.executeCh = make(chan func(), len(tasks))
 	s.validateCh = make(chan func(), len(tasks))
-	s.collectCh = make(chan func(), 1)
+	s.collectCh = make(chan func(), len(tasks))
 	//defer s.emitMetrics()
 
 	// default to number of tasks if workers is negative or 0 by this point
@@ -475,12 +486,12 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 	if err := trace.Start(f); err != nil {
 		panic(err)
 	}
-	//printSystemStats("before process")
+	go printCpuCount()
 
 	// execution tasks are limited by workers
 	s.start(workerCtx, s.executeCh, workers)
 
-	//s.start(workerCtx, s.collectCh, 1)
+	s.start(workerCtx, s.collectCh, workers)
 
 	toExecute := tasks
 	for !allValidated(tasks) {
@@ -494,8 +505,8 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 			}
 			toExecute = tasks[startIdx:]
 		}
-		go printCpuCount()
-		//printSystemStats("start ")
+		//go printCpuCount()
+		printSystemStats("start ")
 		// execute sets statuses of tasks to either executed or aborted
 		if err := s.executeAll(ctx, toExecute); err != nil {
 			return nil, err
@@ -503,13 +514,33 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 		//writeNow := cmttime.Now()
 		// write from version store to multiversion stores
 
-		//for _, task := range toExecute {
-		//	if task.IsStatus(statusExecuted) {
-		//		for _, v := range task.VersionStores {
-		//			v.WriteToMultiVersionStore()
-		//		}
-		//	}
-		//}
+		totalExecuted := 0
+		for _, task := range toExecute {
+			if task.IsStatus(statusExecuted) {
+				totalExecuted++
+				for _, v := range task.VersionStores {
+					writeset := v.GetWriteset()
+					for key, _ := range writeset {
+						v.NewKey(key, task.TotalTask)
+					}
+				}
+			}
+		}
+		wg := &sync.WaitGroup{}
+		wg.Add(totalExecuted)
+
+		for _, task := range toExecute {
+			if task.IsStatus(statusExecuted) {
+				s.DoWrite(func() {
+					for _, v := range task.VersionStores {
+						v.WriteToMultiVersionStore()
+					}
+					defer wg.Done()
+
+				})
+			}
+		}
+		wg.Wait()
 		//writeSleepDuration := cmttime.Now().Sub(writeNow)
 		//println("WriteToMultiVersionStore time: ", writeSleepDuration, " from: ", writeNow.String())
 
@@ -725,7 +756,7 @@ func (s *scheduler) prepareTask(task *deliverTxTask) {
 		// init version stores by store key
 		vs := make(map[storetypes.StoreKey]*multiversion.VersionIndexedStore)
 		for storeKey, mvs := range s.multiVersionStores {
-			vs[storeKey] = mvs.VersionedIndexedStore(task.AbsoluteIndex, task.Incarnation, abortCh)
+			vs[storeKey] = mvs.VersionedIndexedStore(task.AbsoluteIndex, task.Incarnation, abortCh, task.TotalTask)
 		}
 
 		// save off version store so we can ask it things later
@@ -808,9 +839,9 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 	//for _, v := range task.VersionStores {
 	//	v.WriteToMultiVersionStore()
 	//}
-	for _, v := range task.VersionStores {
-		v.WriteToMultiVersionStore()
-	}
+	//for _, v := range task.VersionStores {
+	//	v.WriteToMultiVersionStore()
+	//}
 	//if task.AbsoluteIndex%50 == 0 {
 	//	printSystemStats("task==")
 	//}
@@ -818,9 +849,24 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 	//println("WriteToMultiVersionStore task: ", task.AbsoluteIndex, " time: ", writeSleepDuration, " from: ", writeNow.String())
 }
 func printCpuCount() {
-	for i := 0; i < 35; i++ {
+	for i := 0; i < 5; i++ {
 		printCpu()
-		time.Sleep(100 * time.Millisecond)
+		//now := time.Now().UnixMilli()
+		//nowTime := strconv.Itoa(int(now))
+		//tracePath := "heap_profile" + nowTime + ".prof"
+		//f, err := os.Create(tracePath)
+		//if err != nil {
+		//	fmt.Println("Could not create heap profile: ", err)
+		//	return
+		//}
+		//
+		//// 生成堆内存快照
+		//if err := pprof.WriteHeapProfile(f); err != nil {
+		//	fmt.Println("Could not write heap profile: ", err)
+		//	return
+		//}
+		//fmt.Println("Heap profile saved to heap_profile.prof")
+		time.Sleep(300 * time.Millisecond)
 	}
 
 }
@@ -852,17 +898,26 @@ func printCpu() {
 		}
 	}
 
-	p, err := process.NewProcess(int32(pid))
-	if err != nil {
-		log.Fatal(err)
-	}
+	if pid == 0 {
+		percent, err := cpu.Percent(time.Millisecond*10, false)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("CPU percent: %.2f%%\n", percent[0])
 
-	cpuPercent, err := p.Percent(time.Millisecond * 10)
-	if err != nil {
-		log.Fatal(err)
-	}
+	} else {
+		p, err := process.NewProcess(int32(pid))
+		if err != nil {
+			log.Fatal(err)
+		}
 
-	fmt.Printf("CPU percent: %.2f%%\n", cpuPercent)
+		cpuPercent, err := p.Percent(time.Millisecond * 10)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		fmt.Printf("CPU percent: %.2f%%\n", cpuPercent)
+	}
 
 }
 
