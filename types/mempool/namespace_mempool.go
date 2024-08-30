@@ -18,7 +18,7 @@ var _ Mempool = (*NamespaceMempool)(nil)
 // NamespaceMempool defines a namespace sort mempool.
 type NamespaceMempool struct {
 	mtx   sync.RWMutex
-	pools map[uint64]Mempool
+	pools sync.Map
 }
 
 // NamespaceInterator  defines a namespace iterator.
@@ -31,7 +31,7 @@ type NamespaceInterator struct {
 // nonce, the lowest first, picking a random sender on each iteration.
 func NewNamespaceMempool() *NamespaceMempool {
 	nsm := &NamespaceMempool{
-		pools: make(map[uint64]Mempool),
+		pools: sync.Map{},
 	}
 	return nsm
 }
@@ -50,14 +50,12 @@ func (nsm *NamespaceMempool) SelectWithNsTable(ctx context.Context, txs [][]byte
 	for _, entry := range nsTable {
 		namespaceTxs := txs[lastOffset:entry.Offset]
 		namespaceId := entry.Namespace
-		pool, ok := nsm.pools[namespaceId]
+		pool, ok := nsm.pools.Load(namespaceId)
 		if ok {
 			wg.Add(1)
 			go func(ctx context.Context, txs [][]byte, namespaceId uint64) {
 				defer wg.Done()
-				iter := pool.Select(ctx, txs)
-				nsm.mtx.Lock()
-				defer nsm.mtx.Unlock()
+				iter := pool.(Mempool).Select(ctx, txs)
 				nsIters = append(nsIters, NamespaceInterator{
 					NamespaceId: namespaceId,
 					Iterator:    iter,
@@ -86,7 +84,7 @@ func (nsm *NamespaceMempool) Init(ctx context.Context) Mempool {
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	namespaceId := sdkCtx.Namespace()
-	pool, init := nsm.pools[namespaceId]
+	pool, init := nsm.pools.Load(namespaceId)
 	if !init {
 		// If the namespaceId does not exist, initialize it
 		sortMode := types2.SortModeGasPrice
@@ -104,30 +102,26 @@ func (nsm *NamespaceMempool) Init(ctx context.Context) Mempool {
 		default:
 			pool = DefaultPriceNonceMempool()
 		}
-		nsm.pools[namespaceId] = pool
+		nsm.pools.Store(namespaceId, pool)
 	}
-	return pool
+	return pool.(Mempool)
 }
 
 func (nsm *NamespaceMempool) GetPool(namespaceId uint64) Mempool {
-	nsm.mtx.RLock()
-	defer nsm.mtx.RUnlock()
-	pool, init := nsm.pools[namespaceId]
+	pool, init := nsm.pools.Load(namespaceId)
 	if !init {
 		return nil
 	}
-	return pool
+	return pool.(Mempool)
 }
 
 func (nsm *NamespaceMempool) Insert(ctx context.Context, tx sdk.Tx) error {
 	namespaceId := sdk.UnwrapSDKContext(ctx).Namespace()
-	nsm.mtx.RLock()
-	pool, init := nsm.pools[namespaceId]
-	nsm.mtx.RUnlock()
+	pool, init := nsm.pools.Load(namespaceId)
 	if !init {
 		pool = nsm.Init(ctx)
 	}
-	return pool.Insert(ctx, tx)
+	return pool.(Mempool).Insert(ctx, tx)
 }
 func (nsm *NamespaceMempool) Select(context.Context, [][]byte) Iterator {
 	panic("implement me")
@@ -136,16 +130,17 @@ func (nsm *NamespaceMempool) CountTx() int {
 	nsm.mtx.RLock()
 	defer nsm.mtx.RUnlock()
 	count := 0
-	for _, mem := range nsm.pools {
-		count += mem.CountTx()
-	}
+	nsm.pools.Range(func(key, pool interface{}) bool {
+		count += pool.(Mempool).CountTx()
+		return true
+	})
 	return count
 }
 func (nsm *NamespaceMempool) RemoveByNamespaceId(namespaceId uint64, tx sdk.Tx) error {
 	nsm.mtx.RLock()
 	defer nsm.mtx.RUnlock()
-	if pool, ok := nsm.pools[namespaceId]; ok {
-		err := pool.Remove(tx)
+	if pool, ok := nsm.pools.Load(namespaceId); ok {
+		err := pool.(Mempool).Remove(tx)
 		if err != nil {
 			return nsm.Remove(tx)
 		} else {
@@ -157,9 +152,9 @@ func (nsm *NamespaceMempool) RemoveByNamespaceId(namespaceId uint64, tx sdk.Tx) 
 func (nsm *NamespaceMempool) Remove(tx sdk.Tx) error {
 	nsm.mtx.RLock()
 	defer nsm.mtx.RUnlock()
-	for _, mem := range nsm.pools {
-		_ = mem.Remove(tx)
-	}
-
+	nsm.pools.Range(func(key, pool interface{}) bool {
+		pool.(Mempool).Remove(tx)
+		return true
+	})
 	return nil
 }
