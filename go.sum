@@ -21,8 +21,8 @@ git.everylink.ai/blockchain/melodiasdk-io-collections v0.4.0 h1:ySNm/gmHPqgmL7bc
 git.everylink.ai/blockchain/melodiasdk-io-collections v0.4.0/go.mod h1:oa5lUING2dP+gdDquow+QjlF45eL1t4TJDypgGd+tv0=
 git.everylink.ai/blockchain/melodiasdk-io-core v0.11.1-0.20240802062804-4f3fd02b50a4 h1:zI2z8wEGBrfJAgQCTbEsM0Up9sH3vKbfTJvI0qGthGQ=
 git.everylink.ai/blockchain/melodiasdk-io-core v0.11.1-0.20240802062804-4f3fd02b50a4/go.mod h1:LaTtayWBSoacF5xNzoF8tmLhehqlA9z1SWiPuNC6X1w=
-git.everylink.ai/blockchain/melodiasdk-io-store v1.0.3-0.20240814153216-43e19103026d h1:WnyaXYpzBIi3dXUt88DywO+R7VC8IIZ34ZDjWiNc9d8=
-git.everylink.ai/blockchain/melodiasdk-io-store v1.0.3-0.20240814153216-43e19103026d/go.mod h1:Smobd3uWB6VGiayp4QvOPEbd6oCT3VYacSqyK7fu0II=
+git.everylink.ai/blockchain/melodiasdk-io-store v1.0.3-0.20240830085247-534497f11578 h1:4dho8UhnEL0ZEgObkcWd9O9I758SeyykQFQZGzi7hio=
+git.everylink.ai/blockchain/melodiasdk-io-store v1.0.3-0.20240830085247-534497f11578/go.mod h1:SFH7b+q2qijTN+OidkVPokHnXdsjdNdwPYTBDXMdoM4=
 github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4 h1:/vQbFIOMbk2FiG/kXiLl8BRyzTWDw7gX/Hz7Dd5eDMs=
 github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4/go.mod h1:hN7oaIRCjzsZ2dE+yG5k+rsdt3qcwykqK6HVGcKwsw4=
 github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 h1:L/gRVlceqvL25UVaW/CKtUDjefjrs0SPonmDGUVOYP0=
@@ -52,6 +52,8 @@ github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751/go.mod h1:LOuy
 github.com/alecthomas/units v0.0.0-20151022065526-2efee857e7cf/go.mod h1:ybxpYRFXyAe+OPACYpWeL0wqObRcbAqCMya13uyzqw0=
 github.com/alecthomas/units v0.0.0-20190717042225-c3de453c63f4/go.mod h1:ybxpYRFXyAe+OPACYpWeL0wqObRcbAqCMya13uyzqw0=
 github.com/alecthomas/units v0.0.0-20190924025748-f65c72e2690d/go.mod h1:rBZYJk541a8SKzHPHnH3zbiI+7dagKZ0cgpgrD7Fyho=
+github.com/allegro/bigcache v1.2.1 h1:hg1sY1raCwic3Vnsvje6TT7/pnZba83LeFck5NrFKSc=
+github.com/allegro/bigcache v1.2.1/go.mod h1:Cb/ax3seSYIx7SuZdm2G2xzfwmv3TPSk2ucNfQESPXM=
 github.com/antihax/optional v1.0.0/go.mod h1:uupD/76wgC+ih3iEmQUL+0Ugr19nfwCT1kdvxnR2qWY=
 github.com/apache/thrift v0.12.0/go.mod h1:cp2SuWMxlEZw2r+iP2GNCdIi4C1qmUzdZFSVb+bacwQ=
 github.com/apache/thrift v0.13.0/go.mod h1:cp2SuWMxlEZw2r+iP2GNCdIi4C1qmUzdZFSVb+bacwQ=

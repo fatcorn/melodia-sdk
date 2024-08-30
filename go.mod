@@ -72,6 +72,7 @@ require (
 	github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4 // indirect
 	github.com/DataDog/datadog-go v3.2.0+incompatible // indirect
 	github.com/DataDog/zstd v1.5.5 // indirect
+	github.com/allegro/bigcache v1.2.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2 // indirect
 	github.com/bufbuild/protocompile v0.6.0 // indirect
@@ -181,7 +182,7 @@ replace (
 	cosmossdk.io/api v0.7.3 => git.everylink.ai/blockchain/melodiasdk-io-api v0.7.4-0.20240703080149-6c21938bf6f8
 	cosmossdk.io/collections v0.4.0 => git.everylink.ai/blockchain/melodiasdk-io-collections v0.4.0
 	cosmossdk.io/core v0.11.0 => git.everylink.ai/blockchain/melodiasdk-io-core v0.11.1-0.20240802062804-4f3fd02b50a4
-	cosmossdk.io/store v1.0.2 => git.everylink.ai/blockchain/melodiasdk-io-store v1.0.3-0.20240814153216-43e19103026d
+	cosmossdk.io/store v1.0.2 => git.everylink.ai/blockchain/melodiasdk-io-store v1.0.3-0.20240830085247-534497f11578
 	//cosmossdk.io/store v1.0.2 => ../melodiasdk-io-store
 	// use cosmos fork of keyring
 	github.com/99designs/keyring => github.com/cosmos/keyring v1.2.0
