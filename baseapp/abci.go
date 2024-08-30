@@ -1050,6 +1050,7 @@ func (app *BaseApp) workingHash() []byte {
 	// Write the FinalizeBlock state into branched storage and commit the MultiStore.
 	// The write to the FinalizeBlock state writes all state transitions to the root
 	// MultiStore (app.cms) so when Commit() is called it persists those values.
+	println("working Hash ", "type", app.finalizeBlockState.ms)
 	app.finalizeBlockState.ms.Write()
 
 	// Get the hash of all writes in order to return the apphash to the comet in finalizeBlock.
