@@ -18,7 +18,6 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/docker"
-	"github.com/shirou/gopsutil/process"
 	"log"
 	"os"
 	"runtime"
@@ -26,11 +25,6 @@ import (
 	"runtime/trace"
 	"sort"
 	"strconv"
-	"strings"
-
-	"cosmossdk.io/store"
-	sdk "github.com/cosmos/cosmos-sdk/types"
-	"sort"
 	"sync"
 	"time"
 
@@ -270,10 +264,8 @@ func toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest, addressHandler sdk.
 	orders := req.Orders
 	tasksMap := make(map[int]*deliverTxTask)
 	allTasks := make([]*deliverTxTask, 0, len(reqs))
-	addressToTxIndex := make(map[string][]int)
 	totalTask := len(reqs)
 
-	totalTask := len(reqs)
 	addTxTask := func(dependIdx int, r *sdk.DeliverTxEntry, status status) {
 		task := &deliverTxTask{
 			Request:       r.Request,
@@ -476,7 +468,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	startTime := time.Now()
 	var iterations int
 	// initialize mutli-version stores if they haven't been initialized yet
-	s.tryInitMultiVersionStore(ctx, len(reqs))
+	s.tryInitMultiVersionStore(ctx, len(req.TxEntries))
 	// prefill estimates
 	// This "optimization" path is being disabled because we don't have a strong reason to have it given that it
 	//s.PrefillEstimates(reqs)
@@ -512,7 +504,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	if err := trace.Start(f); err != nil {
 		panic(err)
 	}
-	go printCpuCount()
+	//go printCpuCount()
 
 	// execution tasks are limited by workers
 	s.start(workerCtx, s.executeCh, workers)
@@ -532,11 +524,13 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 			toExecute = tasks[startIdx:]
 		}
 		//go printCpuCount()
-		printSystemStats("start ")
+		//printSystemStats("start ")
+
 		// execute sets statuses of tasks to either executed or aborted
 		if err := s.executeAll(ctx, toExecute); err != nil {
 			return nil, err
 		}
+
 		//writeNow := cmttime.Now()
 		// write from version store to multiversion stores
 
@@ -552,6 +546,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 				}
 			}
 		}
+
 		wg := &sync.WaitGroup{}
 		wg.Add(totalExecuted)
 
@@ -567,6 +562,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 			}
 		}
 		wg.Wait()
+
 		//writeSleepDuration := cmttime.Now().Sub(writeNow)
 		//println("WriteToMultiVersionStore time: ", writeSleepDuration, " from: ", writeNow.String())
 
@@ -577,16 +573,16 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 
 		var err error
 		toExecute, err = s.validateAll(ctx, tasks)
-		printSystemStats("end ")
+		//printSystemStats("end ")
 
 		if err != nil {
 			return nil, err
 		}
 		// these are retries which apply to metrics
 		s.metrics.retries += len(toExecute)
+
 		iterations++
 	}
-
 	for _, mv := range s.multiVersionStores {
 		mv.WriteLatestToStore()
 	}
@@ -712,13 +708,13 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 	// validationWg waits for all validations to complete
 	// validations happen in separate goroutines in order to wait on previous index
 	wg := &sync.WaitGroup{}
-	wg.Add(len(tasks))
 
 	for _, task := range tasks {
 		if !s.synchronous && task.IsStatus(statusWaiting) {
 			continue
 		}
 		t := task
+		wg.Add(1)
 		s.DoExecute(func() {
 			s.prepareAndRunTask(wg, ctx, t)
 		})
@@ -738,6 +734,15 @@ func (s *scheduler) prepareAndRunTask(wg *sync.WaitGroup, ctx sdk.Context, task 
 	//now := cmttime.Now()
 	task.Ctx = ctx
 	s.executeTask(task)
+	if s.synchronous {
+		for _, v := range task.VersionStores {
+			writeset := v.GetWriteset()
+			for key, _ := range writeset {
+				v.NewKey(key, task.TotalTask)
+			}
+			v.WriteToMultiVersionStore()
+		}
+	}
 
 	//wg.Add(1)
 	//s.DoWrite(func() {
@@ -913,37 +918,12 @@ func printSystemStats(desc string) {
 }
 
 func printCpu() {
-	processes, err2 := ps.Processes()
-	if err2 != nil {
-		log.Fatalf("%v", err2)
+
+	percent, err := cpu.Percent(time.Millisecond*10, false)
+	if err != nil {
+		log.Fatal(err)
 	}
-	var pid int
-	for _, p := range processes {
-		if strings.Contains(p.Executable(), "melod") {
-			pid = p.Pid()
-		}
-	}
-
-	if pid == 0 {
-		percent, err := cpu.Percent(time.Millisecond*10, false)
-		if err != nil {
-			log.Fatal(err)
-		}
-		fmt.Printf("CPU percent: %.2f%%\n", percent[0])
-
-	} else {
-		p, err := process.NewProcess(int32(pid))
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		cpuPercent, err := p.Percent(time.Millisecond * 10)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		fmt.Printf("CPU percent: %.2f%%\n", cpuPercent)
-	}
+	fmt.Printf("CPU percent: %.2f%%\n", percent[0])
 
 }
 
