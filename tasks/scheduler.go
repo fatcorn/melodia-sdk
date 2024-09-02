@@ -553,10 +553,11 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 		for _, task := range toExecute {
 			println("to execute", "index", task.AbsoluteIndex, "iterations", iterations, "status", task.Status)
 			if task.IsStatus(statusExecuted) {
+				writeTask := task
 				s.DoWrite(func() {
-					println("execute write to multi version store", "index", task.AbsoluteIndex)
+					println("execute write to multi version store", "index", writeTask.AbsoluteIndex)
 
-					for _, v := range task.VersionStores {
+					for _, v := range writeTask.VersionStores {
 						v.WriteToMultiVersionStore()
 					}
 					defer wg.Done()
