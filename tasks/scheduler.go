@@ -551,6 +551,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 		wg.Add(totalExecuted)
 
 		for _, task := range toExecute {
+			println("to execute", "index", task.AbsoluteIndex, "iterations", iterations, "status", task.Status)
 			if task.IsStatus(statusExecuted) {
 				s.DoWrite(func() {
 					println("execute write to multi version store", "index", task.AbsoluteIndex)
@@ -712,6 +713,7 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 	wg := &sync.WaitGroup{}
 
 	for _, task := range tasks {
+		println("execute all", "task index", task.AbsoluteIndex, "status", task.Status)
 		if !s.synchronous && task.IsStatus(statusWaiting) {
 			continue
 		}
