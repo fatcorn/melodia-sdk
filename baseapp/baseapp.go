@@ -1476,7 +1476,10 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 	}
 	wg.Wait()
 
+	sortTime := time.Now()
 	nsIterators, nsTxs := nsMempool.SelectWithNsTable(ctx, req.Txs, req.NsTable)
+	app.logger.Info("sortTxs sort time", "sort used", fmt.Sprintf("%v ms", time.Since(sortTime).Milliseconds()), "insert total used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "reqSize", len(req.Txs), "reqNsTable", req.NsTable)
+
 	var (
 		offset  = 0
 		nsTable = make([]*cmtproto.NamespaceTableEntries, 0)
@@ -1494,6 +1497,7 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 		staticAnalysisResult = app.contractStaticAnalysisResultHandler(ctx)
 	}
 
+	staticTime := time.Now()
 	for _, nsIterator := range nsIterators {
 		iterator := nsIterator.Iterator
 		namespaceId := nsIterator.NamespaceId
@@ -1586,7 +1590,7 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 			Indexes:   nsTransactionIndexes,
 		})
 	}
-	app.logger.Info("sortTxs total time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable)
+	app.logger.Info("sortTxs total time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "orders time used", fmt.Sprintf("%v ms", time.Since(staticTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable)
 	return &abci.ResponseSortTxs{Txs: sortTxs, NsTable: nsTable, Orders: orders}, nil
 }
 
