@@ -551,11 +551,9 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 		wg.Add(totalExecuted)
 
 		for _, task := range toExecute {
-			println("to execute", "index", task.AbsoluteIndex, "iterations", iterations, "status", task.Status)
 			if task.IsStatus(statusExecuted) {
 				writeTask := task
 				s.DoWrite(func() {
-					println("execute write to multi version store", "index", writeTask.AbsoluteIndex)
 
 					for _, v := range writeTask.VersionStores {
 						v.WriteToMultiVersionStore()
@@ -714,7 +712,6 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 	wg := &sync.WaitGroup{}
 
 	for _, task := range tasks {
-		println("execute all", "task index", task.AbsoluteIndex, "status", task.Status)
 		if !s.synchronous && task.IsStatus(statusWaiting) {
 			continue
 		}
@@ -745,7 +742,6 @@ func (s *scheduler) prepareAndRunTask(wg *sync.WaitGroup, ctx sdk.Context, task 
 			for key, _ := range writeset {
 				v.NewKey(key, task.TotalTask)
 			}
-			println("prepare write to multi version store", "index", task.AbsoluteIndex)
 			v.WriteToMultiVersionStore()
 		}
 	}
@@ -860,7 +856,6 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 		task.AppendDependencies([]int{abort.DependentTxIdx})
 		// write from version store to multiversion stores
 		for _, v := range task.VersionStores {
-			println(" set estimates =======", "index", abort.DependentTxIdx)
 			v.WriteEstimatesToMultiVersionStore()
 		}
 		return
