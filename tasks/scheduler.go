@@ -553,6 +553,8 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 		for _, task := range toExecute {
 			if task.IsStatus(statusExecuted) {
 				s.DoWrite(func() {
+					println("execute write to multi version store", "index", task.AbsoluteIndex)
+
 					for _, v := range task.VersionStores {
 						v.WriteToMultiVersionStore()
 					}
@@ -740,6 +742,7 @@ func (s *scheduler) prepareAndRunTask(wg *sync.WaitGroup, ctx sdk.Context, task 
 			for key, _ := range writeset {
 				v.NewKey(key, task.TotalTask)
 			}
+			println("prepare write to multi version store", "index", task.AbsoluteIndex)
 			v.WriteToMultiVersionStore()
 		}
 	}
