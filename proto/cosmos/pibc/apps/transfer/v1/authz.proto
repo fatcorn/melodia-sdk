@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package cosmos.pibc.apps.transfer.v1;
+
+option go_package = "github.com/cosmos/cosmos-sdk/x/pibc/apps/transfer/types";
+
+import "cosmos_proto/cosmos.proto";
+import "gogoproto/gogo.proto";
+import "cosmos/base/v1beta1/coin.proto";

@@ -1,0 +1,17 @@
+syntax = "proto3";
+package cosmos.pibc.v1beta1;
+
+import "cosmos/pibc/v1beta1/params.proto";
+import "gogoproto/gogo.proto";
+import "amino/amino.proto";
+
+option go_package = "github.com/cosmos/cosmos-sdk/x/pibc/types";
+
+// GenesisState defines the pibc module's genesis state.
+message GenesisState {
+  // params defines all the parameters of the module.
+  Params params = 1 [
+    (gogoproto.nullable) = false,
+    (amino.dont_omitempty) = true
+  ];
+}

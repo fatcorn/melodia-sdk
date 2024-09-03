@@ -494,7 +494,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 			}
 			toExecute = tasks[startIdx:]
 		}
-		go printCpuCount()
+		//go printCpuCount()
 		//printSystemStats("start ")
 		// execute sets statuses of tasks to either executed or aborted
 		if err := s.executeAll(ctx, toExecute); err != nil {
@@ -520,7 +520,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 
 		var err error
 		toExecute, err = s.validateAll(ctx, tasks)
-		printSystemStats("end ")
+		//printSystemStats("end ")
 
 		if err != nil {
 			return nil, err

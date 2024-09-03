@@ -67,7 +67,7 @@ type Context struct {
 	headerInfo           header.Info
 	txIndex              int
 
-	namespaceId uint64 // The tx related namesapceId
+	namespaceId uint64 // The tx related namespaceId
 }
 
 // Proposed rename, not done to avoid API breakage
