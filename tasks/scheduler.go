@@ -175,7 +175,7 @@ func (s *scheduler) invalidateTask(task *deliverTxTask) {
 	}
 }
 
-func (s *scheduler) start(ctx context.Context, ch chan func(), workers int) {
+func (s *scheduler) start1(ctx context.Context, ch chan func(), workers int) {
 	for i := 0; i < workers; i++ {
 		go func() {
 			for {
@@ -184,6 +184,21 @@ func (s *scheduler) start(ctx context.Context, ch chan func(), workers int) {
 					return
 				case work := <-ch:
 					//printThreadID()
+					work()
+				}
+			}
+		}()
+	}
+}
+
+func (s *scheduler) start(ctx context.Context, ch chan func(), workers int) {
+	for i := 0; i < workers; i++ {
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case work := <-ch:
 					work()
 				}
 			}
@@ -221,6 +236,7 @@ func (s *scheduler) DoExecute(work func()) {
 		return
 	}
 	s.executeCh <- work
+	//go work()
 }
 
 func (s *scheduler) DoWrite(work func()) {
@@ -473,8 +489,10 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	// This "optimization" path is being disabled because we don't have a strong reason to have it given that it
 	//s.PrefillEstimates(reqs)
 	toTaskStartTime := time.Now()
+	println("init version store time========", "sub", toTaskStartTime.Sub(startTime).String())
 	tasks, tasksMap := toTasks(ctx, req, s.transactionAddressHandler)
 	fmt.Printf("========= toTasks Time used: %v\n", time.Since(toTaskStartTime))
+	now := time.Now()
 	s.allTasks = tasks
 	s.allTasksMap = tasksMap
 	s.executeCh = make(chan func(), len(tasks))
@@ -491,15 +509,18 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	workerCtx, cancel := context.WithCancel(ctx.Context())
 	defer cancel()
 	// set trace store file
-	now := time.Now().UnixMilli()
-	nowTime := strconv.Itoa(int(now))
-	tracePath := "trace" + nowTime + ".out"
+
+	nowTime := strconv.Itoa(int(now.UnixMilli()))
+	tracePath := "trace/trace" + nowTime + ".out"
 	tracePathEnv := os.Getenv("tracePath")
 	if tracePathEnv != "" {
 		tracePath = tracePathEnv + tracePath
 	}
-	f, _ := os.Create(tracePath)
+	f, err := os.Create(tracePath)
 
+	if err != nil {
+		println("err", "err", err.Error())
+	}
 	// start trace
 	if err := trace.Start(f); err != nil {
 		panic(err)
@@ -509,8 +530,9 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	// execution tasks are limited by workers
 	s.start(workerCtx, s.executeCh, workers)
 
-	s.start(workerCtx, s.collectCh, workers)
-
+	s.start1(workerCtx, s.collectCh, workers)
+	t6 := time.Now()
+	println("======================", "sub", t6.Sub(now).String())
 	toExecute := tasks
 	for !allValidated(tasks) {
 		// if the max incarnation >= x, we should revert to synchronous
@@ -524,46 +546,61 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 			toExecute = tasks[startIdx:]
 		}
 		//go printCpuCount()
-		//printSystemStats("start ")
+		printSystemStats("start ")
 
 		// execute sets statuses of tasks to either executed or aborted
+		t1 := time.Now()
 		if err := s.executeAll(ctx, toExecute); err != nil {
 			return nil, err
 		}
+		t2 := time.Now()
 
 		//writeNow := cmttime.Now()
 		// write from version store to multiversion stores
 
+		listStore := os.Getenv("listStore")
 		totalExecuted := 0
-		for _, task := range toExecute {
-			if task.IsStatus(statusExecuted) {
-				totalExecuted++
-				for _, v := range task.VersionStores {
-					writeset := v.GetWriteset()
-					for key, _ := range writeset {
-						v.NewKey(key, task.TotalTask)
+
+		if listStore != "" {
+			for _, task := range toExecute {
+				if task.IsStatus(statusExecuted) {
+					totalExecuted++
+					tt := 0
+					for _, v := range task.VersionStores {
+						writeset := v.GetWriteset()
+						for key, _ := range writeset {
+							v.NewKey(key, task.TotalTask)
+							tt++
+						}
 					}
+
 				}
 			}
 		}
 
-		wg := &sync.WaitGroup{}
-		wg.Add(totalExecuted)
+		t3 := time.Now()
 
-		for _, task := range toExecute {
-			if task.IsStatus(statusExecuted) {
-				writeTask := task
-				s.DoWrite(func() {
+		if listStore != "" {
+			wg := &sync.WaitGroup{}
+			wg.Add(totalExecuted)
 
-					for _, v := range writeTask.VersionStores {
-						v.WriteToMultiVersionStore()
-					}
-					defer wg.Done()
+			for _, task := range toExecute {
+				if task.IsStatus(statusExecuted) {
+					writeTask := task
+					s.DoWrite(func() {
 
-				})
+						for _, v := range writeTask.VersionStores {
+							v.WriteToMultiVersionStore()
+						}
+						defer wg.Done()
+
+					})
+				}
 			}
+			wg.Wait()
 		}
-		wg.Wait()
+
+		t4 := time.Now()
 
 		//writeSleepDuration := cmttime.Now().Sub(writeNow)
 		//println("WriteToMultiVersionStore time: ", writeSleepDuration, " from: ", writeNow.String())
@@ -575,7 +612,8 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 
 		var err error
 		toExecute, err = s.validateAll(ctx, tasks)
-		//printSystemStats("end ")
+		printSystemStats("end ")
+		t5 := time.Now()
 
 		if err != nil {
 			return nil, err
@@ -583,21 +621,29 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 		// these are retries which apply to metrics
 		s.metrics.retries += len(toExecute)
 
+		println("=========", "t1", t1.String(), "t2", t2.String(), "t3", t3.String(), "t4", t4.String(), "t5", t5.String(), "sub", t5.Sub(t1).String())
 		iterations++
 	}
+	t2 := time.Now()
+
 	for _, mv := range s.multiVersionStores {
 		mv.WriteLatestToStore()
 	}
+	t3 := time.Now()
+	println("wirte latest to store", "sub", t3.Sub(t2).String(), "ex sub", t2.Sub(t6).String())
+
 	// end trace
-	trace.Stop()
 	s.metrics.maxIncarnation = s.maxIncarnation
 
-	ctx.Logger().Info("occ scheduler", "height", ctx.BlockHeight(), "txs", len(tasks), "latency_ms", time.Since(startTime).Milliseconds(), "retries", s.metrics.retries, "maxIncarnation", s.maxIncarnation, "iterations", iterations, "sync", s.synchronous, "workers", workers)
+	ctx.Logger().Info("occ scheduler", "height", ctx.BlockHeight(), "txs", len(tasks), "latency_ms", time.Since(startTime).String(), "retries", s.metrics.retries, "maxIncarnation", s.maxIncarnation, "iterations", iterations, "sync", s.synchronous, "workers", workers)
 
 	res, evmTxs := s.collectResponses(ctx, tasks)
-	//printSystemStats("after process")
+	printSystemStats("after process")
 
 	s.setMsgsHandler(ctx, evmTxs)
+	t7 := time.Now()
+	trace.Stop()
+	println("trace time===============", "sub", time.Now().Sub(t7).String())
 
 	return res, nil
 }
@@ -718,7 +764,9 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 		t := task
 		wg.Add(1)
 		s.DoExecute(func() {
+			//now := time.Now()
 			s.prepareAndRunTask(wg, ctx, t)
+			//println("run tast time", "sub", time.Now().Sub(now))
 		})
 	}
 	//printSystemStats("executing")
@@ -730,21 +778,27 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 func (s *scheduler) prepareAndRunTask(wg *sync.WaitGroup, ctx sdk.Context, task *deliverTxTask) {
 	//eCtx, eSpan := s.traceSpan(ctx, "SchedulerExecute", task)
 	//defer eSpan.End()
+	//now := time.Now()
 	defer wg.Done()
 
 	//C.printThreadID() // 打印线程ID
 	//now := cmttime.Now()
 	task.Ctx = ctx
 	s.executeTask(task)
-	if s.synchronous {
-		for _, v := range task.VersionStores {
-			writeset := v.GetWriteset()
-			for key, _ := range writeset {
-				v.NewKey(key, task.TotalTask)
+	listStore := os.Getenv("listStore")
+	if listStore == "" {
+		if s.synchronous {
+			for _, v := range task.VersionStores {
+				writeset := v.GetWriteset()
+				for key, _ := range writeset {
+					v.NewKey(key, task.TotalTask)
+				}
+				v.WriteToMultiVersionStore()
 			}
-			v.WriteToMultiVersionStore()
 		}
 	}
+
+	//println("run tast time", "sub", time.Now().Sub(now).String())
 
 	//wg.Add(1)
 	//s.DoWrite(func() {
@@ -871,9 +925,13 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 	//for _, v := range task.VersionStores {
 	//	v.WriteToMultiVersionStore()
 	//}
-	//for _, v := range task.VersionStores {
-	//	v.WriteToMultiVersionStore()
-	//}
+	listStore := os.Getenv("listStore")
+	if listStore == "" {
+		for _, v := range task.VersionStores {
+			v.WriteToMultiVersionStore()
+		}
+	}
+
 	//if task.AbsoluteIndex%50 == 0 {
 	//	printSystemStats("task==")
 	//}
@@ -915,7 +973,7 @@ func printSystemStats(desc string) {
 	fmt.Printf("TotalAlloc = %v MiB\n", m.TotalAlloc/1024/1024)
 	fmt.Printf("Sys = %v MiB\n", m.Sys/1024/1024)
 	fmt.Printf("NumGC = %v\n", m.NumGC)
-	printCpu()
+	//printCpu()
 }
 
 func printCpu() {
