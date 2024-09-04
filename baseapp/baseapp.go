@@ -1523,7 +1523,7 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 
 	handleNsInterChainTransactionOrders := func(tx sdk.Tx, txBz []byte, txIdx int, namespaceId uint64) bool {
 
-		txIdBz, isCross, isTransfer := app.crossNamespaceTransactionIdentifierHandler(ctx.WithTxBytes(txBz), tx)
+		txIdBz, isCross, isFirst := app.crossNamespaceTransactionIdentifierHandler(ctx.WithTxBytes(txBz), tx)
 		if isCross {
 			txId := tmbytes.HexBytes(txIdBz).String()
 			if pairTxs, inPair := beforeInterChainPairTxs[txId]; inPair {
@@ -1540,12 +1540,12 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 
 				idxes := make([]*cmtproto.NsInterChainTransactionIndex, 2)
 
-				if isTransfer {
+				if isFirst {
 					idxes[0] = interTxs[1]
 					idxes[1] = interTxs[0]
 				} else {
-					idxes[0] = interTxs[1]
-					idxes[1] = interTxs[0]
+					idxes[0] = interTxs[0]
+					idxes[1] = interTxs[1]
 				}
 
 				entry := &cmtproto.NsInterChainTransactionOrderEntry{
