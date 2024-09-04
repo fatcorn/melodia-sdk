@@ -1644,6 +1644,7 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 				if err != nil {
 					return nil, err
 				}
+				iterator = iterator.Next()
 
 				ok := handleNsInterChainTransactionOrders(tx, txBz, txIndex, namespaceId)
 				if !ok {
@@ -1652,7 +1653,6 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 
 				sortTxs = append(sortTxs, txBz)
 				offset++
-				iterator = iterator.Next()
 
 				handleNsTransactionOrders(tx, txIndex, namespaceId)
 				txIndex++
