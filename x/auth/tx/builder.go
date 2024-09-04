@@ -40,6 +40,8 @@ type wrapper struct {
 
 	signers [][]byte
 	msgsV2  []protov2.Message
+
+	accountInfoBz []byte
 }
 
 var (
@@ -63,7 +65,8 @@ func newBuilder(cdc codec.Codec) *wrapper {
 		tx: &tx.Tx{
 			Body: &tx.TxBody{},
 			AuthInfo: &tx.AuthInfo{
-				Fee: &tx.Fee{},
+				Fee:         &tx.Fee{},
+				AccountInfo: &tx.AccountInfo{},
 			},
 		},
 	}
@@ -215,6 +218,42 @@ func (w *wrapper) FeeGranter() []byte {
 func (w *wrapper) GetMemo() string {
 	return w.tx.Body.Memo
 }
+func (w *wrapper) GetFrom() sdk.AccAddress {
+	if w.tx.AuthInfo.AccountInfo == nil {
+		return nil
+	}
+	from := w.tx.AuthInfo.AccountInfo.From
+	if from != "" {
+		fromAddr, err := w.cdc.InterfaceRegistry().SigningContext().AddressCodec().StringToBytes(from)
+		if err != nil {
+			panic(err)
+		}
+		return fromAddr
+	}
+	return sdk.AccAddress(from)
+}
+
+func (w *wrapper) GetTo() sdk.AccAddress {
+	if w.tx.AuthInfo.AccountInfo == nil {
+		return nil
+	}
+	to := w.tx.AuthInfo.AccountInfo.To
+	if to != "" {
+		toAddr, err := w.cdc.InterfaceRegistry().SigningContext().AddressCodec().StringToBytes(to)
+		if err != nil {
+			panic(err)
+		}
+		return toAddr
+	}
+	return sdk.AccAddress(to)
+}
+
+func (w *wrapper) GetNonce() uint64 {
+	if w.tx.AuthInfo.AccountInfo == nil {
+		return 0
+	}
+	return w.tx.AuthInfo.AccountInfo.Nonce
+}
 
 // GetTimeoutHeight returns the transaction's timeout height (if set).
 func (w *wrapper) GetTimeoutHeight() uint64 {
@@ -289,7 +328,12 @@ func (w *wrapper) SetMemo(memo string) {
 	// set bodyBz to nil because the cached bodyBz no longer matches tx.Body
 	w.bodyBz = nil
 }
-
+func (w *wrapper) SetAccountInfo(accountInfo tx.AccountInfo) {
+	w.tx.AuthInfo.AccountInfo.From = accountInfo.From
+	w.tx.AuthInfo.AccountInfo.To = accountInfo.To
+	w.tx.AuthInfo.AccountInfo.Nonce = accountInfo.Nonce
+	w.authInfoBz = nil
+}
 func (w *wrapper) SetGasLimit(limit uint64) {
 	if w.tx.AuthInfo.Fee == nil {
 		w.tx.AuthInfo.Fee = &tx.Fee{}

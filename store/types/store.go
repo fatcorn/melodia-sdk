@@ -12,6 +12,8 @@ import (
 	snapshottypes "cosmossdk.io/store/snapshots/types"
 )
 
+const DefaultCacheSizeLimit = 4000000 // TODO: revert back to 1000000 after paritioning r/w caches
+
 type Store interface {
 	GetStoreType() StoreType
 	CacheWrapper

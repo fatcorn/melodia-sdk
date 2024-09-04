@@ -17,7 +17,7 @@ var _ Mempool = (*NamespaceMempool)(nil)
 
 // NamespaceMempool defines a namespace sort mempool.
 type NamespaceMempool struct {
-	mtx   sync.Mutex
+	mtx   sync.RWMutex
 	pools map[uint64]Mempool
 }
 
@@ -89,7 +89,7 @@ func (nsm *NamespaceMempool) Init(ctx context.Context) Mempool {
 	pool, init := nsm.pools[namespaceId]
 	if !init {
 		// If the namespaceId does not exist, initialize it
-		sortMode := types2.SortModeNonce
+		sortMode := types2.SortModeGasPrice
 		if sdkCtx.ConsensusParams().Mempool != nil && len(sdkCtx.ConsensusParams().Mempool.Sort) > 0 {
 			poolSort := make(map[string]string)
 			_ = json.Unmarshal([]byte(sdkCtx.ConsensusParams().Mempool.Sort), &poolSort)
@@ -101,10 +101,8 @@ func (nsm *NamespaceMempool) Init(ctx context.Context) Mempool {
 			pool = DefaultPriceNonceMempool()
 		case types2.SortModeQueue:
 			pool = NoOpMempool{}
-		case types2.SortModeNonce:
-			pool = NewSenderNonceMempool()
 		default:
-			pool = NewSenderNonceMempool()
+			pool = DefaultPriceNonceMempool()
 		}
 		nsm.pools[namespaceId] = pool
 	}
@@ -112,8 +110,8 @@ func (nsm *NamespaceMempool) Init(ctx context.Context) Mempool {
 }
 
 func (nsm *NamespaceMempool) GetPool(namespaceId uint64) Mempool {
-	nsm.mtx.Lock()
-	defer nsm.mtx.Unlock()
+	nsm.mtx.RLock()
+	defer nsm.mtx.RUnlock()
 	pool, init := nsm.pools[namespaceId]
 	if !init {
 		return nil
@@ -123,7 +121,9 @@ func (nsm *NamespaceMempool) GetPool(namespaceId uint64) Mempool {
 
 func (nsm *NamespaceMempool) Insert(ctx context.Context, tx sdk.Tx) error {
 	namespaceId := sdk.UnwrapSDKContext(ctx).Namespace()
+	nsm.mtx.RLock()
 	pool, init := nsm.pools[namespaceId]
+	nsm.mtx.RUnlock()
 	if !init {
 		pool = nsm.Init(ctx)
 	}
@@ -133,8 +133,8 @@ func (nsm *NamespaceMempool) Select(context.Context, [][]byte) Iterator {
 	panic("implement me")
 }
 func (nsm *NamespaceMempool) CountTx() int {
-	nsm.mtx.Lock()
-	defer nsm.mtx.Unlock()
+	nsm.mtx.RLock()
+	defer nsm.mtx.RUnlock()
 	count := 0
 	for _, mem := range nsm.pools {
 		count += mem.CountTx()
@@ -142,6 +142,8 @@ func (nsm *NamespaceMempool) CountTx() int {
 	return count
 }
 func (nsm *NamespaceMempool) RemoveByNamespaceId(namespaceId uint64, tx sdk.Tx) error {
+	nsm.mtx.RLock()
+	defer nsm.mtx.RUnlock()
 	if pool, ok := nsm.pools[namespaceId]; ok {
 		err := pool.Remove(tx)
 		if err != nil {
@@ -153,8 +155,11 @@ func (nsm *NamespaceMempool) RemoveByNamespaceId(namespaceId uint64, tx sdk.Tx) 
 	return nsm.Remove(tx)
 }
 func (nsm *NamespaceMempool) Remove(tx sdk.Tx) error {
+	nsm.mtx.RLock()
+	defer nsm.mtx.RUnlock()
 	for _, mem := range nsm.pools {
 		_ = mem.Remove(tx)
 	}
+
 	return nil
 }

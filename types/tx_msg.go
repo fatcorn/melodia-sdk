@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	fmt "fmt"
 	strings "strings"
+	"sync"
 
 	"github.com/cosmos/gogoproto/proto"
 	protov2 "google.golang.org/protobuf/proto"
@@ -27,12 +28,6 @@ type (
 		// GetSigners returns the addrs of signers that must sign.
 		// CONTRACT: All signatures must be present to be valid.
 		// CONTRACT: Returns addrs in some deterministic order.
-		GetSigners() []AccAddress
-	}
-
-	SignerMsg interface {
-		Msg
-		GetNonce() uint64
 		GetSigners() []AccAddress
 	}
 
@@ -87,6 +82,13 @@ type (
 		GetTimeoutHeight() uint64
 	}
 
+	TxWithAccountInfo interface {
+		Tx
+		GetFrom() AccAddress
+		GetTo() AccAddress
+		GetNonce() uint64
+	}
+
 	// HasValidateBasic defines a type that has a ValidateBasic method.
 	// ValidateBasic is deprecated and now facultative.
 	// Prefer validating messages directly in the msg server.
@@ -105,6 +107,10 @@ type TxEncoder func(tx Tx) ([]byte, error)
 
 type TransactionAddressHandler func(ctx Context, tx Tx) (bool, []string, []string)
 
+type TxAccountInfoHandler func(tx Tx) (string, string)
+
+type CrossNamespaceTransactionIdentifierHandler func(ctx Context, tx Tx) ([]byte, bool, bool)
+
 type SetMsgsHandler func(ctx Context, msgs []Msg)
 type ModifyLogIndexHandler func(ctx Context, input string, logIndex uint64) string
 
@@ -115,6 +121,11 @@ type WriteDeferredBalancesHandler func(ctx Context) []abci.Event
 type AddCosmosEventsToEVMReceiptIfApplicable func(ctx Context, tx Tx, checksum [32]byte, resp *abci.ExecTxResult)
 
 type GetAllNamespacePortsHandler func(ctx Context) []consensustypes.Namespace
+
+type ContractStaticAnalysisHandler func(ctx Context, tx Tx, sender string)
+
+type ContractStaticAnalysisResultHandler func(ctx Context) *sync.Map
+type IsEVMTxHandler func(ctx Context, tx Tx) bool
 
 // MsgTypeURL returns the TypeURL of a `sdk.Msg`.
 var MsgTypeURL = codectypes.MsgTypeURL
