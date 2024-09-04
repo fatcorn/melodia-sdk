@@ -275,14 +275,15 @@ func (s *scheduler) findConflicts(task *deliverTxTask) (bool, []int) {
 	return valid, conflicts
 }
 
-func toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest, addressHandler sdk.TransactionAddressHandler) ([]*deliverTxTask, map[int]*deliverTxTask) {
+func toTasks(_ sdk.Context, req sdk.DeliverTxBatchRequest) ([]*deliverTxTask, map[int]*deliverTxTask) {
 	reqs := req.TxEntries
 	orders := req.Orders
 	tasksMap := make(map[int]*deliverTxTask)
 	allTasks := make([]*deliverTxTask, 0, len(reqs))
 	totalTask := len(reqs)
+	interChainIndexes := make(map[int32]int32)
 
-	addTxTask := func(dependIdx int, r *sdk.DeliverTxEntry, status status) {
+	addTxTask := func(dependIdxes []int, r *sdk.DeliverTxEntry) {
 		task := &deliverTxTask{
 			Request:       r.Request,
 			SdkTx:         r.SdkTx,
@@ -297,9 +298,11 @@ func toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest, addressHandler sdk.
 		}
 
 		// if there are dependencies, set the task to waiting
-		if status == statusWaiting {
+		if len(dependIdxes) > 0 {
 			dependencies := map[int]struct{}{}
-			dependencies[dependIdx] = struct{}{}
+			for _, dependIdx := range dependIdxes {
+				dependencies[dependIdx] = struct{}{}
+			}
 			task.Status = statusWaiting
 			task.Dependencies = dependencies
 		}
@@ -307,15 +310,29 @@ func toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest, addressHandler sdk.
 		allTasks = append(allTasks, task)
 	}
 
+	if orders.NsInterChainTransactionOrders != nil {
+		for _, orderEntry := range orders.NsInterChainTransactionOrders.Entries {
+			for i, idxEntry := range orderEntry.Indexes {
+				if i > 0 {
+					interChainIndexes[idxEntry.Index] = orderEntry.Indexes[i-1].Index
+				}
+			}
+		}
+	}
+
 	if orders.NsTransactionOrders != nil {
 		for _, orderEntry := range orders.NsTransactionOrders.Entries {
 			for _, idxes := range orderEntry.Indexes {
 				for i, idx := range idxes.Indexes {
+					dependIdxes := make([]int, 0)
 					if i > 0 {
-						addTxTask(int(idxes.Indexes[i-1]), reqs[idx], statusWaiting)
-					} else {
-						addTxTask(-1, reqs[idx], statusPending)
+						dependIdxes = append(dependIdxes, int(idxes.Indexes[i-1]))
 					}
+					interChainDependIdx, hasDep := interChainIndexes[idx]
+					if hasDep {
+						dependIdxes = append(dependIdxes, int(interChainDependIdx))
+					}
+					addTxTask(dependIdxes, reqs[idx])
 				}
 			}
 		}
@@ -490,7 +507,8 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	//s.PrefillEstimates(reqs)
 	toTaskStartTime := time.Now()
 	println("init version store time========", "sub", toTaskStartTime.Sub(startTime).String())
-	tasks, tasksMap := toTasks(ctx, req, s.transactionAddressHandler)
+	tasks, tasksMap := toTasks(ctx, req)
+
 	fmt.Printf("========= toTasks Time used: %v\n", time.Since(toTaskStartTime))
 	now := time.Now()
 	s.allTasks = tasks
