@@ -1658,16 +1658,18 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 				txIndex++
 			}
 		}
-		nsTable = append(nsTable, &cmtproto.NamespaceTableEntries{
-			Namespace: namespaceId,
-			Offset:    int32(offset),
-		})
-		orders.NsTransactionOrders.Entries = append(orders.NsTransactionOrders.Entries, &cmtproto.NsTransactionOrderEntry{
-			Namespace: namespaceId,
-			Indexes:   nsTransactionIndexes,
-		})
+		if len(nsTransactionIndexes) > 0 {
+			nsTable = append(nsTable, &cmtproto.NamespaceTableEntries{
+				Namespace: namespaceId,
+				Offset:    int32(offset),
+			})
+			orders.NsTransactionOrders.Entries = append(orders.NsTransactionOrders.Entries, &cmtproto.NsTransactionOrderEntry{
+				Namespace: namespaceId,
+				Indexes:   nsTransactionIndexes,
+			})
+		}
 	}
-	app.logger.Info("sortTxs total time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "orders time used", fmt.Sprintf("%v ms", time.Since(staticTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable)
+	app.logger.Info("sortTxs total time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "ordersTime", fmt.Sprintf("%v ms", time.Since(staticTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable)
 	return &abci.ResponseSortTxs{Txs: sortTxs, NsTable: nsTable, Orders: orders}, nil
 }
 
