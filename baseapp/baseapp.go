@@ -317,9 +317,7 @@ func NewBaseApp(
 	app.cdc = codec.NewProtoCodec(codectypes.NewInterfaceRegistry())
 	id := app.cms.LastCommitID()
 	app.finalizeBlockHeight = id.Version
-	if app.concurrencyWorkers == 0 {
-		app.concurrencyWorkers = 60
-	}
+
 	return app
 }
 
