@@ -4,12 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"math"
-	"sort"
-	"strconv"
-	"sync"
-	"time"
-
 	"github.com/cockroachdb/errors"
 	cmtdbm "github.com/cometbft/cometbft-db"
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -20,6 +14,11 @@ import (
 	"github.com/cosmos/gogoproto/proto"
 	"golang.org/x/exp/maps"
 	protov2 "google.golang.org/protobuf/proto"
+	"math"
+	"sort"
+	"strconv"
+	"sync"
+	"time"
 
 	"cosmossdk.io/core/header"
 	errorsmod "cosmossdk.io/errors"
@@ -1447,20 +1446,52 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 	startTime := time.Now()
 
 	var (
-		sortTxs            = make([][]byte, 0)
-		lastOffset         = int32(0)
-		wg                 sync.WaitGroup
-		nsMempool          = mempool.NewNamespaceMempool()
+		sortTxs                 = make([][]byte, 0)
+		lastOffset              = int32(0)
+		wg                      sync.WaitGroup
+		nsMempool               = mempool.NewNamespaceMempool()
+		beforeInterChainPairTxs = make(map[string][]*cmtproto.NsInterChainTransactionIndex)
+		afterInterChainPairTxs  = make(map[string][]*cmtproto.NsInterChainTransactionIndex)
+		isInterChainTx          = func(tx sdk.Tx) (string, bool) {
+			//TODO 获取id，返回是否是跨链
+			return "", false
+		}
+		sortInterChainTxOrders = func(txs []*cmtproto.NsInterChainTransactionIndex) []*cmtproto.NsInterChainTransactionIndex {
+			idxes := make([]*cmtproto.NsInterChainTransactionIndex, 2)
+			//TODO 根据交易类型排序
+			idxes[0] = txs[0]
+			idxes[1] = txs[1]
+			return idxes
+		}
 		nsMempoolInsertTxs = func(ctx sdk.Context, namespaceTxs [][]byte, namespaceId uint64) {
 			defer wg.Done()
 			singleStartTime := time.Now()
-			for _, txBz := range namespaceTxs {
+			for idx, txBz := range namespaceTxs {
 				tx, err := app.TxDecode(txBz)
 				if err != nil {
 					continue
 				}
+
+				txId, isInter := isInterChainTx(tx)
+				if isInter {
+					if _, ok := beforeInterChainPairTxs[txId]; ok {
+						beforeInterChainPairTxs[txId] = append(beforeInterChainPairTxs[txId], &cmtproto.NsInterChainTransactionIndex{
+							Namespace: namespaceId,
+							Index:     int32(idx),
+						})
+					} else {
+						beforeInterChainPairTxs[txId] = []*cmtproto.NsInterChainTransactionIndex{
+							{
+								Namespace: namespaceId,
+								Index:     int32(idx),
+							},
+						}
+					}
+				}
+
 				ctx = ctx.WithNamepace(namespaceId)
 				_ = nsMempool.Insert(ctx, tx)
+
 			}
 			app.logger.Info("sortTxs single namespace insert time", "used", fmt.Sprintf("%v ms", time.Since(singleStartTime).Milliseconds()), "size", len(namespaceTxs), "namespaceId", namespaceId)
 		}
@@ -1495,6 +1526,37 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 		staticAnalysisResult = app.contractStaticAnalysisResultHandler(ctx)
 	}
 
+	handleNsInterChainTransactionOrders := func(tx sdk.Tx, txIdx int, namespaceId uint64) bool {
+
+		txId, isInter := isInterChainTx(tx)
+		if isInter {
+			if pairTxs, inPair := beforeInterChainPairTxs[txId]; inPair {
+				if len(pairTxs) != 2 {
+					return false
+				}
+			}
+
+			if interTxs, ok := afterInterChainPairTxs[txId]; ok {
+				interTxs = append(interTxs, &cmtproto.NsInterChainTransactionIndex{
+					Namespace: namespaceId,
+					Index:     int32(txIdx),
+				})
+				entry := &cmtproto.NsInterChainTransactionOrderEntry{
+					Indexes: sortInterChainTxOrders(interTxs),
+				}
+				orders.NsInterChainTransactionOrders.Entries = append(orders.NsInterChainTransactionOrders.Entries, entry)
+			} else {
+				afterInterChainPairTxs[txId] = []*cmtproto.NsInterChainTransactionIndex{
+					{
+						Namespace: namespaceId,
+						Index:     int32(txIdx),
+					},
+				}
+			}
+		}
+		return true
+	}
+
 	staticTime := time.Now()
 	for _, nsIterator := range nsIterators {
 		iterator := nsIterator.Iterator
@@ -1508,61 +1570,64 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 			staticToSerialIndex   int32
 			nsTransactionIndexes  = make([]*cmtproto.NsTransactionIndexes, 0)
 		)
-		handleNsTransactionOrders := func(txBz []byte) {
-			// Static analysis
-			tx, _ := app.TxDecode(txBz)
+
+		handleNsTransactionOrders := func(tx sdk.Tx, txIdx int, namespaceId uint64) {
 			from, to := app.txAccountInfoHandler(tx)
 			//1、from the same must be serial
 			if idx, exists := fromIndexMap[from]; exists {
-				nsTransactionIndexes[idx].Indexes = append(nsTransactionIndexes[idx].Indexes, int32(txIndex))
-				txIndex++
+				nsTransactionIndexes[idx].Indexes = append(nsTransactionIndexes[idx].Indexes, int32(txIdx))
 				return
 			}
 			//2、to the same must be serial
 			if to != "" {
 				if idx, exists := toIndexMap[to]; exists {
-					nsTransactionIndexes[idx].Indexes = append(nsTransactionIndexes[idx].Indexes, int32(txIndex))
-					txIndex++
+					nsTransactionIndexes[idx].Indexes = append(nsTransactionIndexes[idx].Indexes, int32(txIdx))
 					return
 				}
 				//3、to contract static analysis must be serial
 				if staticToSerial, exists := staticAnalysisResult.Load(to); exists {
 					if !staticToSerial.(bool) {
 						if len(staticToSerialIndexes) > 0 {
-							staticToSerialIndexes = append(staticToSerialIndexes, int32(txIndex))
+							staticToSerialIndexes = append(staticToSerialIndexes, int32(txIdx))
 							nsTransactionIndexes[staticToSerialIndex].Indexes = staticToSerialIndexes
 						} else {
-							staticToSerialIndexes = append(staticToSerialIndexes, int32(txIndex))
+							staticToSerialIndexes = append(staticToSerialIndexes, int32(txIdx))
 							nsTransactionIndexes = append(nsTransactionIndexes, &cmtproto.NsTransactionIndexes{
 								Indexes: staticToSerialIndexes,
 							})
 							staticToSerialIndex = int32(len(nsTransactionIndexes) - 1)
 						}
-						txIndex++
 						return
 					}
 				}
 			}
 			indexes := make([]int32, 1)
-			indexes[0] = int32(txIndex)
+			indexes[0] = int32(txIdx)
 			newIndex := &cmtproto.NsTransactionIndexes{Indexes: indexes}
 			nsTransactionIndexes = append(nsTransactionIndexes, newIndex)
 			fromIndexMap[from] = len(nsTransactionIndexes) - 1
 			if to != "" {
 				toIndexMap[to] = len(nsTransactionIndexes) - 1
 			}
-			txIndex++
 		}
 
 		// If the iterator is nil use the NoOpMempool, get all namespace txs
 		if iterator == nil {
 			txs := nsTxs[namespaceId]
 			for _, txBz := range txs {
-
+				tx, err := app.TxDecode(txBz)
+				if err != nil {
+					return nil, err
+				}
+				ok := handleNsInterChainTransactionOrders(tx, txIndex, namespaceId)
+				if !ok {
+					continue
+				}
 				sortTxs = append(sortTxs, txBz)
 				offset++
 
-				handleNsTransactionOrders(txBz)
+				handleNsTransactionOrders(tx, txIndex, namespaceId)
+				txIndex++
 			}
 		} else {
 
@@ -1572,11 +1637,18 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 				if err != nil {
 					return nil, err
 				}
+
+				ok := handleNsInterChainTransactionOrders(tx, txIndex, namespaceId)
+				if !ok {
+					continue
+				}
+
 				sortTxs = append(sortTxs, txBz)
 				offset++
 				iterator = iterator.Next()
 
-				handleNsTransactionOrders(txBz)
+				handleNsTransactionOrders(tx, txIndex, namespaceId)
+				txIndex++
 			}
 		}
 		nsTable = append(nsTable, &cmtproto.NamespaceTableEntries{
