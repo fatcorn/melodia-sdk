@@ -79,3 +79,8 @@ type ResponsePreBlock struct {
 func (r ResponsePreBlock) IsConsensusParamsChanged() bool {
 	return r.ConsensusParamsChanged
 }
+
+type ByteTx struct {
+	Tx
+	TxBytes []byte
+}

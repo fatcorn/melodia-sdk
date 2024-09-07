@@ -8,6 +8,7 @@ import (
 	"github.com/huandu/skiplist"
 	"math"
 	"sort"
+	"sync"
 )
 
 var (
@@ -24,8 +25,8 @@ type (
 		SignerExtractor SignerExtractionAdapter
 	}
 	PriceNonceMempool[C comparable] struct {
-		cfg       PriceNonceMempoolConfig[C]
-		senderTxs map[string][]*Transaction[C]
+		cfg PriceNonceMempoolConfig[C]
+		txs []sdk.Tx
 	}
 
 	TxPrice[C comparable] struct {
@@ -98,8 +99,8 @@ func NewPriceNonceMempool[C comparable](cfg PriceNonceMempoolConfig[C]) *PriceNo
 		cfg.SignerExtractor = NewDefaultSignerExtractionAdapter()
 	}
 	mp := &PriceNonceMempool[C]{
-		cfg:       cfg,
-		senderTxs: make(map[string][]*Transaction[C]),
+		cfg: cfg,
+		txs: make([]sdk.Tx, 0, 10000),
 	}
 	return mp
 }
@@ -109,17 +110,45 @@ func DefaultPriceNonceMempool() *PriceNonceMempool[int64] {
 }
 
 func (mp *PriceNonceMempool[C]) Insert(_ context.Context, tx sdk.Tx) error {
-	transaction, err := mp.ToTransaction(tx)
-	if err != nil {
-		return err
-	}
-	mp.senderTxs[transaction.Sender] = append(mp.senderTxs[transaction.Sender], &transaction)
+	mp.txs = append(mp.txs, tx)
 	return nil
 }
+func (mp *PriceNonceMempool[C]) PrepareSenderTxs() (map[string][]*Transaction[C], []string) {
+
+	var wg sync.WaitGroup
+	senderTxs := make(map[string][]*Transaction[C])
+	mux := sync.Mutex{}
+	for _, tx := range mp.txs {
+		wg.Add(1)
+		go func(tx sdk.Tx) {
+			defer wg.Done()
+			transaction, err := mp.ToTransaction(tx)
+			if err != nil {
+				panic(err)
+			}
+			mux.Lock()
+			defer mux.Unlock()
+			transactions, ok := senderTxs[transaction.Sender]
+			if ok {
+				senderTxs[transaction.Sender] = append(transactions, &transaction)
+			} else {
+				senderTxs[transaction.Sender] = []*Transaction[C]{&transaction}
+			}
+		}(tx)
+	}
+	wg.Wait()
+
+	senders := make([]string, 0, len(senderTxs))
+	for sender, _ := range senderTxs {
+		senders = append(senders, sender)
+	}
+	sort.Strings(senders)
+	return senderTxs, senders
+}
 func (mp *PriceNonceMempool[C]) Select(context.Context, [][]byte) Iterator {
-	accKeys := mp.GetOrderSenders()
+	senderTxs, accKeys := mp.PrepareSenderTxs()
 	// Separate the transactions by account and sort by nonce
-	byNonce := mp.senderTxs
+	byNonce := senderTxs
 	for _, acc := range accKeys {
 		accTxs := byNonce[acc]
 		sort.Sort(TxByNonce[C](accTxs))
@@ -154,22 +183,10 @@ func (mp *PriceNonceMempool[C]) Select(context.Context, [][]byte) Iterator {
 }
 
 func (mp *PriceNonceMempool[C]) CountTx() int {
-	count := 0
-	for _, txs := range mp.senderTxs {
-		count += len(txs)
-	}
-	return count
+	return len(mp.txs)
 }
 func (mp *PriceNonceMempool[C]) Remove(tx sdk.Tx) error {
 	panic("implement me")
-}
-func (mp *PriceNonceMempool[C]) GetOrderSenders() []string {
-	senders := make([]string, 0, len(mp.senderTxs))
-	for sender, _ := range mp.senderTxs {
-		senders = append(senders, sender)
-	}
-	sort.Strings(senders)
-	return senders
 }
 
 func (mp *PriceNonceMempool[C]) ToTransaction(tx sdk.Tx) (Transaction[C], error) {
