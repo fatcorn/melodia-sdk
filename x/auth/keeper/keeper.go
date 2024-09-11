@@ -100,7 +100,7 @@ type AccountKeeper struct {
 	// State
 	Schema        collections.Schema
 	Params        collections.Item[types.Params]
-	AccountNumber collections.Sequence
+	AccountNumber *collections.Sequence
 	Accounts      *collections.IndexedMap[sdk.AccAddress, sdk.AccountI, AccountsIndexes]
 }
 

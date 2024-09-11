@@ -11,7 +11,7 @@ import (
 
 var LegacyGlobalAccountNumberKey = []byte("globalAccountNumber")
 
-func Migrate(ctx context.Context, storeService storetypes.KVStoreService, sequence collections.Sequence) error {
+func Migrate(ctx context.Context, storeService storetypes.KVStoreService, sequence *collections.Sequence) error {
 	store := storeService.OpenKVStore(ctx)
 	b, err := store.Get(LegacyGlobalAccountNumberKey)
 	if err != nil {
