@@ -55,6 +55,50 @@ type wrapper struct {
 	msgsV2  []protov2.Message
 }
 
+func (w *wrapper) SetAccountInfo(accountInfo tx.AccountInfo) {
+	w.tx.AuthInfo.AccountInfo.From = accountInfo.From
+	w.tx.AuthInfo.AccountInfo.To = accountInfo.To
+	w.tx.AuthInfo.AccountInfo.Nonce = accountInfo.Nonce
+	w.authInfoBz = nil
+}
+
+func (w *wrapper) GetFrom() sdk.AccAddress {
+	if w.tx.AuthInfo.AccountInfo == nil {
+		return nil
+	}
+	from := w.tx.AuthInfo.AccountInfo.From
+	if from != "" {
+		fromAddr, err := w.cdc.InterfaceRegistry().SigningContext().AddressCodec().StringToBytes(from)
+		if err != nil {
+			panic(err)
+		}
+		return fromAddr
+	}
+	return sdk.AccAddress(from)
+}
+
+func (w *wrapper) GetTo() sdk.AccAddress {
+	if w.tx.AuthInfo.AccountInfo == nil {
+		return nil
+	}
+	to := w.tx.AuthInfo.AccountInfo.To
+	if to != "" {
+		toAddr, err := w.cdc.InterfaceRegistry().SigningContext().AddressCodec().StringToBytes(to)
+		if err != nil {
+			panic(err)
+		}
+		return toAddr
+	}
+	return sdk.AccAddress(to)
+}
+
+func (w *wrapper) GetNonce() uint64 {
+	if w.tx.AuthInfo.AccountInfo == nil {
+		return 0
+	}
+	return w.tx.AuthInfo.AccountInfo.Nonce
+}
+
 var (
 	_ authsigning.Tx   = &wrapper{}
 	_ client.TxBuilder = &wrapper{}

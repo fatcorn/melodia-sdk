@@ -36,6 +36,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/baseapp/oe"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	"github.com/cosmos/cosmos-sdk/nsblockstore"
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
 	"github.com/cosmos/cosmos-sdk/telemetry"
@@ -44,7 +45,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/types/mempool"
 	"github.com/near/borsh-go"
 	"golang.org/x/exp/slices"
-	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 )
 
 type (
