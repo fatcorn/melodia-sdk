@@ -352,6 +352,10 @@ func (app *BaseApp) SetTransactionAddressHandler(transactionAddressHandler sdk.T
 	app.transactionAddressHandler = transactionAddressHandler
 }
 
+func (app *BaseApp) SetIsEVMTxHandler(isEVMTxHandler sdk.IsEVMTxHandler) {
+	app.isEVMTxHandler = isEVMTxHandler
+}
+
 func (app *BaseApp) SetWriteDeferredBalancesHandler(writeDeferredBalancesHandler sdk.WriteDeferredBalancesHandler) {
 	app.writeDeferredBalancesHandler = writeDeferredBalancesHandler
 }
@@ -374,6 +378,20 @@ func (app *BaseApp) SetSetBlockBloomTransientHandler(setBlockBloomTransientHandl
 
 func (app *BaseApp) SetGetAllNamespacePortsHandler(getAllNamespacePortsHandler sdk.GetAllNamespacePortsHandler) {
 	app.getAllNamespacePortsHandler = getAllNamespacePortsHandler
+}
+
+func (app *BaseApp) SetContractStaticAnalysisHandler(contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler) {
+	app.contractStaticAnalysisHandler = contractStaticAnalysisHandler
+}
+func (app *BaseApp) SetContractStaticAnalysisResultHandler(contractStaticAnalysisResultHandler sdk.ContractStaticAnalysisResultHandler) {
+	app.contractStaticAnalysisResultHandler = contractStaticAnalysisResultHandler
+}
+
+func (app *BaseApp) SetTxAccountInfoHandler(txAccountInfoHandler sdk.TxAccountInfoHandler) {
+	app.txAccountInfoHandler = txAccountInfoHandler
+}
+func (app *BaseApp) SetCrossNamespaceTransactionIdentifierHandler(crossNamespaceTransactionIdentifierHandler sdk.CrossNamespaceTransactionIdentifierHandler) {
+	app.crossNamespaceTransactionIdentifierHandler = crossNamespaceTransactionIdentifierHandler
 }
 
 // SetQueryMultiStore set a alternative MultiStore implementation to support grpc query service.

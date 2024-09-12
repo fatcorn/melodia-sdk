@@ -12,23 +12,18 @@ void printThreadID() {
 import "C"
 import (
 	"context"
+	"cosmossdk.io/store"
 	"fmt"
 	abci "github.com/cometbft/cometbft/abci/types"
-	"github.com/mitchellh/go-ps"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/docker"
-	"github.com/shirou/gopsutil/process"
 	"log"
 	"os"
-	"runtime"
 	"runtime/pprof"
 	"runtime/trace"
-	"strconv"
-	"strings"
-
-	"cosmossdk.io/store"
-	sdk "github.com/cosmos/cosmos-sdk/types"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -77,6 +72,7 @@ type deliverTxTask struct {
 	VersionStores map[storetypes.StoreKey]*multiversion.VersionIndexedStore
 	IsEVMTx       bool
 	NamespaceId   uint64
+	TotalTask     int
 	//TxTracer      sdk.TxTracer
 }
 
@@ -119,7 +115,8 @@ func (dt *deliverTxTask) Increment() {
 
 // Scheduler processes tasks concurrently
 type Scheduler interface {
-	ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]abci.ExecTxResult, error)
+	ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]abci.ExecTxResult, error)
+	SetSchedulerHandlers(transactionAddressHandler sdk.TransactionAddressHandler, setMsgsHandler sdk.SetMsgsHandler, modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler, isEVMTxHandler sdk.IsEVMTxHandler)
 }
 
 // tx []byte
@@ -140,6 +137,8 @@ type scheduler struct {
 	setMsgsHandler                sdk.SetMsgsHandler
 	modifyLogIndexHandler         sdk.ModifyLogIndexHandler
 	setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler
+	contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler
+	isEVMTxHandler                sdk.IsEVMTxHandler
 	namespaceList                 []uint64
 	threadIds                     []int
 	//tracingInfo        *tracing.Info
@@ -148,26 +147,46 @@ type scheduler struct {
 
 // NewScheduler creates a new scheduler
 // func NewScheduler(workers int, deliverTxFunc func(ctx sdk.Context, req []byte, tx sdk.Tx, checksum [32]byte) (res abci.ExecTxResult)) Scheduler {
-func NewScheduler(workers int, deliverTxFunc func(tx []byte, opts ...sdk.Context) *abci.ExecTxResult, transactionAddressHandler sdk.TransactionAddressHandler, setMsgsHandler sdk.SetMsgsHandler, modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, namespaceList []uint64) Scheduler {
+func NewScheduler(workers int, deliverTxFunc func(tx []byte, opts ...sdk.Context) *abci.ExecTxResult, namespaceList []uint64) Scheduler {
 	threadProfile = pprof.Lookup("threadcreate")
 
 	return &scheduler{
-		workers:                       workers,
-		deliverTx:                     deliverTxFunc,
-		metrics:                       &schedulerMetrics{},
-		transactionAddressHandler:     transactionAddressHandler,
-		setMsgsHandler:                setMsgsHandler,
-		modifyLogIndexHandler:         modifyLogIndexHandler,
-		setBlockBloomTransientHandler: setBlockBloomTransientHandler,
-		namespaceList:                 namespaceList,
+		workers:       workers,
+		deliverTx:     deliverTxFunc,
+		metrics:       &schedulerMetrics{},
+		namespaceList: namespaceList,
 	}
+}
+func (s *scheduler) SetSchedulerHandlers(transactionAddressHandler sdk.TransactionAddressHandler, setMsgsHandler sdk.SetMsgsHandler, modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler, isEVMTxHandler sdk.IsEVMTxHandler) {
+	s.transactionAddressHandler = transactionAddressHandler
+	s.setMsgsHandler = setMsgsHandler
+	s.modifyLogIndexHandler = modifyLogIndexHandler
+	s.setBlockBloomTransientHandler = setBlockBloomTransientHandler
+	s.contractStaticAnalysisHandler = contractStaticAnalysisHandler
+	s.isEVMTxHandler = isEVMTxHandler
 }
 
 func (s *scheduler) invalidateTask(task *deliverTxTask) {
 	for _, mv := range s.multiVersionStores {
-		mv.InvalidateWriteset(task.AbsoluteIndex, task.Incarnation)
+		mv.InvalidateWriteset(task.AbsoluteIndex, task.Incarnation, task.TotalTask)
 		mv.ClearReadset(task.AbsoluteIndex)
 		mv.ClearIterateset(task.AbsoluteIndex)
+	}
+}
+
+func (s *scheduler) start1(ctx context.Context, ch chan func(), workers int) {
+	for i := 0; i < workers; i++ {
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case work := <-ch:
+					//printThreadID()
+					work()
+				}
+			}
+		}()
 	}
 }
 
@@ -179,7 +198,6 @@ func (s *scheduler) start(ctx context.Context, ch chan func(), workers int) {
 				case <-ctx.Done():
 					return
 				case work := <-ch:
-					//printThreadID()
 					work()
 				}
 			}
@@ -217,6 +235,7 @@ func (s *scheduler) DoExecute(work func()) {
 		return
 	}
 	s.executeCh <- work
+	//go work()
 }
 
 func (s *scheduler) DoWrite(work func()) {
@@ -255,12 +274,15 @@ func (s *scheduler) findConflicts(task *deliverTxTask) (bool, []int) {
 	return valid, conflicts
 }
 
-func toTasks(ctx sdk.Context, reqs []*sdk.DeliverTxEntry, addressHandler sdk.TransactionAddressHandler) ([]*deliverTxTask, map[int]*deliverTxTask) {
+func toTasks(_ sdk.Context, req sdk.DeliverTxBatchRequest) ([]*deliverTxTask, map[int]*deliverTxTask) {
+	reqs := req.TxEntries
+	orders := req.Orders
 	tasksMap := make(map[int]*deliverTxTask)
 	allTasks := make([]*deliverTxTask, 0, len(reqs))
-	addressToTxIndex := make(map[string][]int)
+	totalTask := len(reqs)
+	interChainIndexes := make(map[int32]int32)
 
-	for _, r := range reqs {
+	addTxTask := func(dependIdxes []int, r *sdk.DeliverTxEntry) {
 		task := &deliverTxTask{
 			Request:       r.Request,
 			SdkTx:         r.SdkTx,
@@ -268,42 +290,56 @@ func toTasks(ctx sdk.Context, reqs []*sdk.DeliverTxEntry, addressHandler sdk.Tra
 			AbsoluteIndex: r.AbsoluteIndex,
 			Status:        statusPending,
 			Dependencies:  map[int]struct{}{},
+			TotalTask:     totalTask,
+			IsEVMTx:       false,
+
 			//TxTracer:      r.TxTracer,
 		}
 
-		isEVMTx, cosmosAddresses, evmAddresses := addressHandler(ctx, r.SdkTx)
-		task.IsEVMTx = isEVMTx
-		dependencies := map[int]struct{}{}
-
-		// find dependencies based on cosmos addresses
-		for _, cosmosAddress := range cosmosAddresses {
-			if lastTxIndexes, found := addressToTxIndex[cosmosAddress]; found {
-				for _, lastTxIndex := range lastTxIndexes {
-					dependencies[lastTxIndex] = struct{}{}
-				}
-			}
-			addressToTxIndex[cosmosAddress] = append(addressToTxIndex[cosmosAddress], r.AbsoluteIndex)
-		}
-		// find dependencies based on evm addresses
-		for _, evmAddress := range evmAddresses {
-			if lastTxIndexes, found := addressToTxIndex[evmAddress]; found {
-				for _, lastTxIndex := range lastTxIndexes {
-					dependencies[lastTxIndex] = struct{}{}
-				}
-			}
-			addressToTxIndex[evmAddress] = append(addressToTxIndex[evmAddress], r.AbsoluteIndex)
-		}
-
 		// if there are dependencies, set the task to waiting
-		if len(dependencies) > 0 {
+		if len(dependIdxes) > 0 {
+			dependencies := map[int]struct{}{}
+			for _, dependIdx := range dependIdxes {
+				dependencies[dependIdx] = struct{}{}
+			}
 			task.Status = statusWaiting
 			task.Dependencies = dependencies
 		}
-
 		tasksMap[r.AbsoluteIndex] = task
 		allTasks = append(allTasks, task)
-
 	}
+
+	if orders.NsInterChainTransactionOrders != nil {
+		for _, orderEntry := range orders.NsInterChainTransactionOrders.Entries {
+			for i, idxEntry := range orderEntry.Indexes {
+				if i > 0 {
+					interChainIndexes[idxEntry.Index] = orderEntry.Indexes[i-1].Index
+				}
+			}
+		}
+	}
+
+	if orders.NsTransactionOrders != nil {
+		for _, orderEntry := range orders.NsTransactionOrders.Entries {
+			for _, idxes := range orderEntry.Indexes {
+				for i, idx := range idxes.Indexes {
+					dependIdxes := make([]int, 0)
+					if i > 0 {
+						dependIdxes = append(dependIdxes, int(idxes.Indexes[i-1]))
+					}
+					interChainDependIdx, hasDep := interChainIndexes[idx]
+					if hasDep {
+						dependIdxes = append(dependIdxes, int(interChainDependIdx))
+					}
+					addTxTask(dependIdxes, reqs[idx])
+				}
+			}
+		}
+	}
+	if len(allTasks) != len(reqs) {
+		panic(fmt.Errorf("toTasks NsTransactionOrders total.Size(%s) != txs.Size(%s)", len(allTasks), len(reqs)))
+	}
+
 	return allTasks, tasksMap
 }
 
@@ -321,6 +357,8 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) ([
 
 	for _, t := range tasks {
 		res = append(res, *t.Response)
+
+		t.IsEVMTx = s.isEVMTxHandler(ctx, t.SdkTx)
 
 		if !t.IsEVMTx {
 			continue
@@ -347,6 +385,23 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) ([
 					txLogs = append(txLogs, newLog)
 					logSize++
 				}
+			} else if e.Type == "message" {
+				var isEVM bool
+				for _, attr := range e.Attributes {
+					if attr.Key == "module" && attr.Value == "evm" {
+						isEVM = true
+						break
+					}
+				}
+
+				if isEVM {
+					for _, attr := range e.Attributes {
+						if attr.Key == "sender" {
+							s.contractStaticAnalysisHandler(ctx, t.SdkTx, attr.Value)
+							break
+						}
+					}
+				}
 			}
 		}
 		evmTxIndex++
@@ -368,14 +423,20 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) ([
 	return res, evmTxs
 }
 
-func (s *scheduler) tryInitMultiVersionStore(ctx sdk.Context) {
+func (s *scheduler) tryInitMultiVersionStore(ctx sdk.Context, totalTask int) {
 	if s.multiVersionStores != nil {
 		return
 	}
 	mvs := make(map[storetypes.StoreKey]multiversion.MultiVersionStore)
 	keys := ctx.MultiStore().StoreKeys()
+	listStore := os.Getenv("listStore")
+
 	for _, sk := range keys {
-		mvs[sk] = multiversion.NewMultiVersionStore(ctx.MultiStore().GetKVStore(sk))
+		if listStore != "" {
+			mvs[sk] = multiversion.NewMultiVersionListStore(ctx.MultiStore().GetKVStore(sk), totalTask)
+		} else {
+			mvs[sk] = multiversion.NewMultiVersionStore(ctx.MultiStore().GetKVStore(sk))
+		}
 	}
 	s.multiVersionStores = mvs
 }
@@ -435,22 +496,25 @@ type schedulerMetrics struct {
 //	telemetry.IncrCounter(float32(s.metrics.maxIncarnation), "scheduler", "incarnations")
 //}
 
-func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]abci.ExecTxResult, error) {
+func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]abci.ExecTxResult, error) {
 	startTime := time.Now()
 	var iterations int
 	// initialize mutli-version stores if they haven't been initialized yet
-	s.tryInitMultiVersionStore(ctx)
+	s.tryInitMultiVersionStore(ctx, len(req.TxEntries))
 	// prefill estimates
 	// This "optimization" path is being disabled because we don't have a strong reason to have it given that it
 	//s.PrefillEstimates(reqs)
 	toTaskStartTime := time.Now()
-	tasks, tasksMap := toTasks(ctx, reqs, s.transactionAddressHandler)
+	println("init version store time========", "sub", toTaskStartTime.Sub(startTime).String())
+	tasks, tasksMap := toTasks(ctx, req)
+
 	fmt.Printf("========= toTasks Time used: %v\n", time.Since(toTaskStartTime))
+	now := time.Now()
 	s.allTasks = tasks
 	s.allTasksMap = tasksMap
 	s.executeCh = make(chan func(), len(tasks))
 	s.validateCh = make(chan func(), len(tasks))
-	s.collectCh = make(chan func(), 1)
+	s.collectCh = make(chan func(), len(tasks))
 	//defer s.emitMetrics()
 
 	// default to number of tasks if workers is negative or 0 by this point
@@ -462,26 +526,30 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 	workerCtx, cancel := context.WithCancel(ctx.Context())
 	defer cancel()
 	// set trace store file
-	now := time.Now().UnixMilli()
-	nowTime := strconv.Itoa(int(now))
-	tracePath := "trace" + nowTime + ".out"
+
+	nowTime := strconv.Itoa(int(now.UnixMilli()))
+	tracePath := "trace/trace" + nowTime + ".out"
 	tracePathEnv := os.Getenv("tracePath")
 	if tracePathEnv != "" {
 		tracePath = tracePathEnv + tracePath
 	}
-	f, _ := os.Create(tracePath)
+	f, err := os.Create(tracePath)
 
+	if err != nil {
+		println("err", "err", err.Error())
+	}
 	// start trace
 	if err := trace.Start(f); err != nil {
 		panic(err)
 	}
-	//printSystemStats("before process")
+	//go printCpuCount()
 
 	// execution tasks are limited by workers
 	s.start(workerCtx, s.executeCh, workers)
 
-	//s.start(workerCtx, s.collectCh, 1)
-
+	s.start1(workerCtx, s.collectCh, workers)
+	t6 := time.Now()
+	println("======================", "sub", t6.Sub(now).String())
 	toExecute := tasks
 	for !allValidated(tasks) {
 		// if the max incarnation >= x, we should revert to synchronous
@@ -495,21 +563,62 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 			toExecute = tasks[startIdx:]
 		}
 		//go printCpuCount()
-		//printSystemStats("start ")
+		printSystemStats("start ")
+
 		// execute sets statuses of tasks to either executed or aborted
+		t1 := time.Now()
 		if err := s.executeAll(ctx, toExecute); err != nil {
 			return nil, err
 		}
+		t2 := time.Now()
+
 		//writeNow := cmttime.Now()
 		// write from version store to multiversion stores
 
-		//for _, task := range toExecute {
-		//	if task.IsStatus(statusExecuted) {
-		//		for _, v := range task.VersionStores {
-		//			v.WriteToMultiVersionStore()
-		//		}
-		//	}
-		//}
+		listStore := os.Getenv("listStore")
+		totalExecuted := 0
+
+		if listStore != "" {
+			for _, task := range toExecute {
+				if task.IsStatus(statusExecuted) {
+					totalExecuted++
+					tt := 0
+					for _, v := range task.VersionStores {
+						writeset := v.GetWriteset()
+						for key, _ := range writeset {
+							v.NewKey(key, task.TotalTask)
+							tt++
+						}
+					}
+
+				}
+			}
+		}
+
+		t3 := time.Now()
+
+		if listStore != "" {
+			wg := &sync.WaitGroup{}
+			wg.Add(totalExecuted)
+
+			for _, task := range toExecute {
+				if task.IsStatus(statusExecuted) {
+					writeTask := task
+					s.DoWrite(func() {
+
+						for _, v := range writeTask.VersionStores {
+							v.WriteToMultiVersionStore()
+						}
+						defer wg.Done()
+
+					})
+				}
+			}
+			wg.Wait()
+		}
+
+		t4 := time.Now()
+
 		//writeSleepDuration := cmttime.Now().Sub(writeNow)
 		//println("WriteToMultiVersionStore time: ", writeSleepDuration, " from: ", writeNow.String())
 
@@ -520,29 +629,37 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, reqs []*sdk.DeliverTxEntry) ([]a
 
 		var err error
 		toExecute, err = s.validateAll(ctx, tasks)
-		//printSystemStats("end ")
-
+		printSystemStats("end ")
+		t5 := time.Now()
 		if err != nil {
 			return nil, err
 		}
 		// these are retries which apply to metrics
 		s.metrics.retries += len(toExecute)
+
+		println("=========", "t1", t1.String(), "t2", t2.String(), "t3", t3.String(), "t4", t4.String(), "t5", t5.String(), "sub", t5.Sub(t1).String())
 		iterations++
 	}
+	t2 := time.Now()
 
 	for _, mv := range s.multiVersionStores {
 		mv.WriteLatestToStore()
 	}
+	t3 := time.Now()
+	println("wirte latest to store", "sub", t3.Sub(t2).String(), "ex sub", t2.Sub(t6).String())
+
 	// end trace
-	trace.Stop()
 	s.metrics.maxIncarnation = s.maxIncarnation
 
-	ctx.Logger().Info("occ scheduler", "height", ctx.BlockHeight(), "txs", len(tasks), "latency_ms", time.Since(startTime).Milliseconds(), "retries", s.metrics.retries, "maxIncarnation", s.maxIncarnation, "iterations", iterations, "sync", s.synchronous, "workers", workers)
+	ctx.Logger().Info("occ scheduler", "height", ctx.BlockHeight(), "txs", len(tasks), "latency_ms", time.Since(startTime).String(), "retries", s.metrics.retries, "maxIncarnation", s.maxIncarnation, "iterations", iterations, "sync", s.synchronous, "workers", workers)
 
 	res, evmTxs := s.collectResponses(ctx, tasks)
-	//printSystemStats("after process")
+	printSystemStats("after process")
 
 	s.setMsgsHandler(ctx, evmTxs)
+	t7 := time.Now()
+	trace.Stop()
+	println("trace time===============", "sub", time.Now().Sub(t7).String())
 
 	return res, nil
 }
@@ -655,15 +772,17 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 	// validationWg waits for all validations to complete
 	// validations happen in separate goroutines in order to wait on previous index
 	wg := &sync.WaitGroup{}
-	wg.Add(len(tasks))
 
 	for _, task := range tasks {
 		if !s.synchronous && task.IsStatus(statusWaiting) {
 			continue
 		}
 		t := task
+		wg.Add(1)
 		s.DoExecute(func() {
+			//now := time.Now()
 			s.prepareAndRunTask(wg, ctx, t)
+			//println("run tast time", "sub", time.Now().Sub(now))
 		})
 	}
 	//printSystemStats("executing")
@@ -675,12 +794,27 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 func (s *scheduler) prepareAndRunTask(wg *sync.WaitGroup, ctx sdk.Context, task *deliverTxTask) {
 	//eCtx, eSpan := s.traceSpan(ctx, "SchedulerExecute", task)
 	//defer eSpan.End()
+	//now := time.Now()
 	defer wg.Done()
 
 	//C.printThreadID() // 打印线程ID
 	//now := cmttime.Now()
 	task.Ctx = ctx
 	s.executeTask(task)
+	listStore := os.Getenv("listStore")
+	if listStore == "" {
+		if s.synchronous {
+			for _, v := range task.VersionStores {
+				writeset := v.GetWriteset()
+				for key, _ := range writeset {
+					v.NewKey(key, task.TotalTask)
+				}
+				v.WriteToMultiVersionStore()
+			}
+		}
+	}
+
+	//println("run tast time", "sub", time.Now().Sub(now).String())
 
 	//wg.Add(1)
 	//s.DoWrite(func() {
@@ -725,7 +859,7 @@ func (s *scheduler) prepareTask(task *deliverTxTask) {
 		// init version stores by store key
 		vs := make(map[storetypes.StoreKey]*multiversion.VersionIndexedStore)
 		for storeKey, mvs := range s.multiVersionStores {
-			vs[storeKey] = mvs.VersionedIndexedStore(task.AbsoluteIndex, task.Incarnation, abortCh)
+			vs[storeKey] = mvs.VersionedIndexedStore(task.AbsoluteIndex, task.Incarnation, abortCh, task.TotalTask)
 		}
 
 		// save off version store so we can ask it things later
@@ -792,7 +926,6 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 		task.AppendDependencies([]int{abort.DependentTxIdx})
 		// write from version store to multiversion stores
 		for _, v := range task.VersionStores {
-			println(" set estimates =======", "index", abort.DependentTxIdx)
 			v.WriteEstimatesToMultiVersionStore()
 		}
 		return
@@ -808,9 +941,13 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 	//for _, v := range task.VersionStores {
 	//	v.WriteToMultiVersionStore()
 	//}
-	for _, v := range task.VersionStores {
-		v.WriteToMultiVersionStore()
+	listStore := os.Getenv("listStore")
+	if listStore == "" {
+		for _, v := range task.VersionStores {
+			v.WriteToMultiVersionStore()
+		}
 	}
+
 	//if task.AbsoluteIndex%50 == 0 {
 	//	printSystemStats("task==")
 	//}
@@ -818,51 +955,50 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 	//println("WriteToMultiVersionStore task: ", task.AbsoluteIndex, " time: ", writeSleepDuration, " from: ", writeNow.String())
 }
 func printCpuCount() {
-	for i := 0; i < 35; i++ {
+	for i := 0; i < 5; i++ {
 		printCpu()
-		time.Sleep(100 * time.Millisecond)
+		//now := time.Now().UnixMilli()
+		//nowTime := strconv.Itoa(int(now))
+		//tracePath := "heap_profile" + nowTime + ".prof"
+		//f, err := os.Create(tracePath)
+		//if err != nil {
+		//	fmt.Println("Could not create heap profile: ", err)
+		//	return
+		//}
+		//
+		//// 生成堆内存快照
+		//if err := pprof.WriteHeapProfile(f); err != nil {
+		//	fmt.Println("Could not write heap profile: ", err)
+		//	return
+		//}
+		//fmt.Println("Heap profile saved to heap_profile.prof")
+		time.Sleep(300 * time.Millisecond)
 	}
 
 }
 
 func printSystemStats(desc string) {
-	fmt.Printf("Stage: %s\n", desc)
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	fmt.Printf("Goroutines: %d\n", runtime.NumGoroutine())
-	fmt.Printf("CPUs: %d\n", runtime.NumCPU())
-	fmt.Printf("GOMAXPROCS: %d\n", runtime.GOMAXPROCS(0))
-	fmt.Printf("Threads: %d\n", threadProfile.Count())
-	fmt.Printf("Memory Alloc = %v MiB\n", m.Alloc/1024/1024)
-	fmt.Printf("TotalAlloc = %v MiB\n", m.TotalAlloc/1024/1024)
-	fmt.Printf("Sys = %v MiB\n", m.Sys/1024/1024)
-	fmt.Printf("NumGC = %v\n", m.NumGC)
-	printCpu()
+	//fmt.Printf("Stage: %s\n", desc)
+	//var m runtime.MemStats
+	//runtime.ReadMemStats(&m)
+	//fmt.Printf("Goroutines: %d\n", runtime.NumGoroutine())
+	//fmt.Printf("CPUs: %d\n", runtime.NumCPU())
+	//fmt.Printf("GOMAXPROCS: %d\n", runtime.GOMAXPROCS(0))
+	//fmt.Printf("Threads: %d\n", threadProfile.Count())
+	//fmt.Printf("Memory Alloc = %v MiB\n", m.Alloc/1024/1024)
+	//fmt.Printf("TotalAlloc = %v MiB\n", m.TotalAlloc/1024/1024)
+	//fmt.Printf("Sys = %v MiB\n", m.Sys/1024/1024)
+	//fmt.Printf("NumGC = %v\n", m.NumGC)
+	////printCpu()
 }
 
 func printCpu() {
-	processes, err2 := ps.Processes()
-	if err2 != nil {
-		log.Fatalf("%v", err2)
-	}
-	var pid int
-	for _, p := range processes {
-		if strings.Contains(p.Executable(), "melod") {
-			pid = p.Pid()
-		}
-	}
 
-	p, err := process.NewProcess(int32(pid))
+	percent, err := cpu.Percent(time.Millisecond*10, false)
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	cpuPercent, err := p.Percent(time.Millisecond * 10)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Printf("CPU percent: %.2f%%\n", cpuPercent)
+	fmt.Printf("CPU percent: %.2f%%\n", percent[0])
 
 }
 
