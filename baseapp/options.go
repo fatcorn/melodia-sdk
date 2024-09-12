@@ -17,6 +17,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/baseapp/oe"
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/codec/types"
+	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/mempool"
 )
@@ -57,6 +58,18 @@ func SetNamespaceDBManager(info nsblockstore.NamespaceStoreDBInfo) func(*BaseApp
 			bapp.loadNamespaceBLockStore(namespaceModule.NamespaceId, db, namespaceModule.ModuleName, relatedModules)
 		}
 		bapp.namespaceStoreManager.SetDBRootDir(info.DbRootDir)
+	}
+}
+
+func SetSignerKeyring(keyring keyring.Keyring) func(*BaseApp) {
+	return func(bapp *BaseApp) {
+		bapp.signerKeyring = keyring
+	}
+}
+
+func SetSignerName(signerName string) func(*BaseApp) {
+	return func(bapp *BaseApp) {
+		bapp.signerName = signerName
 	}
 }
 
@@ -247,6 +260,14 @@ func (app *BaseApp) SetAnteHandler(ah sdk.AnteHandler) {
 	}
 
 	app.anteHandler = ah
+}
+
+func (app *BaseApp) SetPIBCPacketGeneratorHandler(ppgh *sdk.PIBCPacketGeneratorHandler) {
+	if app.sealed {
+		panic("SetPIBCPacketGeneratorHandler() on sealed BaseApp")
+	}
+
+	app.pibcPacketGeneratorHadler = ppgh
 }
 
 func (app *BaseApp) SetPostHandler(ph sdk.PostHandler) {

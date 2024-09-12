@@ -18,6 +18,10 @@ func (m Keeper) RecvPacket(ctx context.Context, packet *types.MsgRecvPacket) (*t
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 
+	if sdkCtx.ExecMode() != sdk.ExecModeFinalize {
+		return &types.MsgRecvPacketResponse{}, nil
+	}
+
 	sourceTransactionIdentifier := packet.TransactionIdentifier(nil)
 
 	moduleName, err := m.GetSourceTransactionModule(sdkCtx, sourceTransactionIdentifier)

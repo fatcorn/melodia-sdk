@@ -186,7 +186,7 @@ replace (
 	//cosmossdk.io/store v1.0.2 => ../melodiasdk-io-store
 	// use cosmos fork of keyring
 	github.com/99designs/keyring => github.com/cosmos/keyring v1.2.0
-	github.com/cometbft/cometbft v0.38.5 => git.everylink.ai/blockchain/hotbeat-consensus v0.38.7-0.20240813021726-129ed9ed0eed
+	github.com/cometbft/cometbft v0.38.5 => git.everylink.ai/blockchain/hotbeat-consensus v0.38.7-0.20240912024119-837b13866293
 	// dgrijalva/jwt-go is deprecated and doesn't receive security updates.
 	// TODO: remove it: https://github.com/cosmos/cosmos-sdk/issues/13134
 	github.com/dgrijalva/jwt-go => github.com/golang-jwt/jwt/v4 v4.4.2

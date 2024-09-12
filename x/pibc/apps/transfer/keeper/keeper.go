@@ -306,3 +306,29 @@ func (k Keeper) SetTransactionState(ctx sdk.Context, txId []byte, cache types.Tr
 func (k Keeper) SetTransactionModuleName(ctx sdk.Context, txId []byte) error {
 	return k.pibckeeper.SetSourceTransactionModule(ctx, txId, types.ModuleName)
 }
+
+// SetTransactionState s
+func (k Keeper) GeneratePacket(ctx sdk.Context, transferMsg types.MsgTransfer) []byte {
+	packet := types.Packet{
+		Token:    transferMsg.Token,
+		Sender:   transferMsg.Sender,
+		Receiver: transferMsg.Receiver,
+	}
+	packetData, err := packet.Marshal()
+	if err != nil {
+		return nil
+	}
+
+	sourcePacket := pibctypes.BasePacket{
+		SourceNamespaceId: transferMsg.SourceNamespaceId,
+		TargetNamespaceId: transferMsg.TargetNamespaceId,
+		Data:              packetData,
+	}
+	ret := k.cdc.MustMarshal(&sourcePacket)
+	return ret
+}
+
+// GetAccount g
+func (k Keeper) GetAccount(ctx sdk.Context, addr sdk.AccAddress) sdk.AccountI {
+	return k.authKeeper.GetAccount(ctx, addr)
+}

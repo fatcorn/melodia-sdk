@@ -103,6 +103,5 @@ func (k Keeper) Transfer(goCtx context.Context, msg *types.MsgTransfer) (*types.
 	}
 	k.SetTransactionState(sdkCtx, txId, txState)
 
-	fmt.Printf("-----------------pibc transfer successed \n")
 	return &types.MsgTransferResponse{}, nil
 }

@@ -43,6 +43,8 @@ import (
 	"github.com/cosmos/cosmos-sdk/types/mempool"
 	"github.com/near/borsh-go"
 	"golang.org/x/exp/slices"
+
+	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 )
 
 type (
@@ -89,6 +91,8 @@ type BaseApp struct {
 	mempool     mempool.Mempool // application side mempool
 	anteHandler sdk.AnteHandler // ante handler for fee and auth
 	postHandler sdk.PostHandler // post handler, optional
+
+	pibcPacketGeneratorHadler *sdk.PIBCPacketGeneratorHandler
 
 	initChainer         sdk.InitChainer  // ABCI InitChain handler
 	preBlocker          sdk.PreBlocker   // logic to run before BeginBlocker
@@ -212,6 +216,10 @@ type BaseApp struct {
 	NamespaceStoresLoaded bool
 
 	namespaceStoreManager *nsblockstore.NamespaceStoreManager
+
+	signerKeyring keyring.Keyring
+
+	signerName string
 
 	transactionAddressHandler               sdk.TransactionAddressHandler
 	writeDeferredBalancesHandler            sdk.WriteDeferredBalancesHandler
@@ -1038,7 +1046,7 @@ func (app *BaseApp) deliverTx(tx []byte, opts ...sdk.Context) *abci.ExecTxResult
 		telemetry.SetGauge(float32(gInfo.GasWanted), "tx", "gas", "wanted")
 	}()
 
-	gInfo, result, anteEvents, err := app.runTx(execModeFinalize, tx, ctx)
+	gInfo, result, anteEvents, _, err := app.runTx(execModeFinalize, tx, ctx)
 	if err != nil {
 		resultStr = "failed"
 		resp = sdkerrors.ResponseExecTxResultWithEvents(
@@ -1137,7 +1145,7 @@ func (app *BaseApp) endBlock(ctx context.Context) (sdk.EndBlock, error) {
 // Note, gas execution info is always returned. A reference to a Result is
 // returned if the tx does not run out of gas and if all the messages are valid
 // and execute successfully. An error is returned otherwise.
-func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (gInfo sdk.GasInfo, result *sdk.Result, anteEvents []abci.Event, err error) {
+func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (gInfo sdk.GasInfo, result *sdk.Result, anteEvents []abci.Event, packetMsg *sdk.PIBCPacket, err error) {
 	// NOTE: GasWanted should be returned by the AnteHandler. GasUsed is
 	// determined by the GasMeter. We need access to the context to get the gas
 	// meter, so we initialize upfront.
@@ -1156,7 +1164,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 
 	// only run the tx if there is block gas remaining
 	if mode == execModeFinalize && ctx.BlockGasMeter().IsOutOfGas() {
-		return gInfo, nil, nil, errorsmod.Wrap(sdkerrors.ErrOutOfGas, "no block gas left to run tx")
+		return gInfo, nil, nil, nil, errorsmod.Wrap(sdkerrors.ErrOutOfGas, "no block gas left to run tx")
 	}
 
 	defer func() {
@@ -1196,18 +1204,18 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 
 	tx, err := app.txDecoder(txBytes)
 	if err != nil {
-		return sdk.GasInfo{}, nil, nil, err
+		return sdk.GasInfo{}, nil, nil, nil, err
 	}
 
 	msgs := tx.GetMsgs()
 	if err := validateBasicTxMsgs(msgs); err != nil {
-		return sdk.GasInfo{}, nil, nil, err
+		return sdk.GasInfo{}, nil, nil, nil, err
 	}
 
 	for _, msg := range msgs {
 		handler := app.msgServiceRouter.Handler(msg)
 		if handler == nil {
-			return sdk.GasInfo{}, nil, nil, errorsmod.Wrapf(sdkerrors.ErrUnknownRequest, "no message handler found for %T", msg)
+			return sdk.GasInfo{}, nil, nil, nil, errorsmod.Wrapf(sdkerrors.ErrUnknownRequest, "no message handler found for %T", msg)
 		}
 	}
 
@@ -1247,7 +1255,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 		gasWanted = ctx.GasMeter().Limit()
 
 		if err != nil {
-			return gInfo, nil, nil, err
+			return gInfo, nil, nil, nil, err
 		}
 
 		//now = cmttime.Now()
@@ -1263,7 +1271,22 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	if mode == execModeCheck {
 		err = app.mempool.Insert(ctx, tx)
 		if err != nil {
-			return gInfo, nil, anteEvents, err
+			return gInfo, nil, anteEvents, nil, err
+		}
+		if app.pibcPacketGeneratorHadler != nil && app.signerName != "" {
+			record, err := app.signerKeyring.Key(app.signerName)
+			if err != nil {
+				panic(fmt.Errorf("load tx signer failed"))
+			}
+			signerAddr, err := record.GetAddress()
+			if err != nil {
+				panic(fmt.Errorf("load tx signer address failed"))
+			}
+			msg, err := app.pibcPacketGeneratorHadler.Handle(ctx, tx, signerAddr)
+			if err != nil {
+				return gInfo, nil, anteEvents, nil, err
+			}
+			packetMsg = msg
 		}
 	} else if mode == execModeFinalize {
 		nsMempool, isNsOp := app.mempool.(*mempool.NamespaceMempool)
@@ -1273,7 +1296,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			err = app.mempool.Remove(tx)
 		}
 		if err != nil && !errors.Is(err, mempool.ErrTxNotFound) {
-			return gInfo, nil, anteEvents,
+			return gInfo, nil, anteEvents, nil,
 				fmt.Errorf("failed to remove tx from mempool: %w", err)
 		}
 	}
@@ -1309,7 +1332,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 
 		newCtx, errPostHandler := app.postHandler(postCtx, tx, mode == execModeSimulate, err == nil)
 		if errPostHandler != nil {
-			return gInfo, nil, anteEvents, errors.Join(err, errPostHandler)
+			return gInfo, nil, anteEvents, nil, errors.Join(err, errPostHandler)
 		}
 
 		// we don't want runTx to panic if runMsgs has failed earlier
@@ -1336,7 +1359,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	//	sleepDuration := cmttime.Now().Sub(now)
 	//	println("stage5 task: ", ctx.TxIndex(), " time: ", sleepDuration, " from: ", now.String())
 	//}
-	return gInfo, result, anteEvents, err
+	return gInfo, result, anteEvents, packetMsg, err
 }
 
 // runMsgs iterates through a list of messages and executes them with the provided
@@ -1512,7 +1535,7 @@ func (app *BaseApp) PrepareProposalVerifyTx(tx sdk.Tx) ([]byte, error) {
 		return nil, err
 	}
 
-	_, _, _, err = app.runTx(execModePrepareProposal, bz)
+	_, _, _, _, err = app.runTx(execModePrepareProposal, bz)
 	if err != nil {
 		return nil, err
 	}
@@ -1531,7 +1554,7 @@ func (app *BaseApp) ProcessProposalVerifyTx(txBz []byte) (sdk.Tx, error) {
 		return nil, err
 	}
 
-	_, _, _, err = app.runTx(execModeProcessProposal, txBz)
+	_, _, _, _, err = app.runTx(execModeProcessProposal, txBz)
 	if err != nil {
 		return nil, err
 	}

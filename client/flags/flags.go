@@ -86,10 +86,12 @@ const (
 	// This differs from FlagOutputDocument that is used to set the output file.
 	FlagOutput = "output"
 	// Logging flags
-	FlagLogLevel    = "log_level"
-	FlagLogFormat   = "log_format"
-	FlagLogNoColor  = "log_no_color"
-	FlagNamespaceDB = "namespace_db"
+	FlagLogLevel            = "log_level"
+	FlagLogFormat           = "log_format"
+	FlagLogNoColor          = "log_no_color"
+	FlagNamespaceDB         = "namespace_db"
+	FlagValidatorSigner     = "signer"
+	FlagValidatorSignerName = "signer_name"
 )
 
 // List of supported output formats

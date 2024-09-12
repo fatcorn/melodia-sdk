@@ -8,6 +8,55 @@ type AnteHandler func(ctx Context, tx Tx, simulate bool) (newCtx Context, err er
 // or failure and enables use cases like gas refunding.
 type PostHandler func(ctx Context, tx Tx, simulate, success bool) (newCtx Context, err error)
 
+type IncludePIBCMsg bool
+
+type PIBCTxChecker func(ctx Context, tx Tx) (IncludePIBCMsg, error)
+
+type PIBCPacketGeneratorHandler struct {
+	generators []PIBCPacketGenerator
+	checker    PIBCTxChecker
+}
+
+type PIBCPacket struct {
+	Msg           Msg
+	SignerNonce   uint64
+	AccountNumber uint64
+}
+
+func NewPIBCPacketGeneratorHandler(generators []PIBCPacketGenerator, checker PIBCTxChecker) *PIBCPacketGeneratorHandler {
+	return &PIBCPacketGeneratorHandler{
+		generators: generators,
+		checker:    checker,
+	}
+}
+
+func (handler PIBCPacketGeneratorHandler) Handle(ctx Context, tx Tx, signerAddr AccAddress) (*PIBCPacket, error) {
+	includePibcMsg, err := handler.checker(ctx, tx)
+
+	if err != nil {
+		return nil, err
+	}
+	if !includePibcMsg {
+		return nil, err
+	}
+
+	for _, v := range handler.generators {
+		ret, err := v.GeneratePacketMsg(ctx, tx, signerAddr)
+		if err != nil {
+			return nil, err
+		}
+		if ret != nil {
+			return ret, nil
+		}
+	}
+	return nil, nil
+}
+
+// PIBCPacketGenerator wraps the next AnteHandler to perform custom pre-processing.
+type PIBCPacketGenerator interface {
+	GeneratePacketMsg(ctx Context, tx Tx, signerAddr AccAddress) (*PIBCPacket, error)
+}
+
 // AnteDecorator wraps the next AnteHandler to perform custom pre-processing.
 type AnteDecorator interface {
 	AnteHandle(ctx Context, tx Tx, simulate bool, next AnteHandler) (newCtx Context, err error)

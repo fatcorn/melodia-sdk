@@ -2,6 +2,7 @@ package types
 
 import (
 	"fmt"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
 // Router The router is a map from module name to the PIBCModule
@@ -60,4 +61,13 @@ func (rtr *Router) GetRoute(module string) (IsCrossNamespaceModule, bool) {
 		return nil, false
 	}
 	return rtr.routes[module], true
+}
+
+// ListRoutes list all pibc modules
+func (rtr *Router) ListRoutes() []sdk.PIBCPacketGenerator {
+	ret := make([]sdk.PIBCPacketGenerator, 0)
+	for _, v := range rtr.routes {
+		ret = append(ret, v)
+	}
+	return ret
 }

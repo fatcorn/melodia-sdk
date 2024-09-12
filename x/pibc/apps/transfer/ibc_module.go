@@ -4,6 +4,7 @@ import (
 	"context"
 	sdkerrors "cosmossdk.io/errors"
 	"fmt"
+	"github.com/cometbft/cometbft/crypto/tmhash"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/pibc/apps/transfer/keeper"
 	"github.com/cosmos/cosmos-sdk/x/pibc/apps/transfer/types"
@@ -27,6 +28,11 @@ func NewPIBCModule(k keeper.Keeper) PIBCModule {
 type PIBCModule struct {
 	keeper keeper.Keeper
 }
+
+//func (pm PIBCModule) GeneratePacketMsg(ctx sdk.Context, tx sdk.Tx) []sdk.Msg {
+//	//TODO implement me
+//	panic("implement me")
+//}
 
 func (pm PIBCModule) GetTransactionsMap() map[string]string {
 	//TODO implement me
@@ -158,27 +164,42 @@ func (pm PIBCModule) Acknowledgement(ctx context.Context, msg *pibctypes.MsgAckn
 	return pm.keeper.RefundPacketToken(keeper.ContextWithNamespace(ctx, msg.Packet.SourceNamespaceId), msg, *pd)
 }
 
-func (pm PIBCModule) GeneratePacketMsg(originMsg interface{}) *pibctypes.MsgRecvPacket {
-	if transferMsg, ok := originMsg.(types.MsgTransfer); ok {
-		packet := types.Packet{
-			Token:    transferMsg.Token,
-			Sender:   transferMsg.Sender,
-			Receiver: transferMsg.Receiver,
-		}
-		packetData, err := packet.Marshal()
-		if err != nil {
-			return nil
-		}
+func (pm PIBCModule) GeneratePacketMsg(ctx sdk.Context, tx sdk.Tx, signerAddr sdk.AccAddress) (*sdk.PIBCPacket, error) {
+	for _, msg := range tx.GetMsgs() {
+		if transferMsg, ok := msg.(*types.MsgTransfer); ok {
+			packet := types.Packet{
+				Token:    transferMsg.Token,
+				Sender:   transferMsg.Sender,
+				Receiver: transferMsg.Receiver,
+			}
+			packetData, err := packet.Marshal()
+			if err != nil {
+				return nil, err
+			}
 
-		sourcePacket := pibctypes.BasePacket{
-			SourceNamespaceId: transferMsg.SourceNamespaceId,
-			TargetNamespaceId: transferMsg.TargetNamespaceId,
-			Data:              packetData,
+			sourcePacket := pibctypes.BasePacket{
+				SourceNamespaceId: transferMsg.SourceNamespaceId,
+				TargetNamespaceId: transferMsg.TargetNamespaceId,
+				Data:              packetData,
+			}
+
+			onRecvPacket := pibctypes.MsgRecvPacket{
+				Packet:           &sourcePacket,
+				SourcePacketTxId: tmhash.Sum(ctx.TxBytes()),
+				Sender:           signerAddr.String(),
+			}
+
+			signerAccount := pm.keeper.GetAccount(ctx, signerAddr)
+			if signerAccount == nil {
+				return nil, fmt.Errorf("signer account not found")
+			}
+
+			return &sdk.PIBCPacket{
+				Msg:           &onRecvPacket,
+				SignerNonce:   signerAccount.GetSequence(),
+				AccountNumber: signerAccount.GetAccountNumber(),
+			}, nil
 		}
-		return &pibctypes.MsgRecvPacket{
-			Packet: &sourcePacket,
-		}
-	} else {
-		return nil
 	}
+	return nil, nil
 }

@@ -39,6 +39,8 @@ import (
 	"github.com/cosmos/cosmos-sdk/types/mempool"
 	"github.com/cosmos/cosmos-sdk/version"
 	genutiltypes "github.com/cosmos/cosmos-sdk/x/genutil/types"
+
+	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 )
 
 // ServerContextKey defines the context key used to retrieve a server.Context from
@@ -516,6 +518,15 @@ func DefaultBaseappOptions(appOpts types.AppOptions) []func(*baseapp.BaseApp) {
 	}
 
 	namespaceDBInfo := appOpts.Get(flags.FlagNamespaceDB).(nsblockstore.NamespaceStoreDBInfo)
+	signer := appOpts.Get(flags.FlagValidatorSigner).(keyring.Keyring)
+	signerName := appOpts.Get(flags.FlagValidatorSignerName).(string)
+
+	if signerName != "" {
+		record, err := signer.Key(signerName)
+		if record == nil || err != nil {
+			panic(fmt.Errorf("unfind signer name %v in keyring backend", signerName))
+		}
+	}
 
 	return []func(*baseapp.BaseApp){
 		baseapp.SetPruning(pruningOpts),
@@ -533,6 +544,8 @@ func DefaultBaseappOptions(appOpts types.AppOptions) []func(*baseapp.BaseApp) {
 		baseapp.SetChainID(chainID),
 		baseapp.SetQueryGasLimit(cast.ToUint64(appOpts.Get(FlagQueryGasLimit))),
 		baseapp.SetNamespaceDBManager(namespaceDBInfo),
+		baseapp.SetSignerKeyring(signer),
+		baseapp.SetSignerName(signerName),
 	}
 }
 

@@ -2,9 +2,11 @@ package types
 
 import (
 	"context"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
 type IsCrossNamespaceModule interface {
+	sdk.PIBCPacketGenerator
 	// GetTransactionsMap get app transactions map
 	GetTransactionsMap() map[string]string
 
@@ -14,8 +16,8 @@ type IsCrossNamespaceModule interface {
 	// Acknowledgement defines a rpc handler method for MsgAcknowledgement
 	Acknowledgement(context.Context, *MsgAcknowledgement) error
 
-	// GeneratePacketMsg , generate MsgRecvPacket by origin msg executed by namespace A
-	GeneratePacketMsg(originMsg interface{}) *MsgRecvPacket
+	//// GeneratePacketMsg , generate MsgRecvPacket by origin msg executed by namespace A
+	//GeneratePacketMsg(ctx context.Context, tx sdk.Tx) []sdk.Msg
 }
 
 // CrossNamespaceTx cross namespace module app's tx should implement this interface
