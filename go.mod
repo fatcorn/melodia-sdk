@@ -180,7 +180,7 @@ require (
 // Below are the long-lived replace of the Cosmos SDK
 replace (
 	cosmossdk.io/api v0.7.3 => git.everylink.ai/blockchain/melodiasdk-io-api v0.7.4-0.20240703080149-6c21938bf6f8
-	cosmossdk.io/collections v0.4.0 => git.everylink.ai/blockchain/melodiasdk-io-collections v0.4.0
+	cosmossdk.io/collections v0.4.0 => git.everylink.ai/blockchain/melodiasdk-io-collections v0.4.1-0.20240911080429-46344b7dfa78
 	cosmossdk.io/core v0.11.0 => git.everylink.ai/blockchain/melodiasdk-io-core v0.11.1-0.20240802062804-4f3fd02b50a4
 	cosmossdk.io/store v1.0.2 => git.everylink.ai/blockchain/melodiasdk-io-store v1.0.3-0.20240830085247-534497f11578
 	//cosmossdk.io/store v1.0.2 => ../melodiasdk-io-store

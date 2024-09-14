@@ -7,9 +7,7 @@ import (
 	"github.com/cometbft/cometbft/crypto/merkle"
 	consensustypes "github.com/cometbft/cometbft/types"
 	"github.com/cosmos/cosmos-sdk/tasks"
-	"os"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1061,13 +1059,18 @@ func (app *BaseApp) workingHash() []byte {
 	// Write the FinalizeBlock state into branched storage and commit the MultiStore.
 	// The write to the FinalizeBlock state writes all state transitions to the root
 	// MultiStore (app.cms) so when Commit() is called it persists those values.
-	println("working Hash ", "type", app.finalizeBlockState.ms)
+	t1 := time.Now()
 	app.finalizeBlockState.ms.Write()
+
+	//wg.Wait()
+	t2 := time.Now()
 
 	// Get the hash of all writes in order to return the apphash to the comet in finalizeBlock.
 	commitHash := app.cms.WorkingHash()
-	app.logger.Debug("hash of all writes", "workingHash", fmt.Sprintf("%X", commitHash))
+	t3 := time.Now()
 
+	app.logger.Debug("hash of all writes", "workingHash", fmt.Sprintf("%X", commitHash))
+	println(" app ms write time", "sub", t2.Sub(t1).String(), "working app hash time", t3.Sub(t2).String())
 	return commitHash
 }
 
@@ -1513,17 +1516,8 @@ func (app *BaseApp) DeliverTxBatch(ctx sdk.Context, req sdk.DeliverTxBatchReques
 		return sdk.DeliverTxBatchResponse{Results: responses}
 	}
 
-	workers := 100
-	workersEnv := os.Getenv("WORKERS")
-	if workersEnv != "" {
-		workersInt, err := strconv.Atoi(workersEnv)
-		if err != nil {
-			ctx.Logger().Error("Invalid WORKERS value: %s\n", workersEnv)
-		}
-		workers = workersInt
-	}
 	// avoid overhead for empty batches
-	scheduler := tasks.NewScheduler(workers, app.deliverTx, namespaceList)
+	scheduler := tasks.NewScheduler(app.concurrencyWorkers, app.deliverTx, namespaceList)
 	scheduler.SetSchedulerHandlers(app.transactionAddressHandler, app.setMsgsHandler, app.modifyLogIndexHandler, app.setBlockBloomTransientHandler, app.contractStaticAnalysisHandler, app.isEVMTxHandler)
 
 	txRes, err := scheduler.ProcessAll(ctx, req)

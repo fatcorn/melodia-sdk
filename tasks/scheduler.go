@@ -130,6 +130,7 @@ type scheduler struct {
 	executeCh                     chan func()
 	validateCh                    chan func()
 	collectCh                     chan func()
+	writeLatest                   chan func()
 	metrics                       *schedulerMetrics
 	synchronous                   bool // true if maxIncarnation exceeds threshold
 	maxIncarnation                int  // current highest incarnation
@@ -190,6 +191,22 @@ func (s *scheduler) start1(ctx context.Context, ch chan func(), workers int) {
 	}
 }
 
+func (s *scheduler) start2(ctx context.Context, ch chan func(), workers int) {
+	for i := 0; i < workers; i++ {
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case work := <-ch:
+					//printThreadID()
+					work()
+				}
+			}
+		}()
+	}
+}
+
 func (s *scheduler) start(ctx context.Context, ch chan func(), workers int) {
 	for i := 0; i < workers; i++ {
 		go func() {
@@ -227,6 +244,10 @@ func (s *scheduler) DoValidate(work func()) {
 		return
 	}
 	s.validateCh <- work
+}
+
+func (s *scheduler) DoWriteLatest(work func()) {
+	s.writeLatest <- work
 }
 
 func (s *scheduler) DoExecute(work func()) {
@@ -515,6 +536,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	s.executeCh = make(chan func(), len(tasks))
 	s.validateCh = make(chan func(), len(tasks))
 	s.collectCh = make(chan func(), len(tasks))
+	s.writeLatest = make(chan func(), len(tasks))
 	//defer s.emitMetrics()
 
 	// default to number of tasks if workers is negative or 0 by this point
@@ -641,12 +663,21 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 		iterations++
 	}
 	t2 := time.Now()
+	s.start2(workerCtx, s.writeLatest, workers)
+
+	wg := &sync.WaitGroup{}
 
 	for _, mv := range s.multiVersionStores {
-		mv.WriteLatestToStore()
+		tmp := mv
+		wg.Add(1)
+		s.DoWriteLatest(func() {
+			defer wg.Done()
+			tmp.WriteLatestToStore()
+		})
 	}
+	wg.Wait()
 	t3 := time.Now()
-	println("wirte latest to store", "sub", t3.Sub(t2).String(), "ex sub", t2.Sub(t6).String())
+	println("write latest to store", "sub", t3.Sub(t2).String(), "ex sub", t2.Sub(t6).String())
 
 	// end trace
 	s.metrics.maxIncarnation = s.maxIncarnation
