@@ -303,7 +303,7 @@ func toTasks(_ sdk.Context, req sdk.DeliverTxBatchRequest) ([]*deliverTxTask, ma
 	totalTask := len(reqs)
 	interChainIndexes := make(map[int32]int32)
 
-	addTxTask := func(dependIdxes []int, r *sdk.DeliverTxEntry) {
+	addTxTask := func(dependIdxes []int, r *sdk.DeliverTxEntry, namespaceId uint64) {
 		task := &deliverTxTask{
 			Request:       r.Request,
 			SdkTx:         r.SdkTx,
@@ -313,6 +313,7 @@ func toTasks(_ sdk.Context, req sdk.DeliverTxBatchRequest) ([]*deliverTxTask, ma
 			Dependencies:  map[int]struct{}{},
 			TotalTask:     totalTask,
 			IsEVMTx:       false,
+			NamespaceId:   namespaceId,
 
 			//TxTracer:      r.TxTracer,
 		}
@@ -342,6 +343,7 @@ func toTasks(_ sdk.Context, req sdk.DeliverTxBatchRequest) ([]*deliverTxTask, ma
 
 	if orders.NsTransactionOrders != nil {
 		for _, orderEntry := range orders.NsTransactionOrders.Entries {
+			namespaceId := orderEntry.Namespace
 			for _, idxes := range orderEntry.Indexes {
 				for i, idx := range idxes.Indexes {
 					dependIdxes := make([]int, 0)
@@ -352,7 +354,7 @@ func toTasks(_ sdk.Context, req sdk.DeliverTxBatchRequest) ([]*deliverTxTask, ma
 					if hasDep {
 						dependIdxes = append(dependIdxes, int(interChainDependIdx))
 					}
-					addTxTask(dependIdxes, reqs[idx])
+					addTxTask(dependIdxes, reqs[idx], namespaceId)
 				}
 			}
 		}
@@ -811,6 +813,7 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 		t := task
 		wg.Add(1)
 		s.DoExecute(func() {
+			ctx = ctx.WithNamepace(task.NamespaceId)
 			//now := time.Now()
 			s.prepareAndRunTask(wg, ctx, t)
 			//println("run tast time", "sub", time.Now().Sub(now))

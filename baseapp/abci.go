@@ -357,6 +357,7 @@ func (app *BaseApp) CheckTx(req *abci.RequestCheckTx) (*abci.ResponseCheckTx, er
 		return nil, fmt.Errorf("unknown RequestCheckTx type: %s", req.Type)
 	}
 	app.checkState.SetContext(app.checkState.Context().WithNamepace(req.NamespaceId))
+
 	gInfo, result, anteEvents, packet, err := app.runTx(mode, req.Tx)
 	if err != nil {
 		return sdkerrors.ResponseCheckTxWithEvents(err, gInfo.GasWanted, gInfo.GasUsed, anteEvents, app.trace), nil
@@ -1080,7 +1081,7 @@ func handleQueryApp(app *BaseApp, path []string, req *abci.RequestQuery) *abci.R
 		case "simulate":
 			txBytes := req.Data
 
-			gInfo, res, err := app.Simulate(txBytes)
+			gInfo, res, err := app.Simulate(txBytes, req.NamespaceId)
 			if err != nil {
 				return sdkerrors.QueryResult(errorsmod.Wrap(err, "failed to simulate tx"), app.trace)
 			}
