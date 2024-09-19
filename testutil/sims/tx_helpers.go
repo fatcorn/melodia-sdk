@@ -112,7 +112,7 @@ func SignCheckDeliver(
 	require.Nil(t, err)
 
 	// Must simulate now as CheckTx doesn't run Msgs anymore
-	_, res, err := app.Simulate(txBytes)
+	_, res, err := app.Simulate(txBytes, 0)
 
 	if expSimPass {
 		require.NoError(t, err)
