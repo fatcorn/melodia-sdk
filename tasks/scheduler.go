@@ -302,34 +302,7 @@ func toTasks(_ sdk.Context, req sdk.DeliverTxBatchRequest) ([]*deliverTxTask, ma
 	allTasks := make([]*deliverTxTask, 0, len(reqs))
 	totalTask := len(reqs)
 	interChainIndexes := make(map[int32]int32)
-
-	addTxTask := func(dependIdxes []int, r *sdk.DeliverTxEntry, namespaceId uint64) {
-		task := &deliverTxTask{
-			Request:       r.Request,
-			SdkTx:         r.SdkTx,
-			Checksum:      r.Checksum,
-			AbsoluteIndex: r.AbsoluteIndex,
-			Status:        statusPending,
-			Dependencies:  map[int]struct{}{},
-			TotalTask:     totalTask,
-			IsEVMTx:       false,
-			NamespaceId:   namespaceId,
-
-			//TxTracer:      r.TxTracer,
-		}
-
-		// if there are dependencies, set the task to waiting
-		if len(dependIdxes) > 0 {
-			dependencies := map[int]struct{}{}
-			for _, dependIdx := range dependIdxes {
-				dependencies[dependIdx] = struct{}{}
-			}
-			task.Status = statusWaiting
-			task.Dependencies = dependencies
-		}
-		tasksMap[r.AbsoluteIndex] = task
-		allTasks = append(allTasks, task)
-	}
+	txDepends := make([][]int, len(reqs), len(reqs))
 
 	if orders.NsInterChainTransactionOrders != nil {
 		for _, orderEntry := range orders.NsInterChainTransactionOrders.Entries {
@@ -343,7 +316,6 @@ func toTasks(_ sdk.Context, req sdk.DeliverTxBatchRequest) ([]*deliverTxTask, ma
 
 	if orders.NsTransactionOrders != nil {
 		for _, orderEntry := range orders.NsTransactionOrders.Entries {
-			namespaceId := orderEntry.Namespace
 			for _, idxes := range orderEntry.Indexes {
 				for i, idx := range idxes.Indexes {
 					dependIdxes := make([]int, 0)
@@ -354,13 +326,39 @@ func toTasks(_ sdk.Context, req sdk.DeliverTxBatchRequest) ([]*deliverTxTask, ma
 					if hasDep {
 						dependIdxes = append(dependIdxes, int(interChainDependIdx))
 					}
-					addTxTask(dependIdxes, reqs[idx], namespaceId)
+					txDepends[idx] = dependIdxes
 				}
 			}
 		}
 	}
-	if len(allTasks) != len(reqs) {
-		panic(fmt.Errorf("toTasks NsTransactionOrders total.Size(%s) != txs.Size(%s)", len(allTasks), len(reqs)))
+
+	for idx, tx := range reqs {
+
+		task := &deliverTxTask{
+			Request:       tx.Request,
+			SdkTx:         tx.SdkTx,
+			Checksum:      tx.Checksum,
+			AbsoluteIndex: tx.AbsoluteIndex,
+			Status:        statusPending,
+			Dependencies:  map[int]struct{}{},
+			TotalTask:     totalTask,
+			IsEVMTx:       false,
+
+			//TxTracer:      r.TxTracer,
+		}
+
+		// if there are dependencies, set the task to waiting
+		dependIdxes := txDepends[idx]
+		if len(dependIdxes) > 0 {
+			dependencies := map[int]struct{}{}
+			for _, dependIdx := range dependIdxes {
+				dependencies[dependIdx] = struct{}{}
+			}
+			task.Status = statusWaiting
+			task.Dependencies = dependencies
+		}
+		tasksMap[tx.AbsoluteIndex] = task
+		allTasks = append(allTasks, task)
 	}
 
 	return allTasks, tasksMap
