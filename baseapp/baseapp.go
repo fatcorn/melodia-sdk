@@ -232,6 +232,7 @@ type BaseApp struct {
 	contractStaticAnalysisResultHandler        sdk.ContractStaticAnalysisResultHandler
 	isEVMTxHandler                             sdk.IsEVMTxHandler
 	txAccountInfoHandler                       sdk.TxAccountInfoHandler
+	nextAccountNumberHandler                   sdk.NextAccountNumberHandler
 	crossNamespaceTransactionIdentifierHandler sdk.CrossNamespaceTransactionIdentifierHandler
 	deliverTxHooks                             []DeliverTxHook
 	concurrencyWorkers                         int

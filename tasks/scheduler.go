@@ -73,6 +73,7 @@ type deliverTxTask struct {
 	IsEVMTx       bool
 	NamespaceId   uint64
 	TotalTask     int
+	AccountNumber uint64
 	//TxTracer      sdk.TxTracer
 }
 
@@ -116,7 +117,7 @@ func (dt *deliverTxTask) Increment() {
 // Scheduler processes tasks concurrently
 type Scheduler interface {
 	ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]abci.ExecTxResult, error)
-	SetSchedulerHandlers(transactionAddressHandler sdk.TransactionAddressHandler, setMsgsHandler sdk.SetMsgsHandler, modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler, isEVMTxHandler sdk.IsEVMTxHandler)
+	SetSchedulerHandlers(transactionAddressHandler sdk.TransactionAddressHandler, setMsgsHandler sdk.SetMsgsHandler, modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler, isEVMTxHandler sdk.IsEVMTxHandler, nextAccountNumberHandler sdk.NextAccountNumberHandler)
 }
 
 // tx []byte
@@ -140,6 +141,7 @@ type scheduler struct {
 	setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler
 	contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler
 	isEVMTxHandler                sdk.IsEVMTxHandler
+	nextAccountNumberHandler      sdk.NextAccountNumberHandler
 	namespaceList                 []uint64
 	threadIds                     []int
 	//tracingInfo        *tracing.Info
@@ -158,13 +160,14 @@ func NewScheduler(workers int, deliverTxFunc func(tx []byte, opts ...sdk.Context
 		namespaceList: namespaceList,
 	}
 }
-func (s *scheduler) SetSchedulerHandlers(transactionAddressHandler sdk.TransactionAddressHandler, setMsgsHandler sdk.SetMsgsHandler, modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler, isEVMTxHandler sdk.IsEVMTxHandler) {
+func (s *scheduler) SetSchedulerHandlers(transactionAddressHandler sdk.TransactionAddressHandler, setMsgsHandler sdk.SetMsgsHandler, modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler, isEVMTxHandler sdk.IsEVMTxHandler, nextAccountNumberHandler sdk.NextAccountNumberHandler) {
 	s.transactionAddressHandler = transactionAddressHandler
 	s.setMsgsHandler = setMsgsHandler
 	s.modifyLogIndexHandler = modifyLogIndexHandler
 	s.setBlockBloomTransientHandler = setBlockBloomTransientHandler
 	s.contractStaticAnalysisHandler = contractStaticAnalysisHandler
 	s.isEVMTxHandler = isEVMTxHandler
+	s.nextAccountNumberHandler = nextAccountNumberHandler
 }
 
 func (s *scheduler) invalidateTask(task *deliverTxTask) {
@@ -295,7 +298,7 @@ func (s *scheduler) findConflicts(task *deliverTxTask) (bool, []int) {
 	return valid, conflicts
 }
 
-func toTasks(_ sdk.Context, req sdk.DeliverTxBatchRequest) ([]*deliverTxTask, map[int]*deliverTxTask) {
+func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*deliverTxTask, map[int]*deliverTxTask) {
 	reqs := req.TxEntries
 	orders := req.Orders
 	tasksMap := make(map[int]*deliverTxTask)
@@ -333,7 +336,11 @@ func toTasks(_ sdk.Context, req sdk.DeliverTxBatchRequest) ([]*deliverTxTask, ma
 	}
 
 	for idx, tx := range reqs {
-
+		isNewAccount, accountNumber := s.nextAccountNumberHandler(ctx, tx.SdkTx)
+		nextAccountNumber := uint64(0)
+		if isNewAccount {
+			nextAccountNumber = accountNumber
+		}
 		task := &deliverTxTask{
 			Request:       tx.Request,
 			SdkTx:         tx.SdkTx,
@@ -343,6 +350,7 @@ func toTasks(_ sdk.Context, req sdk.DeliverTxBatchRequest) ([]*deliverTxTask, ma
 			Dependencies:  map[int]struct{}{},
 			TotalTask:     totalTask,
 			IsEVMTx:       false,
+			AccountNumber: nextAccountNumber,
 
 			//TxTracer:      r.TxTracer,
 		}
@@ -527,7 +535,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	//s.PrefillEstimates(reqs)
 	toTaskStartTime := time.Now()
 	println("init version store time========", "sub", toTaskStartTime.Sub(startTime).String())
-	tasks, tasksMap := toTasks(ctx, req)
+	tasks, tasksMap := s.toTasks(ctx, req)
 
 	fmt.Printf("========= toTasks Time used: %v\n", time.Since(toTaskStartTime))
 	now := time.Now()
@@ -811,7 +819,7 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 		t := task
 		wg.Add(1)
 		s.DoExecute(func() {
-			ctx = ctx.WithNamepace(task.NamespaceId)
+			ctx = ctx.WithNamepace(task.NamespaceId).WithNextAccountNumber(task.AccountNumber)
 			//now := time.Now()
 			s.prepareAndRunTask(wg, ctx, t)
 			//println("run tast time", "sub", time.Now().Sub(now))

@@ -390,6 +390,9 @@ func (app *BaseApp) SetContractStaticAnalysisResultHandler(contractStaticAnalysi
 func (app *BaseApp) SetTxAccountInfoHandler(txAccountInfoHandler sdk.TxAccountInfoHandler) {
 	app.txAccountInfoHandler = txAccountInfoHandler
 }
+func (app *BaseApp) SetNextAccountNumberHandler(nextAccountNumberHandler sdk.NextAccountNumberHandler) {
+	app.nextAccountNumberHandler = nextAccountNumberHandler
+}
 func (app *BaseApp) SetCrossNamespaceTransactionIdentifierHandler(crossNamespaceTransactionIdentifierHandler sdk.CrossNamespaceTransactionIdentifierHandler) {
 	app.crossNamespaceTransactionIdentifierHandler = crossNamespaceTransactionIdentifierHandler
 }
