@@ -557,21 +557,21 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	defer cancel()
 	// set trace store file
 
-	nowTime := strconv.Itoa(int(now.UnixMilli()))
-	tracePath := "trace/trace" + nowTime + ".out"
-	tracePathEnv := os.Getenv("tracePath")
-	if tracePathEnv != "" {
-		tracePath = tracePathEnv + tracePath
-	}
-	f, err := os.Create(tracePath)
+	//nowTime := strconv.Itoa(int(now.UnixMilli()))
+	//tracePath := "trace/trace" + nowTime + ".out"
+	//tracePathEnv := os.Getenv("tracePath")
+	//if tracePathEnv != "" {
+	//	tracePath = tracePathEnv + tracePath
+	//}
+	//f, err := os.Create(tracePath)
 
-	if err != nil {
-		println("err", "err", err.Error())
-	}
+	//if err != nil {
+	//	println("err", "err", err.Error())
+	//}
 	// start trace
-	if err := trace.Start(f); err != nil {
-		panic(err)
-	}
+	//if err := trace.Start(f); err != nil {
+	//	panic(err)
+	//}
 	//go printCpuCount()
 
 	// execution tasks are limited by workers
@@ -697,7 +697,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 
 	s.setMsgsHandler(ctx, evmTxs)
 	t7 := time.Now()
-	trace.Stop()
+	//trace.Stop()
 	println("trace time===============", "sub", time.Now().Sub(t7).String())
 
 	return res, nil
