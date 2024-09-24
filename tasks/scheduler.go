@@ -21,7 +21,6 @@ import (
 	"log"
 	"os"
 	"runtime/pprof"
-	"runtime/trace"
 	"sort"
 	"strconv"
 	"sync"
