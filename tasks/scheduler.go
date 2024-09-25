@@ -335,7 +335,7 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 	}
 
 	for idx, tx := range reqs {
-		isNewAccount, accountNumber := s.nextAccountNumberHandler(ctx, tx.SdkTx)
+		isNewAccount, accountNumber := s.nextAccountNumberHandler(ctx.WithNamepace(s.namespaceList[idx]), tx.SdkTx)
 		nextAccountNumber := uint64(0)
 		if isNewAccount {
 			nextAccountNumber = accountNumber

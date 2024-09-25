@@ -189,7 +189,7 @@ func (ak AccountKeeper) NextAccountNumber(ctx context.Context) uint64 {
 	if sdkCtx.NextAccountNumber() > 0 {
 		return sdkCtx.NextAccountNumber()
 	}
-	n, err := ak.AccountNumber.CacheNext(ctx, []byte{uint8(sdkCtx.ExecMode())})
+	n, err := ak.AccountNumber.CacheNext(sdkCtx.WithNamepace(0), []byte{uint8(sdkCtx.ExecMode())})
 	if err != nil {
 		panic(err)
 	}
