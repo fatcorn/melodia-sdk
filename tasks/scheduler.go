@@ -817,10 +817,16 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 		}
 		t := task
 		wg.Add(1)
+		//s.DoExecute(func() {
+		//	ctx = ctx.WithNamepace(task.NamespaceId).WithNextAccountNumber(task.AccountNumber)
+		//	//now := time.Now()
+		//	s.prepareAndRunTask(wg, ctx, t)
+		//	//println("run tast time", "sub", time.Now().Sub(now))
+		//})
 		s.DoExecute(func() {
-			ctx = ctx.WithNamepace(task.NamespaceId).WithNextAccountNumber(task.AccountNumber)
+			sdkCtx := ctx.WithNamepace(t.NamespaceId).WithNextAccountNumber(t.AccountNumber)
 			//now := time.Now()
-			s.prepareAndRunTask(wg, ctx, t)
+			s.prepareAndRunTask(wg, sdkCtx, t)
 			//println("run tast time", "sub", time.Now().Sub(now))
 		})
 	}
