@@ -384,6 +384,7 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) ([
 	startTime := time.Now()
 
 	for _, t := range tasks {
+
 		res = append(res, *t.Response)
 
 		t.IsEVMTx = s.isEVMTxHandler(ctx, t.SdkTx)
@@ -442,6 +443,8 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) ([
 		//if t.TxTracer != nil {
 		//	t.TxTracer.Commit()
 		//}
+
+		s.consumeGas(ctx, t)
 	}
 	if logSize > 0 {
 		s.setBlockBloomTransientHandler(ctx, txLogs)
@@ -449,6 +452,26 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) ([
 	// calculate time used
 	fmt.Printf("========= Time used: %v\n", time.Since(startTime))
 	return res, evmTxs
+}
+
+func (s *scheduler) consumeGas(ctx sdk.Context, task *deliverTxTask) {
+	taskCtx := task.Ctx
+
+	limit := taskCtx.GasMeter().Limit()
+	gasUsed := uint64(task.Response.GasUsed)
+	consumed := storetypes.Gas(0)
+	if gasUsed > limit {
+		consumed = limit
+	} else {
+		consumed = gasUsed
+	}
+	ctx.BlockGasMeter().ConsumeGas(
+		consumed, "block gas meter",
+	)
+	after := ctx.BlockGasMeter().GasConsumedToLimit()
+
+	println("height=", ctx.BlockHeight(), "Index=", task.AbsoluteIndex, "GasUsed=", after)
+
 }
 
 func (s *scheduler) tryInitMultiVersionStore(ctx sdk.Context, totalTask int) {
@@ -955,6 +978,7 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 	//t0 := time.Now()
 	//now := cmttime.Now()
 	resp := s.deliverTx(task.Request, task.Ctx)
+
 	//t1 := time.Now()
 	//println("deliver tx=============", "start time", t0.String(), "end time", t1.String(), "sub", t1.Sub(t0).String()) //sleepDuration := cmttime.Now().Sub(now)
 	//println("deliverTx task: ", task.AbsoluteIndex, " time: ", sleepDuration, " from: ", now.String())
