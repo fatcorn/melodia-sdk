@@ -493,7 +493,6 @@ func (app *BaseApp) PrepareProposal(req *abci.RequestPrepareProposal) (resp *abc
 // Ref: https://github.com/cosmos/cosmos-sdk/blob/main/docs/architecture/adr-060-abci-1.0.md
 // Ref: https://github.com/cometbft/cometbft/blob/main/spec/abci/abci%2B%2B_basic_concepts.md
 func (app *BaseApp) ProcessProposal(req *abci.RequestProcessProposal) (resp *abci.ResponseProcessProposal, err error) {
-	app.logger.Info("process proposal", "height", req.Height)
 	if app.processProposal == nil {
 		return nil, errors.New("ProcessProposal handler not set")
 	}
@@ -503,17 +502,13 @@ func (app *BaseApp) ProcessProposal(req *abci.RequestProcessProposal) (resp *abc
 	if req.Height < 1 {
 		return nil, errors.New("ProcessProposal called with invalid height")
 	}
-	app.logger.Info("process proposal", "height", req.Height, "app.finalizeBlockHeight", app.finalizeBlockHeight)
 
 	if app.finalizeBlockHeight == req.Height && req.Height > app.initialHeight {
-		app.logger.Info("process proposal start rollback", "height", req.Height, "app.finalizeBlockHeight", app.finalizeBlockHeight)
 
 		rms, ok := app.cms.(*rootmulti.Store)
 		if ok {
-			app.logger.Info("process proposal start rollback start ", "height", req.Height, "app.finalizeBlockHeight", app.finalizeBlockHeight)
 
 			err := rms.RollbackToVersion(req.Height - 1)
-			app.logger.Info("process proposal start rollback end", "height", req.Height, "app.finalizeBlockHeight", app.finalizeBlockHeight)
 
 			if err != nil {
 				app.logger.Error("FinalizeBlock prune stores error.", "height", req.Height, "err", err)
@@ -522,8 +517,6 @@ func (app *BaseApp) ProcessProposal(req *abci.RequestProcessProposal) (resp *abc
 			app.cleanAccountNumberHandler(uint8(execModeFinalize))
 		}
 	}
-
-	app.logger.Info("process proposal rollback end ", "height", req.Height, "app.finalizeBlockHeight", app.finalizeBlockHeight)
 
 	// Always reset state given that ProcessProposal can timeout and be called
 	// again in a subsequent round.
@@ -547,7 +540,6 @@ func (app *BaseApp) ProcessProposal(req *abci.RequestProcessProposal) (resp *abc
 		app.optimisticExec.Abort()
 		app.setState(execModeFinalize, header)
 	}
-	app.logger.Info("process proposal set state", "height", req.Height, "app.finalizeBlockHeight", app.finalizeBlockHeight)
 
 	app.processProposalState.SetContext(app.getContextForProposal(app.processProposalState.Context(), req.Height).
 		WithVoteInfos(req.ProposedLastCommit.Votes). // this is a set of votes that are not finalized yet, wait for commit
@@ -579,14 +571,12 @@ func (app *BaseApp) ProcessProposal(req *abci.RequestProcessProposal) (resp *abc
 			resp = &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}
 		}
 	}()
-	app.logger.Info("process proposal start app", "height", req.Height, "app.finalizeBlockHeight", app.finalizeBlockHeight)
 
 	resp, err = app.processProposal(app.processProposalState.Context(), req)
 	if err != nil {
 		app.logger.Error("failed to process proposal", "height", req.Height, "time", req.Time, "hash", fmt.Sprintf("%X", req.Hash), "err", err)
 		return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
 	}
-	app.logger.Info("process proposal end app", "height", req.Height, "app.finalizeBlockHeight", app.finalizeBlockHeight)
 
 	// Only execute optimistic execution if the proposal is accepted, OE is
 	// enabled and the block height is greater than the initial height. During
@@ -600,7 +590,6 @@ func (app *BaseApp) ProcessProposal(req *abci.RequestProcessProposal) (resp *abc
 		req.Height > app.initialHeight {
 		app.optimisticExec.Execute(req)
 	}
-	app.logger.Info("process proposal end", "height", req.Height, "app.finalizeBlockHeight", app.finalizeBlockHeight)
 
 	return resp, nil
 }
