@@ -393,6 +393,9 @@ func (app *BaseApp) SetTxAccountInfoHandler(txAccountInfoHandler sdk.TxAccountIn
 func (app *BaseApp) SetNextAccountNumberHandler(nextAccountNumberHandler sdk.NextAccountNumberHandler) {
 	app.nextAccountNumberHandler = nextAccountNumberHandler
 }
+func (app *BaseApp) SetCleanAccountNumberHandler(cleanAccountNumberHandler sdk.CleanAccountNumberHandler) {
+	app.cleanAccountNumberHandler = cleanAccountNumberHandler
+}
 func (app *BaseApp) SetCrossNamespaceTransactionIdentifierHandler(crossNamespaceTransactionIdentifierHandler sdk.CrossNamespaceTransactionIdentifierHandler) {
 	app.crossNamespaceTransactionIdentifierHandler = crossNamespaceTransactionIdentifierHandler
 }

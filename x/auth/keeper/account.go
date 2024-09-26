@@ -17,7 +17,10 @@ func (ak AccountKeeper) NewAccountWithAddress(ctx context.Context, addr sdk.AccA
 		panic(err)
 	}
 
-	return ak.NewAccount(ctx, acc)
+	newAcc := ak.NewAccount(ctx, acc)
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	println("NewAccountWithAddress->AccountNumber=", newAcc.GetAccountNumber(), "ExecMode=", sdkCtx.ExecMode(), "Address=", addr.String())
+	return newAcc
 }
 
 // NewAccount sets the next account number to a given account interface

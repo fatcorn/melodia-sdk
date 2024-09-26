@@ -187,10 +187,9 @@ func (ak AccountKeeper) GetSequence(ctx context.Context, addr sdk.AccAddress) (u
 func (ak AccountKeeper) NextAccountNumber(ctx context.Context) uint64 {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	if sdkCtx.NextAccountNumber() > 0 {
-		println("NextAccountNumber->context->AccountNumber=", sdkCtx.NextAccountNumber(), "ExecMode=", sdkCtx.ExecMode())
 		return sdkCtx.NextAccountNumber()
 	}
-	n, err := ak.AccountNumber.CacheNext(ctx, []byte{uint8(sdkCtx.ExecMode())})
+	n, err := ak.AccountNumber.Next(sdkCtx.WithNamepace(0))
 	if err != nil {
 		panic(err)
 	}

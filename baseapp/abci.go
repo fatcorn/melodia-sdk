@@ -513,6 +513,7 @@ func (app *BaseApp) ProcessProposal(req *abci.RequestProcessProposal) (resp *abc
 				app.logger.Error("FinalizeBlock prune stores error.", "height", req.Height, "err", err)
 			}
 			app.qms = app.cms
+			app.cleanAccountNumberHandler(uint8(execModeFinalize))
 		}
 	}
 
