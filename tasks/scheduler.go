@@ -468,10 +468,6 @@ func (s *scheduler) consumeGas(ctx sdk.Context, task *deliverTxTask) {
 	ctx.BlockGasMeter().ConsumeGas(
 		consumed, "block gas meter",
 	)
-	after := ctx.BlockGasMeter().GasConsumedToLimit()
-
-	println("height=", ctx.BlockHeight(), "Index=", task.AbsoluteIndex, "GasUsed=", after)
-
 }
 
 func (s *scheduler) tryInitMultiVersionStore(ctx sdk.Context, totalTask int) {
