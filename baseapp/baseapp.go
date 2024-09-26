@@ -13,6 +13,7 @@ import (
 	"github.com/cockroachdb/errors"
 	cmtdbm "github.com/cometbft/cometbft-db"
 	abci "github.com/cometbft/cometbft/abci/types"
+
 	cmtcfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/crypto/tmhash"
 	tmbytes "github.com/cometbft/cometbft/libs/bytes"
@@ -1179,23 +1180,28 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			err, result = processRecovery(r, recoveryMW), nil
 			ctx.Logger().Error("panic recovered in runTx", "err", err)
 		}
-
 		gInfo = sdk.GasInfo{GasWanted: gasWanted, GasUsed: ctx.GasMeter().GasConsumed()}
 	}()
 
-	blockGasConsumed := false
+	//blockGasConsumed := false
 
 	// consumeBlockGas makes sure block gas is consumed at most once. It must
 	// happen after tx processing, and must be executed even if tx processing
 	// fails. Hence, it's execution is deferred.
-	consumeBlockGas := func() {
-		if !blockGasConsumed {
-			blockGasConsumed = true
-			ctx.BlockGasMeter().ConsumeGas(
-				ctx.GasMeter().GasConsumedToLimit(), "block gas meter",
-			)
-		}
-	}
+	//consumeBlockGas := func() {
+	//	//if !blockGasConsumed {
+	//	//	blockGasConsumed = true
+	//	//	txHash := tmbytes.HexBytes(tmtypes.Tx(txBytes).Hash())
+	//	//
+	//	//	before := ctx.BlockGasMeter().GasConsumedToLimit()
+	//	//	ctx.BlockGasMeter().ConsumeGas(
+	//	//		ctx.GasMeter().GasConsumedToLimit(), "block gas meter",
+	//	//	)
+	//	//	after := ctx.BlockGasMeter().GasConsumedToLimit()
+	//	//	println("height=", ctx.BlockHeight(), "txHash=", fmt.Sprintf("%x", txHash), "After GasUsed=", after, "Before GasUsed=", before)
+	//	//
+	//	//}
+	//}
 
 	// If BlockGasMeter() panics it will be caught by the above recover and will
 	// return an error - in any case BlockGasMeter will consume gas past the limit.
@@ -1203,9 +1209,9 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	// NOTE: consumeBlockGas must exist in a separate defer function from the
 	// general deferred recovery function to recover from consumeBlockGas as it'll
 	// be executed first (deferred statements are executed as stack).
-	if mode == execModeFinalize {
-		defer consumeBlockGas()
-	}
+	//if mode == execModeFinalize {
+	//	defer consumeBlockGas()
+	//}
 
 	tx, err := app.txDecoder(txBytes)
 	if err != nil {
@@ -1350,7 +1356,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	if err == nil {
 		if mode == execModeFinalize {
 			// When block gas exceeds, it'll panic and won't commit the cached store.
-			consumeBlockGas()
+			//consumeBlockGas()
 
 			msCache.Write()
 		}
