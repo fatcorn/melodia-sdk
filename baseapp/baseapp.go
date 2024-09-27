@@ -1619,6 +1619,8 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 			byteTxs               = make([]sdk.ByteTx, 0)
 			fromIndexMap          = make(map[string]int)
 			toIndexMap            = make(map[string]int)
+			lastTxFromIndexMap    = make(map[string]int)
+			lastTxToIndexMap      = make(map[string]int)
 			staticToSerialIndexes = make([]int32, 0)
 			staticToSerialIndex   int32
 			nsTransactionIndexes  = make([]*cmtproto.NsTransactionIndexes, 0)
@@ -1638,8 +1640,41 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 			app.logger.Info("4.1->sortTxs iterator TxEncodeBatch  time", "used", fmt.Sprintf("%v ms", time.Since(batchTime).Milliseconds()), "namespaceId", namespaceId)
 		}
 
+		handleNsTransactionDependOrders := func(tx sdk.Tx, txIdx int, namespaceId uint64, from string, to string) {
+			if to == "" {
+				return
+			}
+			if lastToIdx, toExists := lastTxToIndexMap[to]; toExists {
+
+				if lastFromIdx, fromExists := lastTxFromIndexMap[from]; !fromExists || lastFromIdx != lastToIdx {
+
+					entry := &cmtproto.NsInterChainTransactionOrderEntry{
+						Indexes: []*cmtproto.NsInterChainTransactionIndex{
+							{
+								Namespace: namespaceId,
+								Index:     int32(lastToIdx),
+							},
+							{
+								Namespace: namespaceId,
+								Index:     int32(txIdx),
+							},
+						},
+					}
+					orders.NsInterChainTransactionOrders.Entries = append(orders.NsInterChainTransactionOrders.Entries, entry)
+				}
+
+			}
+			lastTxFromIndexMap[from] = txIdx
+			lastTxToIndexMap[to] = txIdx
+		}
+
 		handleNsTransactionOrders := func(tx sdk.Tx, txIdx int, namespaceId uint64) {
 			from, to := app.txAccountInfoHandler(tx)
+
+			defer func() {
+				handleNsTransactionDependOrders(tx, txIdx, namespaceId, from, to)
+			}()
+
 			//1、from the same must be serial
 			if idx, exists := fromIndexMap[from]; exists {
 				nsTransactionIndexes[idx].Indexes = append(nsTransactionIndexes[idx].Indexes, int32(txIdx))
@@ -1676,7 +1711,9 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 			if to != "" {
 				toIndexMap[to] = len(nsTransactionIndexes) - 1
 			}
+
 		}
+
 		orderTime := time.Now()
 		for _, byteTx := range byteTxs {
 			txBz := byteTx.TxBytes
