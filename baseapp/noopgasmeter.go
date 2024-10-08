@@ -15,3 +15,6 @@ func (noopGasMeter) RefundGas(storetypes.Gas, string)   {}
 func (noopGasMeter) IsPastLimit() bool                  { return false }
 func (noopGasMeter) IsOutOfGas() bool                   { return false }
 func (noopGasMeter) String() string                     { return "noopGasMeter" }
+func (m noopGasMeter) WithNamespaceId(uint64) storetypes.GasMeter {
+	return m
+}
