@@ -363,7 +363,7 @@ func (app *BaseApp) CheckTx(req *abci.RequestCheckTx) (*abci.ResponseCheckTx, er
 	}
 
 	var packetTxData []byte
-	if packet != nil && app.signerName != "" {
+	if packet != nil && app.signerName != "" && req.NeedGeneratePacket {
 		txBytes := app.signPacketTx(packet)
 		packetTxData = txBytes
 	}
