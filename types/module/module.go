@@ -850,12 +850,24 @@ func (m *Manager) MakeNamespaceBlock(
 		args.StateRootHash = cms.NamespaceWorkingHash(moudles, namespaceId)
 
 		if module, ok := m.Modules[moduleName].(appmodule.HasVMNamespaceBLockMaker); ok {
+			ctx := ctx.WithNamepace(namespaceId)
+			err := module.BeginNamespaceBlock(ctx)
+			if err != nil {
+				return nil, err
+			}
 			namespaceBlockData, err := module.MakeBlock(ctx, args)
 			if err != nil {
 				return nil, err
 			}
+
+			err = module.EndNamespaceBlock(ctx)
+			if err != nil {
+				return nil, err
+			}
+
 			key := nsblockstore.CaculateStoreKey(namespaceId, moduleName)
 			ret[key] = namespaceBlockData
+
 		}
 		// not every module needs to generate block
 		//else {
