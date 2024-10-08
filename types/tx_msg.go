@@ -108,6 +108,8 @@ type TxEncoder func(tx Tx) ([]byte, error)
 type TransactionAddressHandler func(ctx Context, tx Tx) (bool, []string, []string)
 
 type TxAccountInfoHandler func(tx Tx) (string, string)
+type NextAccountNumberHandler func(ctx Context, tx Tx) (bool, uint64)
+type CleanAccountNumberHandler func(cacheType uint8) bool
 
 type CrossNamespaceTransactionIdentifierHandler func(ctx Context, tx Tx) ([]byte, bool, bool)
 

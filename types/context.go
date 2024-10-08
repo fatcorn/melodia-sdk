@@ -67,7 +67,8 @@ type Context struct {
 	headerInfo           header.Info
 	txIndex              int
 
-	namespaceId uint64 // The tx related namespaceId
+	namespaceId       uint64 // The tx related namespaceId
+	nextAccountNumber uint64
 }
 
 // Proposed rename, not done to avoid API breakage
@@ -97,6 +98,7 @@ func (c Context) CometInfo() comet.BlockInfo                    { return c.comet
 func (c Context) HeaderInfo() header.Info                       { return c.headerInfo }
 func (c Context) TxIndex() int                                  { return c.txIndex }
 func (c Context) Namespace() uint64                             { return c.namespaceId }
+func (c Context) NextAccountNumber() uint64                     { return c.nextAccountNumber }
 
 // clone the header before returning
 func (c Context) BlockHeader() cmtproto.Header {
@@ -178,6 +180,11 @@ func (c Context) WithHeaderHash(hash []byte) Context {
 // WithNamepace returns a Context with an namespace.
 func (c Context) WithNamepace(namespaceId uint64) Context {
 	c.namespaceId = namespaceId
+	return c
+}
+
+func (c Context) WithNextAccountNumber(nextAccountNumber uint64) Context {
+	c.nextAccountNumber = nextAccountNumber
 	return c
 }
 

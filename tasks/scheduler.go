@@ -21,7 +21,6 @@ import (
 	"log"
 	"os"
 	"runtime/pprof"
-	"runtime/trace"
 	"sort"
 	"strconv"
 	"sync"
@@ -73,6 +72,7 @@ type deliverTxTask struct {
 	IsEVMTx       bool
 	NamespaceId   uint64
 	TotalTask     int
+	AccountNumber uint64
 	//TxTracer      sdk.TxTracer
 }
 
@@ -116,7 +116,7 @@ func (dt *deliverTxTask) Increment() {
 // Scheduler processes tasks concurrently
 type Scheduler interface {
 	ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]abci.ExecTxResult, error)
-	SetSchedulerHandlers(transactionAddressHandler sdk.TransactionAddressHandler, setMsgsHandler sdk.SetMsgsHandler, modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler, isEVMTxHandler sdk.IsEVMTxHandler)
+	SetSchedulerHandlers(transactionAddressHandler sdk.TransactionAddressHandler, setMsgsHandler sdk.SetMsgsHandler, modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler, isEVMTxHandler sdk.IsEVMTxHandler, nextAccountNumberHandler sdk.NextAccountNumberHandler)
 }
 
 // tx []byte
@@ -140,6 +140,7 @@ type scheduler struct {
 	setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler
 	contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler
 	isEVMTxHandler                sdk.IsEVMTxHandler
+	nextAccountNumberHandler      sdk.NextAccountNumberHandler
 	namespaceList                 []uint64
 	threadIds                     []int
 	//tracingInfo        *tracing.Info
@@ -158,13 +159,14 @@ func NewScheduler(workers int, deliverTxFunc func(tx []byte, opts ...sdk.Context
 		namespaceList: namespaceList,
 	}
 }
-func (s *scheduler) SetSchedulerHandlers(transactionAddressHandler sdk.TransactionAddressHandler, setMsgsHandler sdk.SetMsgsHandler, modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler, isEVMTxHandler sdk.IsEVMTxHandler) {
+func (s *scheduler) SetSchedulerHandlers(transactionAddressHandler sdk.TransactionAddressHandler, setMsgsHandler sdk.SetMsgsHandler, modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler, isEVMTxHandler sdk.IsEVMTxHandler, nextAccountNumberHandler sdk.NextAccountNumberHandler) {
 	s.transactionAddressHandler = transactionAddressHandler
 	s.setMsgsHandler = setMsgsHandler
 	s.modifyLogIndexHandler = modifyLogIndexHandler
 	s.setBlockBloomTransientHandler = setBlockBloomTransientHandler
 	s.contractStaticAnalysisHandler = contractStaticAnalysisHandler
 	s.isEVMTxHandler = isEVMTxHandler
+	s.nextAccountNumberHandler = nextAccountNumberHandler
 }
 
 func (s *scheduler) invalidateTask(task *deliverTxTask) {
@@ -295,40 +297,14 @@ func (s *scheduler) findConflicts(task *deliverTxTask) (bool, []int) {
 	return valid, conflicts
 }
 
-func toTasks(_ sdk.Context, req sdk.DeliverTxBatchRequest) ([]*deliverTxTask, map[int]*deliverTxTask) {
+func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*deliverTxTask, map[int]*deliverTxTask) {
 	reqs := req.TxEntries
 	orders := req.Orders
 	tasksMap := make(map[int]*deliverTxTask)
 	allTasks := make([]*deliverTxTask, 0, len(reqs))
 	totalTask := len(reqs)
 	interChainIndexes := make(map[int32]int32)
-
-	addTxTask := func(dependIdxes []int, r *sdk.DeliverTxEntry) {
-		task := &deliverTxTask{
-			Request:       r.Request,
-			SdkTx:         r.SdkTx,
-			Checksum:      r.Checksum,
-			AbsoluteIndex: r.AbsoluteIndex,
-			Status:        statusPending,
-			Dependencies:  map[int]struct{}{},
-			TotalTask:     totalTask,
-			IsEVMTx:       false,
-
-			//TxTracer:      r.TxTracer,
-		}
-
-		// if there are dependencies, set the task to waiting
-		if len(dependIdxes) > 0 {
-			dependencies := map[int]struct{}{}
-			for _, dependIdx := range dependIdxes {
-				dependencies[dependIdx] = struct{}{}
-			}
-			task.Status = statusWaiting
-			task.Dependencies = dependencies
-		}
-		tasksMap[r.AbsoluteIndex] = task
-		allTasks = append(allTasks, task)
-	}
+	txDepends := make([][]int, len(reqs), len(reqs))
 
 	if orders.NsInterChainTransactionOrders != nil {
 		for _, orderEntry := range orders.NsInterChainTransactionOrders.Entries {
@@ -352,13 +328,44 @@ func toTasks(_ sdk.Context, req sdk.DeliverTxBatchRequest) ([]*deliverTxTask, ma
 					if hasDep {
 						dependIdxes = append(dependIdxes, int(interChainDependIdx))
 					}
-					addTxTask(dependIdxes, reqs[idx])
+					txDepends[idx] = dependIdxes
 				}
 			}
 		}
 	}
-	if len(allTasks) != len(reqs) {
-		panic(fmt.Errorf("toTasks NsTransactionOrders total.Size(%s) != txs.Size(%s)", len(allTasks), len(reqs)))
+
+	for idx, tx := range reqs {
+		isNewAccount, accountNumber := s.nextAccountNumberHandler(ctx.WithNamepace(s.namespaceList[idx]), tx.SdkTx)
+		nextAccountNumber := uint64(0)
+		if isNewAccount {
+			nextAccountNumber = accountNumber
+		}
+		task := &deliverTxTask{
+			Request:       tx.Request,
+			SdkTx:         tx.SdkTx,
+			Checksum:      tx.Checksum,
+			AbsoluteIndex: tx.AbsoluteIndex,
+			Status:        statusPending,
+			Dependencies:  map[int]struct{}{},
+			TotalTask:     totalTask,
+			IsEVMTx:       false,
+			AccountNumber: nextAccountNumber,
+
+			//TxTracer:      r.TxTracer,
+		}
+
+		// if there are dependencies, set the task to waiting
+		dependIdxes := txDepends[idx]
+		if len(dependIdxes) > 0 {
+			dependencies := map[int]struct{}{}
+			for _, dependIdx := range dependIdxes {
+				dependencies[dependIdx] = struct{}{}
+			}
+			task.Status = statusWaiting
+			task.Dependencies = dependencies
+		}
+		tasksMap[tx.AbsoluteIndex] = task
+		allTasks = append(allTasks, task)
 	}
 
 	return allTasks, tasksMap
@@ -377,6 +384,7 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) ([
 	startTime := time.Now()
 
 	for _, t := range tasks {
+
 		res = append(res, *t.Response)
 
 		t.IsEVMTx = s.isEVMTxHandler(ctx, t.SdkTx)
@@ -435,6 +443,8 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) ([
 		//if t.TxTracer != nil {
 		//	t.TxTracer.Commit()
 		//}
+
+		s.consumeGas(ctx, t)
 	}
 	if logSize > 0 {
 		s.setBlockBloomTransientHandler(ctx, txLogs)
@@ -442,6 +452,22 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) ([
 	// calculate time used
 	fmt.Printf("========= Time used: %v\n", time.Since(startTime))
 	return res, evmTxs
+}
+
+func (s *scheduler) consumeGas(ctx sdk.Context, task *deliverTxTask) {
+	taskCtx := task.Ctx
+
+	limit := taskCtx.GasMeter().Limit()
+	gasUsed := uint64(task.Response.GasUsed)
+	consumed := storetypes.Gas(0)
+	if gasUsed > limit {
+		consumed = limit
+	} else {
+		consumed = gasUsed
+	}
+	ctx.BlockGasMeter().ConsumeGas(
+		consumed, "block gas meter",
+	)
 }
 
 func (s *scheduler) tryInitMultiVersionStore(ctx sdk.Context, totalTask int) {
@@ -527,7 +553,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	//s.PrefillEstimates(reqs)
 	toTaskStartTime := time.Now()
 	println("init version store time========", "sub", toTaskStartTime.Sub(startTime).String())
-	tasks, tasksMap := toTasks(ctx, req)
+	tasks, tasksMap := s.toTasks(ctx, req)
 
 	fmt.Printf("========= toTasks Time used: %v\n", time.Since(toTaskStartTime))
 	now := time.Now()
@@ -549,21 +575,21 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	defer cancel()
 	// set trace store file
 
-	nowTime := strconv.Itoa(int(now.UnixMilli()))
-	tracePath := "trace/trace" + nowTime + ".out"
-	tracePathEnv := os.Getenv("tracePath")
-	if tracePathEnv != "" {
-		tracePath = tracePathEnv + tracePath
-	}
-	f, err := os.Create(tracePath)
+	//nowTime := strconv.Itoa(int(now.UnixMilli()))
+	//tracePath := "trace/trace" + nowTime + ".out"
+	//tracePathEnv := os.Getenv("tracePath")
+	//if tracePathEnv != "" {
+	//	tracePath = tracePathEnv + tracePath
+	//}
+	//f, err := os.Create(tracePath)
 
-	if err != nil {
-		println("err", "err", err.Error())
-	}
+	//if err != nil {
+	//	println("err", "err", err.Error())
+	//}
 	// start trace
-	if err := trace.Start(f); err != nil {
-		panic(err)
-	}
+	//if err := trace.Start(f); err != nil {
+	//	panic(err)
+	//}
 	//go printCpuCount()
 
 	// execution tasks are limited by workers
@@ -689,7 +715,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 
 	s.setMsgsHandler(ctx, evmTxs)
 	t7 := time.Now()
-	trace.Stop()
+	//trace.Stop()
 	println("trace time===============", "sub", time.Now().Sub(t7).String())
 
 	return res, nil
@@ -810,9 +836,16 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 		}
 		t := task
 		wg.Add(1)
+		//s.DoExecute(func() {
+		//	ctx = ctx.WithNamepace(task.NamespaceId).WithNextAccountNumber(task.AccountNumber)
+		//	//now := time.Now()
+		//	s.prepareAndRunTask(wg, ctx, t)
+		//	//println("run tast time", "sub", time.Now().Sub(now))
+		//})
 		s.DoExecute(func() {
+			sdkCtx := ctx.WithNamepace(t.NamespaceId).WithNextAccountNumber(t.AccountNumber)
 			//now := time.Now()
-			s.prepareAndRunTask(wg, ctx, t)
+			s.prepareAndRunTask(wg, sdkCtx, t)
 			//println("run tast time", "sub", time.Now().Sub(now))
 		})
 	}
@@ -941,6 +974,7 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 	//t0 := time.Now()
 	//now := cmttime.Now()
 	resp := s.deliverTx(task.Request, task.Ctx)
+
 	//t1 := time.Now()
 	//println("deliver tx=============", "start time", t0.String(), "end time", t1.String(), "sub", t1.Sub(t0).String()) //sleepDuration := cmttime.Now().Sub(now)
 	//println("deliverTx task: ", task.AbsoluteIndex, " time: ", sleepDuration, " from: ", now.String())

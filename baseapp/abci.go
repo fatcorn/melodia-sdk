@@ -357,6 +357,7 @@ func (app *BaseApp) CheckTx(req *abci.RequestCheckTx) (*abci.ResponseCheckTx, er
 		return nil, fmt.Errorf("unknown RequestCheckTx type: %s", req.Type)
 	}
 	app.checkState.SetContext(app.checkState.Context().WithNamepace(req.NamespaceId))
+
 	gInfo, result, anteEvents, packet, err := app.runTx(mode, req.Tx)
 	if err != nil {
 		return sdkerrors.ResponseCheckTxWithEvents(err, gInfo.GasWanted, gInfo.GasUsed, anteEvents, app.trace), nil
@@ -503,13 +504,17 @@ func (app *BaseApp) ProcessProposal(req *abci.RequestProcessProposal) (resp *abc
 	}
 
 	if app.finalizeBlockHeight == req.Height && req.Height > app.initialHeight {
+
 		rms, ok := app.cms.(*rootmulti.Store)
 		if ok {
+
 			err := rms.RollbackToVersion(req.Height - 1)
+
 			if err != nil {
 				app.logger.Error("FinalizeBlock prune stores error.", "height", req.Height, "err", err)
 			}
 			app.qms = app.cms
+			app.cleanAccountNumberHandler(uint8(execModeFinalize))
 		}
 	}
 
@@ -1080,7 +1085,7 @@ func handleQueryApp(app *BaseApp, path []string, req *abci.RequestQuery) *abci.R
 		case "simulate":
 			txBytes := req.Data
 
-			gInfo, res, err := app.Simulate(txBytes)
+			gInfo, res, err := app.Simulate(txBytes, req.NamespaceId)
 			if err != nil {
 				return sdkerrors.QueryResult(errorsmod.Wrap(err, "failed to simulate tx"), app.trace)
 			}
@@ -1518,7 +1523,7 @@ func (app *BaseApp) DeliverTxBatch(ctx sdk.Context, req sdk.DeliverTxBatchReques
 
 	// avoid overhead for empty batches
 	scheduler := tasks.NewScheduler(app.concurrencyWorkers, app.deliverTx, namespaceList)
-	scheduler.SetSchedulerHandlers(app.transactionAddressHandler, app.setMsgsHandler, app.modifyLogIndexHandler, app.setBlockBloomTransientHandler, app.contractStaticAnalysisHandler, app.isEVMTxHandler)
+	scheduler.SetSchedulerHandlers(app.transactionAddressHandler, app.setMsgsHandler, app.modifyLogIndexHandler, app.setBlockBloomTransientHandler, app.contractStaticAnalysisHandler, app.isEVMTxHandler, app.nextAccountNumberHandler)
 
 	txRes, err := scheduler.ProcessAll(ctx, req)
 

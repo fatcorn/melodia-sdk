@@ -24,8 +24,10 @@ func (app *BaseApp) SimCheck(txEncoder sdk.TxEncoder, tx sdk.Tx) (sdk.GasInfo, *
 }
 
 // Simulate executes a tx in simulate mode to get result and gas info.
-func (app *BaseApp) Simulate(txBytes []byte) (sdk.GasInfo, *sdk.Result, error) {
-	gasInfo, result, _, _, err := app.runTx(execModeSimulate, txBytes)
+func (app *BaseApp) Simulate(txBytes []byte, namespaceId uint64) (sdk.GasInfo, *sdk.Result, error) {
+	ctx := app.getContextForTx(execModeSimulate, txBytes)
+	ctx = ctx.WithNamepace(namespaceId)
+	gasInfo, result, _, _, err := app.runTx(execModeSimulate, txBytes, ctx)
 	return gasInfo, result, err
 }
 

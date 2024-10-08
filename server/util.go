@@ -518,8 +518,16 @@ func DefaultBaseappOptions(appOpts types.AppOptions) []func(*baseapp.BaseApp) {
 	}
 
 	namespaceDBInfo := appOpts.Get(flags.FlagNamespaceDB).(nsblockstore.NamespaceStoreDBInfo)
-	signer := appOpts.Get(flags.FlagValidatorSigner).(keyring.Keyring)
-	signerName := appOpts.Get(flags.FlagValidatorSignerName).(string)
+	flagSigner := appOpts.Get(flags.FlagValidatorSigner)
+	flagSignerName := appOpts.Get(flags.FlagValidatorSignerName)
+	signerName := ""
+	var signer keyring.Keyring
+	if flagSigner != nil {
+		signer = flagSigner.(keyring.Keyring)
+	}
+	if flagSignerName != nil {
+		signerName = flagSignerName.(string)
+	}
 
 	if signerName != "" {
 		record, err := signer.Key(signerName)

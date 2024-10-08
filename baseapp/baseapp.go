@@ -13,6 +13,7 @@ import (
 	"github.com/cockroachdb/errors"
 	cmtdbm "github.com/cometbft/cometbft-db"
 	abci "github.com/cometbft/cometbft/abci/types"
+
 	cmtcfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/crypto/tmhash"
 	tmbytes "github.com/cometbft/cometbft/libs/bytes"
@@ -232,6 +233,8 @@ type BaseApp struct {
 	contractStaticAnalysisResultHandler        sdk.ContractStaticAnalysisResultHandler
 	isEVMTxHandler                             sdk.IsEVMTxHandler
 	txAccountInfoHandler                       sdk.TxAccountInfoHandler
+	nextAccountNumberHandler                   sdk.NextAccountNumberHandler
+	cleanAccountNumberHandler                  sdk.CleanAccountNumberHandler
 	crossNamespaceTransactionIdentifierHandler sdk.CrossNamespaceTransactionIdentifierHandler
 	deliverTxHooks                             []DeliverTxHook
 	concurrencyWorkers                         int
@@ -1177,23 +1180,28 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			err, result = processRecovery(r, recoveryMW), nil
 			ctx.Logger().Error("panic recovered in runTx", "err", err)
 		}
-
 		gInfo = sdk.GasInfo{GasWanted: gasWanted, GasUsed: ctx.GasMeter().GasConsumed()}
 	}()
 
-	blockGasConsumed := false
+	//blockGasConsumed := false
 
 	// consumeBlockGas makes sure block gas is consumed at most once. It must
 	// happen after tx processing, and must be executed even if tx processing
 	// fails. Hence, it's execution is deferred.
-	consumeBlockGas := func() {
-		if !blockGasConsumed {
-			blockGasConsumed = true
-			ctx.BlockGasMeter().ConsumeGas(
-				ctx.GasMeter().GasConsumedToLimit(), "block gas meter",
-			)
-		}
-	}
+	//consumeBlockGas := func() {
+	//	//if !blockGasConsumed {
+	//	//	blockGasConsumed = true
+	//	//	txHash := tmbytes.HexBytes(tmtypes.Tx(txBytes).Hash())
+	//	//
+	//	//	before := ctx.BlockGasMeter().GasConsumedToLimit()
+	//	//	ctx.BlockGasMeter().ConsumeGas(
+	//	//		ctx.GasMeter().GasConsumedToLimit(), "block gas meter",
+	//	//	)
+	//	//	after := ctx.BlockGasMeter().GasConsumedToLimit()
+	//	//	println("height=", ctx.BlockHeight(), "txHash=", fmt.Sprintf("%x", txHash), "After GasUsed=", after, "Before GasUsed=", before)
+	//	//
+	//	//}
+	//}
 
 	// If BlockGasMeter() panics it will be caught by the above recover and will
 	// return an error - in any case BlockGasMeter will consume gas past the limit.
@@ -1201,9 +1209,9 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	// NOTE: consumeBlockGas must exist in a separate defer function from the
 	// general deferred recovery function to recover from consumeBlockGas as it'll
 	// be executed first (deferred statements are executed as stack).
-	if mode == execModeFinalize {
-		defer consumeBlockGas()
-	}
+	//if mode == execModeFinalize {
+	//	defer consumeBlockGas()
+	//}
 
 	tx, err := app.txDecoder(txBytes)
 	if err != nil {
@@ -1348,7 +1356,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	if err == nil {
 		if mode == execModeFinalize {
 			// When block gas exceeds, it'll panic and won't commit the cached store.
-			consumeBlockGas()
+			//consumeBlockGas()
 
 			msCache.Write()
 		}
@@ -1611,6 +1619,8 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 			byteTxs               = make([]sdk.ByteTx, 0)
 			fromIndexMap          = make(map[string]int)
 			toIndexMap            = make(map[string]int)
+			lastTxFromIndexMap    = make(map[string]int)
+			lastTxToIndexMap      = make(map[string]int)
 			staticToSerialIndexes = make([]int32, 0)
 			staticToSerialIndex   int32
 			nsTransactionIndexes  = make([]*cmtproto.NsTransactionIndexes, 0)
@@ -1630,8 +1640,41 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 			app.logger.Info("4.1->sortTxs iterator TxEncodeBatch  time", "used", fmt.Sprintf("%v ms", time.Since(batchTime).Milliseconds()), "namespaceId", namespaceId)
 		}
 
+		handleNsTransactionDependOrders := func(tx sdk.Tx, txIdx int, namespaceId uint64, from string, to string) {
+			if to == "" {
+				return
+			}
+			if lastToIdx, toExists := lastTxToIndexMap[to]; toExists {
+
+				if lastFromIdx, fromExists := lastTxFromIndexMap[from]; !fromExists || lastFromIdx != lastToIdx {
+
+					entry := &cmtproto.NsInterChainTransactionOrderEntry{
+						Indexes: []*cmtproto.NsInterChainTransactionIndex{
+							{
+								Namespace: namespaceId,
+								Index:     int32(lastToIdx),
+							},
+							{
+								Namespace: namespaceId,
+								Index:     int32(txIdx),
+							},
+						},
+					}
+					orders.NsInterChainTransactionOrders.Entries = append(orders.NsInterChainTransactionOrders.Entries, entry)
+				}
+
+			}
+			lastTxFromIndexMap[from] = txIdx
+			lastTxToIndexMap[to] = txIdx
+		}
+
 		handleNsTransactionOrders := func(tx sdk.Tx, txIdx int, namespaceId uint64) {
 			from, to := app.txAccountInfoHandler(tx)
+
+			defer func() {
+				handleNsTransactionDependOrders(tx, txIdx, namespaceId, from, to)
+			}()
+
 			//1、from the same must be serial
 			if idx, exists := fromIndexMap[from]; exists {
 				nsTransactionIndexes[idx].Indexes = append(nsTransactionIndexes[idx].Indexes, int32(txIdx))
@@ -1668,7 +1711,9 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 			if to != "" {
 				toIndexMap[to] = len(nsTransactionIndexes) - 1
 			}
+
 		}
+
 		orderTime := time.Now()
 		for _, byteTx := range byteTxs {
 			txBz := byteTx.TxBytes
