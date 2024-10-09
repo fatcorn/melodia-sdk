@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"github.com/cometbft/cometbft/crypto/merkle"
 	consensustypes "github.com/cometbft/cometbft/types"
 	"github.com/cosmos/cosmos-sdk/tasks"
 	"sort"
@@ -514,7 +513,6 @@ func (app *BaseApp) ProcessProposal(req *abci.RequestProcessProposal) (resp *abc
 				app.logger.Error("FinalizeBlock prune stores error.", "height", req.Height, "err", err)
 			}
 			app.qms = app.cms
-			app.cleanAccountNumberHandler(uint8(execModeFinalize))
 		}
 	}
 
@@ -872,14 +870,10 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 
 	// Finalize all Bank Module Transfers here so that events are included for txs
 	// TODO: Since the fee collection rules have not yet been finalized, fees are temporarily stored in the store under the transaction's associated namespace.
-	namespaceIds := app.getAllNamespacePortsHandler(finalizeCtx)
-	for _, namespaceId := range namespaceIds {
-		deferredWriteEvents := app.writeDeferredBalancesHandler(finalizeCtx.WithNamepace(uint64(namespaceId)))
+	for _, namespaceId := range namespaceList {
+		deferredWriteEvents := app.writeDeferredBalancesHandler(finalizeCtx.WithNamepace(namespaceId))
 		events = append(events, deferredWriteEvents...)
 	}
-	// default namespace fee.
-	defaultDeferredWriteEvents := app.writeDeferredBalancesHandler(finalizeCtx.WithNamepace(merkle.DefaultTxNamespaceID))
-	events = append(events, defaultDeferredWriteEvents...)
 
 	// calculate time used by scheduler
 	fmt.Printf("========= Scheduler Time used: %v\n", time.Since(startTime))
@@ -1523,7 +1517,7 @@ func (app *BaseApp) DeliverTxBatch(ctx sdk.Context, req sdk.DeliverTxBatchReques
 
 	// avoid overhead for empty batches
 	scheduler := tasks.NewScheduler(app.concurrencyWorkers, app.deliverTx, namespaceList)
-	scheduler.SetSchedulerHandlers(app.transactionAddressHandler, app.setMsgsHandler, app.modifyLogIndexHandler, app.setBlockBloomTransientHandler, app.contractStaticAnalysisHandler, app.isEVMTxHandler, app.nextAccountNumberHandler)
+	scheduler.SetSchedulerHandlers(app.setMsgsHandler, app.modifyLogIndexHandler, app.setBlockBloomTransientHandler, app.contractStaticAnalysisHandler, app.isEVMTxHandler, app.nextAccountNumberHandler, app.txAccountInfoHandler)
 
 	txRes, err := scheduler.ProcessAll(ctx, req)
 

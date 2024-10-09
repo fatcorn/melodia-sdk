@@ -222,19 +222,16 @@ type BaseApp struct {
 
 	signerName string
 
-	transactionAddressHandler                  sdk.TransactionAddressHandler
 	writeDeferredBalancesHandler               sdk.WriteDeferredBalancesHandler
 	addCosmosEventsToEVMReceiptIfApplicable    sdk.AddCosmosEventsToEVMReceiptIfApplicable
 	setMsgsHandler                             sdk.SetMsgsHandler
 	modifyLogIndexHandler                      sdk.ModifyLogIndexHandler
 	setBlockBloomTransientHandler              sdk.SetBlockBloomTransientHandler
-	getAllNamespacePortsHandler                sdk.GetAllNamespacePortsHandler
 	contractStaticAnalysisHandler              sdk.ContractStaticAnalysisHandler
 	contractStaticAnalysisResultHandler        sdk.ContractStaticAnalysisResultHandler
 	isEVMTxHandler                             sdk.IsEVMTxHandler
 	txAccountInfoHandler                       sdk.TxAccountInfoHandler
 	nextAccountNumberHandler                   sdk.NextAccountNumberHandler
-	cleanAccountNumberHandler                  sdk.CleanAccountNumberHandler
 	crossNamespaceTransactionIdentifierHandler sdk.CrossNamespaceTransactionIdentifierHandler
 	deliverTxHooks                             []DeliverTxHook
 	concurrencyWorkers                         int

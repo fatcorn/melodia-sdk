@@ -10,7 +10,6 @@ import (
 	protov2 "google.golang.org/protobuf/proto"
 
 	abci "github.com/cometbft/cometbft/abci/types"
-	consensustypes "github.com/cometbft/cometbft/types"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
@@ -105,12 +104,8 @@ type TxDecoder func(txBytes []byte) (Tx, error)
 // TxEncoder marshals transaction to bytes
 type TxEncoder func(tx Tx) ([]byte, error)
 
-type TransactionAddressHandler func(ctx Context, tx Tx) (bool, []string, []string)
-
 type TxAccountInfoHandler func(tx Tx) (string, string)
-type NextAccountNumberHandler func(ctx Context, tx Tx) (bool, uint64)
-type CleanAccountNumberHandler func(cacheType uint8) bool
-
+type NextAccountNumberHandler func(ctx Context, address string) (bool, uint64)
 type CrossNamespaceTransactionIdentifierHandler func(ctx Context, tx Tx) ([]byte, bool, bool)
 
 type SetMsgsHandler func(ctx Context, msgs []Msg)
@@ -121,8 +116,6 @@ type SetBlockBloomTransientHandler func(ctx Context, logs []string)
 type WriteDeferredBalancesHandler func(ctx Context) []abci.Event
 
 type AddCosmosEventsToEVMReceiptIfApplicable func(ctx Context, tx Tx, checksum [32]byte, resp *abci.ExecTxResult)
-
-type GetAllNamespacePortsHandler func(ctx Context) []consensustypes.Namespace
 
 type ContractStaticAnalysisHandler func(ctx Context, tx Tx, sender string)
 

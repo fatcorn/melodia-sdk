@@ -348,10 +348,6 @@ func (app *BaseApp) SetTxEncoder(txEncoder sdk.TxEncoder) {
 	app.txEncoder = txEncoder
 }
 
-func (app *BaseApp) SetTransactionAddressHandler(transactionAddressHandler sdk.TransactionAddressHandler) {
-	app.transactionAddressHandler = transactionAddressHandler
-}
-
 func (app *BaseApp) SetIsEVMTxHandler(isEVMTxHandler sdk.IsEVMTxHandler) {
 	app.isEVMTxHandler = isEVMTxHandler
 }
@@ -376,10 +372,6 @@ func (app *BaseApp) SetSetBlockBloomTransientHandler(setBlockBloomTransientHandl
 	app.setBlockBloomTransientHandler = setBlockBloomTransientHandler
 }
 
-func (app *BaseApp) SetGetAllNamespacePortsHandler(getAllNamespacePortsHandler sdk.GetAllNamespacePortsHandler) {
-	app.getAllNamespacePortsHandler = getAllNamespacePortsHandler
-}
-
 func (app *BaseApp) SetContractStaticAnalysisHandler(contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler) {
 	app.contractStaticAnalysisHandler = contractStaticAnalysisHandler
 }
@@ -392,9 +384,6 @@ func (app *BaseApp) SetTxAccountInfoHandler(txAccountInfoHandler sdk.TxAccountIn
 }
 func (app *BaseApp) SetNextAccountNumberHandler(nextAccountNumberHandler sdk.NextAccountNumberHandler) {
 	app.nextAccountNumberHandler = nextAccountNumberHandler
-}
-func (app *BaseApp) SetCleanAccountNumberHandler(cleanAccountNumberHandler sdk.CleanAccountNumberHandler) {
-	app.cleanAccountNumberHandler = cleanAccountNumberHandler
 }
 func (app *BaseApp) SetCrossNamespaceTransactionIdentifierHandler(crossNamespaceTransactionIdentifierHandler sdk.CrossNamespaceTransactionIdentifierHandler) {
 	app.crossNamespaceTransactionIdentifierHandler = crossNamespaceTransactionIdentifierHandler

@@ -193,8 +193,7 @@ func (ak AccountKeeper) NextAccountNumber(ctx context.Context) uint64 {
 	if err != nil {
 		panic(err)
 	}
-	println("NextAccountNumber->CacheNext->AccountNumber=", n, "ExecMode=", sdkCtx.ExecMode())
-
+	sdkCtx.Logger().Info("NextAccountNumber", n, "ExecMode=", sdkCtx.ExecMode())
 	return n
 }
 
