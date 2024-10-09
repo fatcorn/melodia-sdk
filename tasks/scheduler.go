@@ -335,12 +335,7 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 	}
 
 	for idx, tx := range reqs {
-		nextAccountNumbers := make(map[string]uint64)
-		_, toAddress := s.txAccountInfoHandler(tx.SdkTx)
-		isNewAccount, accountNumber := s.nextAccountNumberHandler(ctx.WithNamepace(s.namespaceList[idx]), toAddress)
-		if isNewAccount {
-			nextAccountNumbers[toAddress] = accountNumber
-		}
+		nextAccountNumbers := s.nextAccountNumberHandler(ctx.WithNamepace(s.namespaceList[idx]), tx.SdkTx)
 
 		task := &deliverTxTask{
 			Request:        tx.Request,

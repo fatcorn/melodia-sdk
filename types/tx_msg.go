@@ -105,7 +105,7 @@ type TxDecoder func(txBytes []byte) (Tx, error)
 type TxEncoder func(tx Tx) ([]byte, error)
 
 type TxAccountInfoHandler func(tx Tx) (string, string)
-type NextAccountNumberHandler func(ctx Context, address string) (bool, uint64)
+type NextAccountNumberHandler func(ctx Context, tx Tx) map[string]uint64
 type CrossNamespaceTransactionIdentifierHandler func(ctx Context, tx Tx) ([]byte, bool, bool)
 
 type SetMsgsHandler func(ctx Context, msgs []Msg)
