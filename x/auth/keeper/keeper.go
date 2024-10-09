@@ -186,14 +186,10 @@ func (ak AccountKeeper) GetSequence(ctx context.Context, addr sdk.AccAddress) (u
 // If the global account number is not set, it initializes it with value 0.
 func (ak AccountKeeper) NextAccountNumber(ctx context.Context) uint64 {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	if sdkCtx.NextAccountNumber() > 0 {
-		return sdkCtx.NextAccountNumber()
-	}
 	n, err := ak.AccountNumber.Next(sdkCtx.WithNamepace(0))
 	if err != nil {
 		panic(err)
 	}
-	sdkCtx.Logger().Info("NextAccountNumber", n, "ExecMode=", sdkCtx.ExecMode())
 	return n
 }
 

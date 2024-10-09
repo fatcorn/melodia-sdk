@@ -67,8 +67,8 @@ type Context struct {
 	headerInfo           header.Info
 	txIndex              int
 
-	namespaceId       uint64 // The tx related namespaceId
-	nextAccountNumber uint64
+	namespaceId        uint64 // The tx related namespaceId
+	nextAccountNumbers map[string]uint64
 }
 
 // Proposed rename, not done to avoid API breakage
@@ -98,7 +98,12 @@ func (c Context) CometInfo() comet.BlockInfo                    { return c.comet
 func (c Context) HeaderInfo() header.Info                       { return c.headerInfo }
 func (c Context) TxIndex() int                                  { return c.txIndex }
 func (c Context) Namespace() uint64                             { return c.namespaceId }
-func (c Context) NextAccountNumber() uint64                     { return c.nextAccountNumber }
+func (c Context) NextAccountNumber(address string) uint64 {
+	if addr, ok := c.nextAccountNumbers[address]; ok {
+		return addr
+	}
+	return 0
+}
 
 // clone the header before returning
 func (c Context) BlockHeader() cmtproto.Header {
@@ -145,6 +150,7 @@ func NewContext(ms storetypes.MultiStore, header cmtproto.Header, isCheckTx bool
 		eventManager:         NewEventManager(),
 		kvGasConfig:          storetypes.KVGasConfig(),
 		transientKVGasConfig: storetypes.TransientGasConfig(),
+		nextAccountNumbers:   make(map[string]uint64),
 	}
 }
 
@@ -183,8 +189,8 @@ func (c Context) WithNamepace(namespaceId uint64) Context {
 	return c
 }
 
-func (c Context) WithNextAccountNumber(nextAccountNumber uint64) Context {
-	c.nextAccountNumber = nextAccountNumber
+func (c Context) WithNextAccountNumber(nextAccountNumbers map[string]uint64) Context {
+	c.nextAccountNumbers = nextAccountNumbers
 	return c
 }
 

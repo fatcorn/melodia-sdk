@@ -19,16 +19,23 @@ func (ak AccountKeeper) NewAccountWithAddress(ctx context.Context, addr sdk.AccA
 
 	newAcc := ak.NewAccount(ctx, acc)
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	println("NewAccountWithAddress->AccountNumber=", newAcc.GetAccountNumber(), "ExecMode=", sdkCtx.ExecMode(), "Address=", addr.String())
+	sdkCtx.Logger().Info("new account with address", "accountNumber", newAcc.GetAccountNumber(), "execMode=", sdkCtx.ExecMode(), "address", addr.String())
 	return newAcc
 }
 
 // NewAccount sets the next account number to a given account interface
 func (ak AccountKeeper) NewAccount(ctx context.Context, acc sdk.AccountI) sdk.AccountI {
-	if err := acc.SetAccountNumber(ak.NextAccountNumber(ctx)); err != nil {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	nextAccountNumber := sdkCtx.NextAccountNumber(acc.GetAddress().String())
+	if nextAccountNumber <= 0 {
+		nextAccountNumber = ak.NextAccountNumber(ctx)
+		sdkCtx.Logger().Info("context not found to new next account number", "accountNumber", nextAccountNumber, "execMode=", sdkCtx.ExecMode(), "address", acc.GetAddress().String())
+	}
+	if err := acc.SetAccountNumber(nextAccountNumber); err != nil {
 		panic(err)
 	}
 
+	sdkCtx.Logger().Info("new account", "accountNumber", acc.GetAccountNumber(), "execMode=", sdkCtx.ExecMode(), "address", acc.GetAddress().String())
 	return acc
 }
 
