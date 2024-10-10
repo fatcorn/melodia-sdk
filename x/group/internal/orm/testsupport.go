@@ -40,6 +40,10 @@ type debuggingGasMeter struct {
 	g storetypes.GasMeter
 }
 
+func (m debuggingGasMeter) WithNamespaceId(uint64) storetypes.GasMeter {
+	return m
+}
+
 func (d debuggingGasMeter) GasConsumed() storetypes.Gas {
 	return d.g.GasConsumed()
 }
