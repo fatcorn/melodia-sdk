@@ -10,8 +10,6 @@ import (
 	"github.com/hashicorp/go-metrics"
 	"github.com/hashicorp/go-metrics/datadog"
 	metricsprom "github.com/hashicorp/go-metrics/prometheus"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/expfmt"
 )
 
 // globalLabels defines the set of global labels that will be applied to all
@@ -184,23 +182,23 @@ func (m *Metrics) gatherPrometheus() (GatherResponse, error) {
 		return GatherResponse{}, fmt.Errorf("prometheus metrics are not enabled")
 	}
 
-	metricsFamilies, err := prometheus.DefaultGatherer.Gather()
-	if err != nil {
-		return GatherResponse{}, fmt.Errorf("failed to gather prometheus metrics: %w", err)
-	}
+	//metricsFamilies, err := prometheus.DefaultGatherer.Gather()
+	//if err != nil {
+	//	return GatherResponse{}, fmt.Errorf("failed to gather prometheus metrics: %w", err)
+	//}
 
 	buf := &bytes.Buffer{}
 	defer buf.Reset()
 
-	e := expfmt.NewEncoder(buf, expfmt.FmtText)
+	//e := expfmt.NewEncoder(buf, expfmt.FmtText)
+	//
+	//for _, mf := range metricsFamilies {
+	//	if err := e.Encode(mf); err != nil {
+	//		return GatherResponse{}, fmt.Errorf("failed to encode prometheus metrics: %w", err)
+	//	}
+	//}
 
-	for _, mf := range metricsFamilies {
-		if err := e.Encode(mf); err != nil {
-			return GatherResponse{}, fmt.Errorf("failed to encode prometheus metrics: %w", err)
-		}
-	}
-
-	return GatherResponse{ContentType: string(expfmt.FmtText), Metrics: buf.Bytes()}, nil
+	return GatherResponse{ContentType: "", Metrics: buf.Bytes()}, nil
 }
 
 // gatherGeneric collects generic metrics and returns a GatherResponse.

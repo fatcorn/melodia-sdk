@@ -36,6 +36,7 @@ import (
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/nsblockstore"
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
+	rootmultiv2 "github.com/cosmos/cosmos-sdk/storev2/rootmulti"
 	"github.com/cosmos/cosmos-sdk/telemetry"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
@@ -602,6 +603,20 @@ func (app *BaseApp) LoadLatestVersion() error {
 	err := app.storeLoader(app.cms)
 	if err != nil {
 		return fmt.Errorf("failed to load latest version: %w", err)
+	}
+	cms := app.cms
+	store, ok := cms.(*rootmultiv2.Store)
+	if ok {
+		info, err := store.LoadNamespaceStoreInfo(app.namespaceStoreManager.GetDBRootDir())
+		if err != nil {
+			panic(err)
+		}
+		for storeKey, db := range info.NamespaceStoreDBs {
+			namespaceModule := info.NamespacesModuleName[storeKey]
+			relatedModules := info.ModuleRelatedModules[namespaceModule.ModuleName]
+			app.loadNamespaceBLockStore(namespaceModule.NamespaceId, db, namespaceModule.ModuleName, relatedModules)
+		}
+		app.namespaceStoreManager.SetDBRootDir(info.DbRootDir)
 	}
 
 	return app.Init()
