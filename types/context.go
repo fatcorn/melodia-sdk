@@ -69,6 +69,7 @@ type Context struct {
 
 	namespaceId        uint64 // The tx related namespaceId
 	nextAccountNumbers map[string]uint64
+	synchronous        bool
 }
 
 // Proposed rename, not done to avoid API breakage
@@ -98,6 +99,7 @@ func (c Context) CometInfo() comet.BlockInfo                    { return c.comet
 func (c Context) HeaderInfo() header.Info                       { return c.headerInfo }
 func (c Context) TxIndex() int                                  { return c.txIndex }
 func (c Context) Namespace() uint64                             { return c.namespaceId }
+func (c Context) Synchronous() bool                             { return c.synchronous }
 func (c Context) NextAccountNumber(address string) uint64 {
 	if addr, ok := c.nextAccountNumbers[address]; ok {
 		return addr
@@ -191,6 +193,10 @@ func (c Context) WithNamepace(namespaceId uint64) Context {
 
 func (c Context) WithNextAccountNumber(nextAccountNumbers map[string]uint64) Context {
 	c.nextAccountNumbers = nextAccountNumbers
+	return c
+}
+func (c Context) WithSynchronous(synchronous bool) Context {
+	c.synchronous = synchronous
 	return c
 }
 

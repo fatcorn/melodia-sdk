@@ -1175,7 +1175,8 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			recoveryMW := newOutOfGasRecoveryMiddleware(gasWanted, ctx, app.runTxRecoveryMiddleware)
 			recoveryMW = newOCCAbortRecoveryMiddleware(recoveryMW)
 			err, result = processRecovery(r, recoveryMW), nil
-			ctx.Logger().Error("panic recovered in runTx", "err", err)
+			ctx.Logger().Warn("panic recovered in runTx", "err", err, "height", ctx.BlockHeight(), "txIndex", ctx.TxIndex())
+
 		}
 		gInfo = sdk.GasInfo{GasWanted: gasWanted, GasUsed: ctx.GasMeter().GasConsumed()}
 	}()

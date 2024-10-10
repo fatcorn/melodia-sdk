@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	scheduler "cosmossdk.io/store/types/occ"
 	"errors"
 	"fmt"
 
@@ -185,7 +186,13 @@ func (ak AccountKeeper) GetSequence(ctx context.Context, addr sdk.AccAddress) (u
 // NextAccountNumber returns and increments the global account number counter.
 // If the global account number is not set, it initializes it with value 0.
 func (ak AccountKeeper) NextAccountNumber(ctx context.Context) uint64 {
+
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	if sdkCtx.ExecMode() == sdk.ExecModeFinalize {
+		if !sdkCtx.Synchronous() {
+			panic(scheduler.NewErrNextAccountNumber(sdkCtx.TxIndex()))
+		}
+	}
 	n, err := ak.AccountNumber.Next(sdkCtx.WithNamepace(0))
 	if err != nil {
 		panic(err)

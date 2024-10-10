@@ -16,6 +16,7 @@ import (
 	"fmt"
 	abci "github.com/cometbft/cometbft/abci/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/docker"
 	"log"
@@ -336,7 +337,6 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 
 	for idx, tx := range reqs {
 		nextAccountNumbers := s.nextAccountNumberHandler(ctx.WithNamepace(s.namespaceList[idx]), tx.SdkTx)
-
 		task := &deliverTxTask{
 			Request:        tx.Request,
 			SdkTx:          tx.SdkTx,
@@ -598,15 +598,20 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	toExecute := tasks
 	for !allValidated(tasks) {
 		// if the max incarnation >= x, we should revert to synchronous
-		if iterations >= maximumIterations {
+		if iterations >= maximumIterations || s.synchronous {
 			// process synchronously
 			s.synchronous = true
 			startIdx, anyLeft := s.findFirstNonValidated()
 			if !anyLeft {
 				break
 			}
+
 			toExecute = tasks[startIdx:]
+			if s.synchronous {
+				ctx.Logger().Warn("validate tasks trigger synchronous", "synchronous", s.synchronous, "iterations", iterations, "maximumIterations", maximumIterations, "toExecute=", len(toExecute), "startIdx=", startIdx, "anyLeft=", anyLeft)
+			}
 		}
+
 		//go printCpuCount()
 		printSystemStats("start ")
 
@@ -766,15 +771,6 @@ func (s *scheduler) validateTask(ctx sdk.Context, task *deliverTxTask) bool {
 	return true
 }
 
-func (s *scheduler) findFirstNonValidated() (int, bool) {
-	for i, t := range s.allTasks {
-		if t.Status != statusValidated {
-			return i, true
-		}
-	}
-	return 0, false
-}
-
 func (s *scheduler) validateAll(ctx sdk.Context, tasks []*deliverTxTask) ([]*deliverTxTask, error) {
 	//ctx, span := s.traceSpan(ctx, "SchedulerValidateAll", nil)
 	//defer span.End()
@@ -840,7 +836,7 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 		//	//println("run tast time", "sub", time.Now().Sub(now))
 		//})
 		s.DoExecute(func() {
-			sdkCtx := ctx.WithNamepace(t.NamespaceId).WithNextAccountNumber(t.AccountNumbers)
+			sdkCtx := ctx.WithNamepace(t.NamespaceId).WithNextAccountNumber(t.AccountNumbers).WithSynchronous(s.synchronous).WithTxIndex(task.AbsoluteIndex)
 			//now := time.Now()
 			s.prepareAndRunTask(wg, sdkCtx, t)
 			//println("run tast time", "sub", time.Now().Sub(now))
@@ -851,6 +847,15 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 	wg.Wait()
 
 	return nil
+}
+
+func (s *scheduler) findFirstNonValidated() (int, bool) {
+	for i, t := range s.allTasks {
+		if t.Status != statusValidated {
+			return i, true
+		}
+	}
+	return 0, false
 }
 func (s *scheduler) prepareAndRunTask(wg *sync.WaitGroup, ctx sdk.Context, task *deliverTxTask) {
 	//eCtx, eSpan := s.traceSpan(ctx, "SchedulerExecute", task)
@@ -992,6 +997,13 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 		}
 		return
 	}
+
+	if resp.Code == errors.ErrOCCAbort.ABCICode() {
+		task.SetStatus(statusAborted)
+		s.synchronous = true
+		return
+	}
+
 	//estimateSleepDuration := cmttime.Now().Sub(estimateNow)
 	//println("EstimateSleepDuration task: ", task.AbsoluteIndex, " time: ", estimateSleepDuration, " from: ", estimateNow.String())
 
