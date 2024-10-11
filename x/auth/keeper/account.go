@@ -26,13 +26,16 @@ func (ak AccountKeeper) NewAccount(ctx context.Context, acc sdk.AccountI) sdk.Ac
 	nextAccountNumber := sdkCtx.NextAccountNumber(acc.GetAddress().String())
 	if nextAccountNumber <= 0 {
 		nextAccountNumber = ak.NextAccountNumber(ctx)
-		sdkCtx.Logger().Info("account keeper new next account number", "accountNumber", nextAccountNumber, "execMode=", sdkCtx.ExecMode(), "address", acc.GetAddress().String(), "height", sdkCtx.BlockHeight())
+		if sdkCtx.ExecMode() == sdk.ExecModeFinalize {
+			sdkCtx.Logger().Warn("new account without context account number, new next account number", "accountNumber", nextAccountNumber, "execMode=", sdkCtx.ExecMode(), "address", acc.GetAddress().String(), "namespace", sdkCtx.Namespace(), "height", sdkCtx.BlockHeight())
+		}
 	}
 	if err := acc.SetAccountNumber(nextAccountNumber); err != nil {
 		panic(err)
 	}
-
-	sdkCtx.Logger().Debug("new account", "accountNumber", acc.GetAccountNumber(), "execMode=", sdkCtx.ExecMode(), "address", acc.GetAddress().String(), "height", sdkCtx.BlockHeight())
+	if sdkCtx.ExecMode() == sdk.ExecModeFinalize {
+		sdkCtx.Logger().Info("new account", "accountNumber", acc.GetAccountNumber(), "execMode=", sdkCtx.ExecMode(), "address", acc.GetAddress().String(), "namespace", sdkCtx.Namespace(), "height", sdkCtx.BlockHeight())
+	}
 	return acc
 }
 

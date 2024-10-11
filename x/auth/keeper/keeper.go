@@ -5,6 +5,7 @@ import (
 	scheduler "cosmossdk.io/store/types/occ"
 	"errors"
 	"fmt"
+	"github.com/cometbft/cometbft/crypto/merkle"
 
 	"cosmossdk.io/collections"
 	"cosmossdk.io/collections/indexes"
@@ -193,7 +194,7 @@ func (ak AccountKeeper) NextAccountNumber(ctx context.Context) uint64 {
 			panic(scheduler.NewErrNextAccountNumber(sdkCtx.TxIndex()))
 		}
 	}
-	n, err := ak.AccountNumber.Next(sdkCtx.WithNamepace(0))
+	n, err := ak.AccountNumber.Next(sdkCtx.WithNamepace(merkle.DefaultTxNamespaceID))
 	if err != nil {
 		panic(err)
 	}
