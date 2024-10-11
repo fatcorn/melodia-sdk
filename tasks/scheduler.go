@@ -600,6 +600,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 		// if the max incarnation >= x, we should revert to synchronous
 		if iterations >= maximumIterations || s.synchronous {
 			// process synchronously
+			trigger := s.synchronous
 			s.synchronous = true
 			startIdx, anyLeft := s.findFirstNonValidated()
 			if !anyLeft {
@@ -607,8 +608,8 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 			}
 
 			toExecute = tasks[startIdx:]
-			if s.synchronous {
-				ctx.Logger().Warn("validate tasks trigger synchronous", "synchronous", s.synchronous, "iterations", iterations, "maximumIterations", maximumIterations, "toExecute=", len(toExecute), "startIdx=", startIdx, "anyLeft=", anyLeft)
+			if trigger {
+				ctx.Logger().Warn("validate tasks trigger synchronous", "iterations", iterations, "maximumIterations", maximumIterations, "toExecute=", len(toExecute), "startIdx=", startIdx, "anyLeft=", anyLeft)
 			}
 		}
 
