@@ -307,29 +307,31 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 	interChainIndexes := make(map[int32]int32)
 	txDepends := make([][]int, len(reqs), len(reqs))
 
-	if orders.NsInterChainTransactionOrders != nil {
-		for _, orderEntry := range orders.NsInterChainTransactionOrders.Entries {
-			for i, idxEntry := range orderEntry.Indexes {
-				if i > 0 {
-					interChainIndexes[idxEntry.Index] = orderEntry.Indexes[i-1].Index
+	if orders != nil {
+		if orders.NsInterChainTransactionOrders != nil {
+			for _, orderEntry := range orders.NsInterChainTransactionOrders.Entries {
+				for i, idxEntry := range orderEntry.Indexes {
+					if i > 0 {
+						interChainIndexes[idxEntry.Index] = orderEntry.Indexes[i-1].Index
+					}
 				}
 			}
 		}
-	}
 
-	if orders.NsTransactionOrders != nil {
-		for _, orderEntry := range orders.NsTransactionOrders.Entries {
-			for _, idxes := range orderEntry.Indexes {
-				for i, idx := range idxes.Indexes {
-					dependIdxes := make([]int, 0)
-					if i > 0 {
-						dependIdxes = append(dependIdxes, int(idxes.Indexes[i-1]))
+		if orders.NsTransactionOrders != nil {
+			for _, orderEntry := range orders.NsTransactionOrders.Entries {
+				for _, idxes := range orderEntry.Indexes {
+					for i, idx := range idxes.Indexes {
+						dependIdxes := make([]int, 0)
+						if i > 0 {
+							dependIdxes = append(dependIdxes, int(idxes.Indexes[i-1]))
+						}
+						interChainDependIdx, hasDep := interChainIndexes[idx]
+						if hasDep {
+							dependIdxes = append(dependIdxes, int(interChainDependIdx))
+						}
+						txDepends[idx] = dependIdxes
 					}
-					interChainDependIdx, hasDep := interChainIndexes[idx]
-					if hasDep {
-						dependIdxes = append(dependIdxes, int(interChainDependIdx))
-					}
-					txDepends[idx] = dependIdxes
 				}
 			}
 		}
