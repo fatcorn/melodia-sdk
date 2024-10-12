@@ -425,7 +425,7 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) ([
 				if isEVM {
 					for _, attr := range e.Attributes {
 						if attr.Key == "sender" {
-							s.contractStaticAnalysisHandler(ctx, t.SdkTx, attr.Value)
+							s.contractStaticAnalysisHandler(ctx.WithNamepace(t.NamespaceId), t.SdkTx, attr.Value)
 							break
 						}
 					}
