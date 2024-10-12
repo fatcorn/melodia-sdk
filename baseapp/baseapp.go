@@ -1556,12 +1556,8 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 				Entries: make([]*cmtproto.NsInterChainTransactionOrderEntry, 0),
 			},
 		}
-		staticAnalysisResult = &sync.Map{}
-		txIndex              = 0
+		txIndex = 0
 	)
-	if app.contractStaticAnalysisResultHandler != nil {
-		staticAnalysisResult = app.contractStaticAnalysisResultHandler(ctx)
-	}
 	staticTime := time.Now()
 	handleNsInterChainTransactionOrders := func(byteTx sdk.ByteTx, txIdx int, namespaceId uint64) bool {
 		tx := byteTx.Tx
@@ -1685,20 +1681,19 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 					return
 				}
 				//3、to contract static analysis must be serial
-				if staticToSerial, exists := staticAnalysisResult.Load(to); exists {
-					if !staticToSerial.(bool) {
-						if len(staticToSerialIndexes) > 0 {
-							staticToSerialIndexes = append(staticToSerialIndexes, int32(txIdx))
-							nsTransactionIndexes[staticToSerialIndex].Indexes = staticToSerialIndexes
-						} else {
-							staticToSerialIndexes = append(staticToSerialIndexes, int32(txIdx))
-							nsTransactionIndexes = append(nsTransactionIndexes, &cmtproto.NsTransactionIndexes{
-								Indexes: staticToSerialIndexes,
-							})
-							staticToSerialIndex = int32(len(nsTransactionIndexes) - 1)
-						}
-						return
+				result := app.contractStaticAnalysisResultHandler(ctx, to)
+				if !result {
+					if len(staticToSerialIndexes) > 0 {
+						staticToSerialIndexes = append(staticToSerialIndexes, int32(txIdx))
+						nsTransactionIndexes[staticToSerialIndex].Indexes = staticToSerialIndexes
+					} else {
+						staticToSerialIndexes = append(staticToSerialIndexes, int32(txIdx))
+						nsTransactionIndexes = append(nsTransactionIndexes, &cmtproto.NsTransactionIndexes{
+							Indexes: staticToSerialIndexes,
+						})
+						staticToSerialIndex = int32(len(nsTransactionIndexes) - 1)
 					}
+					return
 				}
 			}
 			indexes := make([]int32, 1)

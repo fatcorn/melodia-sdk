@@ -3,16 +3,13 @@ package types
 import (
 	"encoding/json"
 	fmt "fmt"
-	strings "strings"
-	"sync"
-
-	"github.com/cosmos/gogoproto/proto"
-	protov2 "google.golang.org/protobuf/proto"
-
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
+	"github.com/cosmos/gogoproto/proto"
+	protov2 "google.golang.org/protobuf/proto"
+	strings "strings"
 )
 
 type (
@@ -119,7 +116,7 @@ type AddCosmosEventsToEVMReceiptIfApplicable func(ctx Context, tx Tx, checksum [
 
 type ContractStaticAnalysisHandler func(ctx Context, tx Tx, sender string)
 
-type ContractStaticAnalysisResultHandler func(ctx Context) *sync.Map
+type ContractStaticAnalysisResultHandler func(ctx Context, contractAddress string) bool
 type IsEVMTxHandler func(ctx Context, tx Tx) bool
 
 // MsgTypeURL returns the TypeURL of a `sdk.Msg`.
