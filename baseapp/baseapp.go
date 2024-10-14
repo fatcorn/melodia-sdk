@@ -224,7 +224,7 @@ type BaseApp struct {
 
 	writeDeferredBalancesHandler               sdk.WriteDeferredBalancesHandler
 	addCosmosEventsToEVMReceiptIfApplicable    sdk.AddCosmosEventsToEVMReceiptIfApplicable
-	setMsgsHandler                             sdk.SetMsgsHandler
+	addTransientGasWanted                      sdk.AddTransientGasWanted
 	modifyLogIndexHandler                      sdk.ModifyLogIndexHandler
 	setBlockBloomTransientHandler              sdk.SetBlockBloomTransientHandler
 	contractStaticAnalysisHandler              sdk.ContractStaticAnalysisHandler
@@ -1476,7 +1476,7 @@ func createEvents(cdc codec.Codec, events sdk.Events, msg sdk.Msg, msgV2 protov2
 func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.ResponseSortTxs, error) {
 	startTime := time.Now()
 	reqByteTxs, _ := app.TxDecodeBatch(req.Txs)
-	app.logger.Info("1->sortTxs TxDecodeBatch time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(req.Txs))
+	app.logger.Info("1->sortTxs TxDecodeBatch time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(req.Txs), "height", ctx.BlockHeight())
 	insertTime := time.Now()
 	var (
 		sortTxs                 = make([][]byte, 0)
@@ -1529,7 +1529,7 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 				_ = nsMempool.Insert(ctx, tx)
 
 			}
-			app.logger.Info("2.1->sortTxs single namespace insert time", "used", fmt.Sprintf("%v ms", time.Since(singleStartTime).Milliseconds()), "size", len(namespaceTxs), "namespaceId", namespaceId)
+			app.logger.Info("2.1->sortTxs single namespace insert time", "used", fmt.Sprintf("%v ms", time.Since(singleStartTime).Milliseconds()), "size", len(namespaceTxs), "namespaceId", namespaceId, "height", ctx.BlockHeight())
 		}
 	)
 	nsByteTxs := listNamespaceByteTxs(reqByteTxs, req.NsTable)
@@ -1539,12 +1539,12 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 		go nsMempoolInsertTxs(ctx, byteTxs, namespaceId)
 	}
 	wg.Wait()
-	app.logger.Info("2->sortTxs total insert time", "used", fmt.Sprintf("%v ms", time.Since(insertTime).Milliseconds()), "reqSize", len(req.Txs), "reqNsTable", req.NsTable)
+	app.logger.Info("2->sortTxs total insert time", "used", fmt.Sprintf("%v ms", time.Since(insertTime).Milliseconds()), "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
 
 	sortTime := time.Now()
 	nsIterators := nsMempool.SelectWithNsTable(ctx, req.Txs, req.NsTable)
 
-	app.logger.Info("3->sortTxs sort time", "used", fmt.Sprintf("%v ms", time.Since(sortTime).Milliseconds()), "reqSize", len(req.Txs), "reqNsTable", req.NsTable)
+	app.logger.Info("3->sortTxs sort time", "used", fmt.Sprintf("%v ms", time.Since(sortTime).Milliseconds()), "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
 
 	var (
 		offset  = 0
@@ -1631,7 +1631,7 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 			}
 			batchTime := time.Now()
 			byteTxs, _ = app.TxEncodeBatch(txs)
-			app.logger.Info("4.1->sortTxs iterator TxEncodeBatch  time", "used", fmt.Sprintf("%v ms", time.Since(batchTime).Milliseconds()), "namespaceId", namespaceId)
+			app.logger.Info("4.1->sortTxs iterator TxEncodeBatch  time", "used", fmt.Sprintf("%v ms", time.Since(batchTime).Milliseconds()), "namespaceId", namespaceId, "height", ctx.BlockHeight())
 		}
 
 		handleNsTransactionDependOrders := func(tx sdk.Tx, txIdx int, namespaceId uint64, from string, to string) {
@@ -1725,7 +1725,7 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 			handleNsTransactionOrders(tx, txIndex, namespaceId)
 			txIndex++
 		}
-		app.logger.Info("4.2->sortTxs orders time", "used", fmt.Sprintf("%v ms", time.Since(orderTime).Milliseconds()), "reqSize", len(req.Txs), "reqNsTable", req.NsTable)
+		app.logger.Info("4.2->sortTxs orders time", "used", fmt.Sprintf("%v ms", time.Since(orderTime).Milliseconds()), "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
 
 		if len(nsTransactionIndexes) > 0 {
 			nsTable = append(nsTable, &cmtproto.NamespaceTableEntries{
@@ -1739,8 +1739,8 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 		}
 
 	}
-	app.logger.Info("4->sortTxs total orders time", "used", fmt.Sprintf("%v ms", time.Since(staticTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable)
-	app.logger.Info("5->sortTxs total time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable)
+	app.logger.Info("4->sortTxs total orders time", "used", fmt.Sprintf("%v ms", time.Since(staticTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
+	app.logger.Info("5->sortTxs total time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
 	return &abci.ResponseSortTxs{Txs: sortTxs, NsTable: nsTable, Orders: orders}, nil
 }
 

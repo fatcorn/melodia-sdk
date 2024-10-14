@@ -105,19 +105,16 @@ type TxAccountInfoHandler func(tx Tx) (string, string)
 type NextAccountNumberHandler func(ctx Context, tx Tx) map[string]uint64
 type CrossNamespaceTransactionIdentifierHandler func(ctx Context, tx Tx) ([]byte, bool, bool)
 
-type SetMsgsHandler func(ctx Context, msgs []Msg)
-type ModifyLogIndexHandler func(ctx Context, input string, logIndex uint64) string
+type WriteDeferredBalancesHandler func(ctx Context) []abci.Event
+type AddCosmosEventsToEVMReceiptIfApplicable func(ctx Context, tx Tx, checksum [32]byte, resp *abci.ExecTxResult)
+type AddTransientGasWanted func(ctx Context, gasWanted uint64)
 
+type IsEVMTxHandler func(ctx Context, tx Tx) bool
+type ModifyLogIndexHandler func(ctx Context, input string, logIndex uint64) string
 type SetBlockBloomTransientHandler func(ctx Context, logs []string)
 
-type WriteDeferredBalancesHandler func(ctx Context) []abci.Event
-
-type AddCosmosEventsToEVMReceiptIfApplicable func(ctx Context, tx Tx, checksum [32]byte, resp *abci.ExecTxResult)
-
 type ContractStaticAnalysisHandler func(ctx Context, tx Tx, sender string)
-
 type ContractStaticAnalysisResultHandler func(ctx Context, contractAddress string) bool
-type IsEVMTxHandler func(ctx Context, tx Tx) bool
 
 // MsgTypeURL returns the TypeURL of a `sdk.Msg`.
 var MsgTypeURL = codectypes.MsgTypeURL

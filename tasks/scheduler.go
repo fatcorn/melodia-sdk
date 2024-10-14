@@ -117,7 +117,7 @@ func (dt *deliverTxTask) Increment() {
 // Scheduler processes tasks concurrently
 type Scheduler interface {
 	ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]abci.ExecTxResult, error)
-	SetSchedulerHandlers(setMsgsHandler sdk.SetMsgsHandler, modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler, isEVMTxHandler sdk.IsEVMTxHandler, nextAccountNumberHandler sdk.NextAccountNumberHandler, txAccountInfoHandler sdk.TxAccountInfoHandler)
+	SetSchedulerHandlers(modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler, isEVMTxHandler sdk.IsEVMTxHandler, nextAccountNumberHandler sdk.NextAccountNumberHandler, txAccountInfoHandler sdk.TxAccountInfoHandler, addTransientGasWanted sdk.AddTransientGasWanted)
 }
 
 // tx []byte
@@ -135,13 +135,13 @@ type scheduler struct {
 	metrics                       *schedulerMetrics
 	synchronous                   bool // true if maxIncarnation exceeds threshold
 	maxIncarnation                int  // current highest incarnation
-	setMsgsHandler                sdk.SetMsgsHandler
 	modifyLogIndexHandler         sdk.ModifyLogIndexHandler
 	setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler
 	contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler
 	isEVMTxHandler                sdk.IsEVMTxHandler
 	nextAccountNumberHandler      sdk.NextAccountNumberHandler
 	txAccountInfoHandler          sdk.TxAccountInfoHandler
+	addTransientGasWanted         sdk.AddTransientGasWanted
 	namespaceList                 []uint64
 	threadIds                     []int
 	//tracingInfo        *tracing.Info
@@ -160,14 +160,14 @@ func NewScheduler(workers int, deliverTxFunc func(tx []byte, opts ...sdk.Context
 		namespaceList: namespaceList,
 	}
 }
-func (s *scheduler) SetSchedulerHandlers(setMsgsHandler sdk.SetMsgsHandler, modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler, isEVMTxHandler sdk.IsEVMTxHandler, nextAccountNumberHandler sdk.NextAccountNumberHandler, txAccountInfoHandler sdk.TxAccountInfoHandler) {
-	s.setMsgsHandler = setMsgsHandler
+func (s *scheduler) SetSchedulerHandlers(modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler, isEVMTxHandler sdk.IsEVMTxHandler, nextAccountNumberHandler sdk.NextAccountNumberHandler, txAccountInfoHandler sdk.TxAccountInfoHandler, addTransientGasWanted sdk.AddTransientGasWanted) {
 	s.modifyLogIndexHandler = modifyLogIndexHandler
 	s.setBlockBloomTransientHandler = setBlockBloomTransientHandler
 	s.contractStaticAnalysisHandler = contractStaticAnalysisHandler
 	s.isEVMTxHandler = isEVMTxHandler
 	s.nextAccountNumberHandler = nextAccountNumberHandler
 	s.txAccountInfoHandler = txAccountInfoHandler
+	s.addTransientGasWanted = addTransientGasWanted
 }
 
 func (s *scheduler) invalidateTask(task *deliverTxTask) {
@@ -370,14 +370,14 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 	return allTasks, tasksMap
 }
 
-func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) ([]abci.ExecTxResult, []sdk.Msg) {
+func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) []abci.ExecTxResult {
 	res := make([]abci.ExecTxResult, 0, len(tasks))
-	evmTxs := make([]sdk.Msg, len(tasks))
 
 	evmTxIndex := 0
 
 	logSize := uint64(0)
 	txLogs := make([]string, 0)
+	consumeGasWanted := make(map[uint64]int64)
 
 	// start time
 	startTime := time.Now()
@@ -433,24 +433,27 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) ([
 			}
 		}
 		evmTxIndex++
-		if t.IsEVMTx {
-			evmTxs[t.AbsoluteIndex] = t.SdkTx.GetMsgs()[0]
-		} else {
-			evmTxs[t.AbsoluteIndex] = nil
-		}
 
 		//if t.TxTracer != nil {
 		//	t.TxTracer.Commit()
 		//}
 
 		s.consumeGas(ctx, t)
+
+		if gasWanted, ok := consumeGasWanted[t.NamespaceId]; ok {
+			consumeGasWanted[t.NamespaceId] = gasWanted + t.Response.GasWanted
+		} else {
+			consumeGasWanted[t.NamespaceId] = t.Response.GasWanted
+		}
+
 	}
+	s.consumeGasWanted(ctx, consumeGasWanted)
 	if logSize > 0 {
 		s.setBlockBloomTransientHandler(ctx, txLogs)
 	}
 	// calculate time used
 	fmt.Printf("========= Time used: %v\n", time.Since(startTime))
-	return res, evmTxs
+	return res
 }
 
 func (s *scheduler) consumeGas(ctx sdk.Context, task *deliverTxTask) {
@@ -467,6 +470,12 @@ func (s *scheduler) consumeGas(ctx sdk.Context, task *deliverTxTask) {
 	ctx.BlockGasMeter().WithNamespaceId(taskCtx.Namespace()).ConsumeGas(
 		consumed, "block gas meter",
 	)
+}
+
+func (s *scheduler) consumeGasWanted(ctx sdk.Context, consumeGasWanted map[uint64]int64) {
+	for namespaceId, gasWanted := range consumeGasWanted {
+		s.addTransientGasWanted(ctx.WithNamepace(namespaceId), uint64(gasWanted))
+	}
 }
 
 func (s *scheduler) tryInitMultiVersionStore(ctx sdk.Context, totalTask int) {
@@ -715,10 +724,9 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 
 	ctx.Logger().Info("occ scheduler", "height", ctx.BlockHeight(), "txs", len(tasks), "latency_ms", time.Since(startTime).String(), "retries", s.metrics.retries, "maxIncarnation", s.maxIncarnation, "iterations", iterations, "sync", s.synchronous, "workers", workers)
 
-	res, evmTxs := s.collectResponses(ctx, tasks)
+	res := s.collectResponses(ctx, tasks)
 	printSystemStats("after process")
 
-	s.setMsgsHandler(ctx, evmTxs)
 	t7 := time.Now()
 	//trace.Stop()
 	println("trace time===============", "sub", time.Now().Sub(t7).String())

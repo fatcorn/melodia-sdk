@@ -359,9 +359,8 @@ func (app *BaseApp) SetWriteDeferredBalancesHandler(writeDeferredBalancesHandler
 func (app *BaseApp) SetAddCosmosEventsToEVMReceiptIfApplicable(addCosmosEventsToEVMReceiptIfApplicable sdk.AddCosmosEventsToEVMReceiptIfApplicable) {
 	app.addCosmosEventsToEVMReceiptIfApplicable = addCosmosEventsToEVMReceiptIfApplicable
 }
-
-func (app *BaseApp) SetSetMsgsHandler(setMsgsHandler sdk.SetMsgsHandler) {
-	app.setMsgsHandler = setMsgsHandler
+func (app *BaseApp) SetAddTransientGasWanted(addTransientGasWanted sdk.AddTransientGasWanted) {
+	app.addTransientGasWanted = addTransientGasWanted
 }
 
 func (app *BaseApp) SetModifyLogIndexHandler(modifyLogIndexHandler sdk.ModifyLogIndexHandler) {
