@@ -113,7 +113,6 @@ type IsEVMTxHandler func(ctx Context, tx Tx) bool
 type ModifyLogIndexHandler func(ctx Context, input string, logIndex uint64) string
 type SetBlockBloomTransientHandler func(ctx Context, logs []string)
 
-type ContractStaticAnalysisHandler func(ctx Context, tx Tx, sender string)
 type ContractStaticAnalysisResultHandler func(ctx Context, contractAddress string) bool
 
 // MsgTypeURL returns the TypeURL of a `sdk.Msg`.

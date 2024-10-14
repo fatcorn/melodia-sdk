@@ -371,9 +371,6 @@ func (app *BaseApp) SetSetBlockBloomTransientHandler(setBlockBloomTransientHandl
 	app.setBlockBloomTransientHandler = setBlockBloomTransientHandler
 }
 
-func (app *BaseApp) SetContractStaticAnalysisHandler(contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler) {
-	app.contractStaticAnalysisHandler = contractStaticAnalysisHandler
-}
 func (app *BaseApp) SetContractStaticAnalysisResultHandler(contractStaticAnalysisResultHandler sdk.ContractStaticAnalysisResultHandler) {
 	app.contractStaticAnalysisResultHandler = contractStaticAnalysisResultHandler
 }

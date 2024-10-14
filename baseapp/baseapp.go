@@ -227,7 +227,6 @@ type BaseApp struct {
 	addTransientGasWanted                      sdk.AddTransientGasWanted
 	modifyLogIndexHandler                      sdk.ModifyLogIndexHandler
 	setBlockBloomTransientHandler              sdk.SetBlockBloomTransientHandler
-	contractStaticAnalysisHandler              sdk.ContractStaticAnalysisHandler
 	contractStaticAnalysisResultHandler        sdk.ContractStaticAnalysisResultHandler
 	isEVMTxHandler                             sdk.IsEVMTxHandler
 	txAccountInfoHandler                       sdk.TxAccountInfoHandler
