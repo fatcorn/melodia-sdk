@@ -47,25 +47,26 @@ type Context struct {
 	// Deprecated: Use HeaderService for hash
 	headerHash []byte
 	// Deprecated: Use HeaderService for chainID and CometService for the rest
-	chainID              string
-	txBytes              []byte
-	logger               log.Logger
-	voteInfo             []abci.VoteInfo
-	gasMeter             storetypes.GasMeter
-	blockGasMeter        storetypes.GasMeter
-	checkTx              bool
-	recheckTx            bool // if recheckTx == true, then checkTx must also be true
-	execMode             ExecMode
-	minGasPrice          DecCoins
-	consParams           cmtproto.ConsensusParams
-	eventManager         EventManagerI
-	priority             int64 // The tx priority, only relevant in CheckTx
-	kvGasConfig          storetypes.GasConfig
-	transientKVGasConfig storetypes.GasConfig
-	streamingManager     storetypes.StreamingManager
-	cometInfo            comet.BlockInfo
-	headerInfo           header.Info
-	txIndex              int
+	chainID               string
+	txBytes               []byte
+	logger                log.Logger
+	voteInfo              []abci.VoteInfo
+	gasMeter              storetypes.GasMeter
+	blockGasMeter         storetypes.GasMeter
+	checkTx               bool
+	recheckTx             bool // if recheckTx == true, then checkTx must also be true
+	execMode              ExecMode
+	minGasPrice           DecCoins
+	consParams            cmtproto.ConsensusParams
+	eventManager          EventManagerI
+	priority              int64 // The tx priority, only relevant in CheckTx
+	kvGasConfig           storetypes.GasConfig
+	transientKVGasConfig  storetypes.GasConfig
+	streamingManager      storetypes.StreamingManager
+	cometInfo             comet.BlockInfo
+	headerInfo            header.Info
+	txIndex               int
+	namespaceBlockTxIndex int
 
 	namespaceId        uint64 // The tx related namespaceId
 	nextAccountNumbers map[string]uint64
@@ -98,6 +99,7 @@ func (c Context) StreamingManager() storetypes.StreamingManager { return c.strea
 func (c Context) CometInfo() comet.BlockInfo                    { return c.cometInfo }
 func (c Context) HeaderInfo() header.Info                       { return c.headerInfo }
 func (c Context) TxIndex() int                                  { return c.txIndex }
+func (c Context) NamespaceBlockTxIndex() int                    { return c.namespaceBlockTxIndex }
 func (c Context) Namespace() uint64                             { return c.namespaceId }
 func (c Context) Synchronous() bool                             { return c.synchronous }
 func (c Context) NextAccountNumber(address string) uint64 {
@@ -188,6 +190,10 @@ func (c Context) WithHeaderHash(hash []byte) Context {
 // WithNamepace returns a Context with an namespace.
 func (c Context) WithNamepace(namespaceId uint64) Context {
 	c.namespaceId = namespaceId
+	return c
+}
+func (c Context) WithNamespaceBlockTxIndex(namespaceBlockTxIndex int) Context {
+	c.namespaceBlockTxIndex = namespaceBlockTxIndex
 	return c
 }
 
