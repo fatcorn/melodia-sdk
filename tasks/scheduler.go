@@ -392,6 +392,13 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) []
 
 		res = append(res, *t.Response)
 
+		s.consumeGas(ctx, t)
+		if gasWanted, ok := consumeGasWanted[t.NamespaceId]; ok {
+			consumeGasWanted[t.NamespaceId] = gasWanted + t.Response.GasWanted
+		} else {
+			consumeGasWanted[t.NamespaceId] = t.Response.GasWanted
+		}
+
 		t.IsEVMTx = s.isEVMTxHandler(ctx, t.SdkTx)
 
 		if !t.IsEVMTx {
@@ -437,14 +444,6 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) []
 		//if t.TxTracer != nil {
 		//	t.TxTracer.Commit()
 		//}
-
-		s.consumeGas(ctx, t)
-
-		if gasWanted, ok := consumeGasWanted[t.NamespaceId]; ok {
-			consumeGasWanted[t.NamespaceId] = gasWanted + t.Response.GasWanted
-		} else {
-			consumeGasWanted[t.NamespaceId] = t.Response.GasWanted
-		}
 
 	}
 	s.consumeGasWanted(ctx, consumeGasWanted)
