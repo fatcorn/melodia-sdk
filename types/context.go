@@ -67,6 +67,7 @@ type Context struct {
 	headerInfo            header.Info
 	txIndex               int
 	namespaceBlockTxIndex int
+	namespaceBlockHeight  int64
 
 	namespaceId        uint64 // The tx related namespaceId
 	nextAccountNumbers map[string]uint64
@@ -80,6 +81,7 @@ type Request = Context
 func (c Context) Context() context.Context                      { return c.baseCtx }
 func (c Context) MultiStore() storetypes.MultiStore             { return c.ms }
 func (c Context) BlockHeight() int64                            { return c.header.Height }
+func (c Context) NamespaceBlockHeight() int64                   { return c.namespaceBlockHeight }
 func (c Context) BlockTime() time.Time                          { return c.header.Time }
 func (c Context) ChainID() string                               { return c.chainID }
 func (c Context) TxBytes() []byte                               { return c.txBytes }
@@ -194,6 +196,10 @@ func (c Context) WithNamepace(namespaceId uint64) Context {
 }
 func (c Context) WithNamespaceBlockTxIndex(namespaceBlockTxIndex int) Context {
 	c.namespaceBlockTxIndex = namespaceBlockTxIndex
+	return c
+}
+func (c Context) WithNamespaceBlockHeight(namespaceBlockHeight int64) Context {
+	c.namespaceBlockHeight = namespaceBlockHeight
 	return c
 }
 

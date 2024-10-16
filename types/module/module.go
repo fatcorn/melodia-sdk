@@ -850,7 +850,7 @@ func (m *Manager) MakeNamespaceBlock(
 		args.StateRootHash = cms.NamespaceWorkingHash(moudles, namespaceId)
 
 		if module, ok := m.Modules[moduleName].(appmodule.HasVMNamespaceBLockMaker); ok {
-			ctx := ctx.WithNamepace(namespaceId)
+			ctx := ctx.WithNamepace(namespaceId).WithNamespaceBlockHeight(store.Height() + 1)
 			err := module.BeginNamespaceBlock(ctx)
 			if err != nil {
 				return nil, err
