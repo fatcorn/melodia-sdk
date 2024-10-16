@@ -883,7 +883,7 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 		app.finalizeBlockState.ms = app.finalizeBlockState.ms.SetTracingContext(nil).(storetypes.CacheMultiStore)
 	}
 
-	err = app.makeNamespaceBlock(app.finalizeBlockState.Context(), req.Txs, req.NsTable)
+	err = app.makeNamespaceBlock(app.finalizeBlockState.Context(), req.Txs, req.NsTable, &events)
 
 	if err != nil {
 		return nil, err

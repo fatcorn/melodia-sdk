@@ -640,6 +640,11 @@ func (app *BaseApp) NamespaceStoreManager() *nsblockstore.NamespaceStoreManager 
 	return app.namespaceStoreManager
 }
 
+// IndexEvents returns the indexEvents.
+func (app *BaseApp) IndexEvents() map[string]struct{} {
+	return app.indexEvents
+}
+
 // LoadVersion loads the BaseApp application version. It will panic if called
 // more than once on a running baseapp.
 func (app *BaseApp) LoadVersion(version int64) error {
@@ -1080,11 +1085,11 @@ func (app *BaseApp) deliverTx(tx []byte, opts ...sdk.Context) *abci.ExecTxResult
 
 // makeNamespaceBlock is an application-defined function that is called after transactions
 // have been processed in FinalizeBlock.
-func (app *BaseApp) makeNamespaceBlock(ctx context.Context, txs [][]byte, nsTable []*cmtproto.NamespaceTableEntries) error {
+func (app *BaseApp) makeNamespaceBlock(ctx context.Context, txs [][]byte, nsTable []*cmtproto.NamespaceTableEntries, globalEvents *[]abci.Event) error {
 
 	if app.namespaceBlockMaker != nil {
 		namespaceMakeBLockContext := app.finalizeBlockState.Context()
-		namespacesBLockData, err := app.namespaceBlockMaker(namespaceMakeBLockContext, txs, nsTable)
+		namespacesBLockData, err := app.namespaceBlockMaker(namespaceMakeBLockContext, txs, nsTable, globalEvents)
 		if err != nil {
 			return err
 		}

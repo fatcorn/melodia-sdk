@@ -811,7 +811,10 @@ func (m *Manager) MakeNamespaceBlock(
 	txs [][]byte, nsTable []*tdmtypes.NamespaceTableEntries,
 	mannager *nsblockstore.NamespaceStoreManager,
 	cms storetypes.CommitMultiStore,
+	globalEvents *[]abci.Event,
+	indexSet map[string]struct{},
 ) (map[string]appmodule.NamespaceBlockData, error) {
+	ctx = ctx.WithEventManager(sdk.NewEventManager())
 	ret := make(map[string]appmodule.NamespaceBlockData)
 	namespaceIDsMoudle := mannager.GetNamespaceIdsModule()
 	moudleRelatedMoudles := mannager.GetModuleRelatedModules()
@@ -874,6 +877,10 @@ func (m *Manager) MakeNamespaceBlock(
 		//	panic("Registerd namespace related moudle not found in moudles manager")
 		//}
 	}
+	// get new build events from BeginNamespaceBlock and EndNamespaceBlock
+	newEvents := ctx.EventManager().ABCIEvents()
+	indexedEvents := sdk.MarkEventsToIndex(newEvents, indexSet)
+	*globalEvents = append(*globalEvents, indexedEvents...)
 
 	return ret, nil
 }

@@ -176,8 +176,8 @@ func (a *App) EndBlocker(ctx sdk.Context) (sdk.EndBlock, error) {
 }
 
 // EndBlocker application updates every end block
-func (a *App) NamespaceBlockMaker(ctx sdk.Context, txs [][]byte, nsTable []*tdmtypes.NamespaceTableEntries) (map[string]appmodule.NamespaceBlockData, error) {
-	return a.ModuleManager.MakeNamespaceBlock(ctx, txs, nsTable, a.NamespaceStoreManager(), a.CommitMultiStore())
+func (a *App) NamespaceBlockMaker(ctx sdk.Context, txs [][]byte, nsTable []*tdmtypes.NamespaceTableEntries, globalEvents *[]abci.Event) (map[string]appmodule.NamespaceBlockData, error) {
+	return a.ModuleManager.MakeNamespaceBlock(ctx, txs, nsTable, a.NamespaceStoreManager(), a.CommitMultiStore(), globalEvents, a.IndexEvents())
 }
 
 // Precommiter application updates every commit
