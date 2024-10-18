@@ -349,10 +349,13 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 		}
 
 		namespaceBlockTxIndex := 0
-		if nsBlockTxIndex, ok := namespaceBlockTxIndexes[namespaceId]; ok {
-			namespaceBlockTxIndex = nsBlockTxIndex + 1
+		isEVMTx := s.isEVMTxHandler(ctx, tx.SdkTx)
+		if isEVMTx {
+			if nsBlockTxIndex, ok := namespaceBlockTxIndexes[namespaceId]; ok {
+				namespaceBlockTxIndex = nsBlockTxIndex + 1
+			}
+			namespaceBlockTxIndexes[namespaceId] = namespaceBlockTxIndex
 		}
-		namespaceBlockTxIndexes[namespaceId] = namespaceBlockTxIndex
 
 		task := &deliverTxTask{
 			Request:               tx.Request,
@@ -362,7 +365,7 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 			Status:                statusPending,
 			Dependencies:          map[int]struct{}{},
 			TotalTask:             totalTask,
-			IsEVMTx:               false,
+			IsEVMTx:               isEVMTx,
 			AccountNumbers:        nextAccountNumbers,
 			NamespaceBlockTxIndex: namespaceBlockTxIndex,
 
@@ -405,8 +408,7 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) []
 		} else {
 			consumeGasWanted[t.NamespaceId] = t.Response.GasWanted
 		}
-
-		t.IsEVMTx = s.isEVMTxHandler(ctx, t.SdkTx)
+		//t.IsEVMTx = s.isEVMTxHandler(ctx, t.SdkTx)
 
 		if !t.IsEVMTx {
 			continue
