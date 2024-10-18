@@ -813,9 +813,9 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 		t := task
 		wg.Add(1)
 		s.DoExecute(func() {
-			//now := time.Now()
+			now := time.Now()
 			s.prepareAndRunTask(wg, ctx, t)
-			//println("run tast time", "sub", time.Now().Sub(now))
+			println("run task time", "sub", time.Now().Sub(now).String())
 		})
 	}
 	//printSystemStats("executing")
