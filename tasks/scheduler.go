@@ -304,6 +304,7 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 	totalTask := len(reqs)
 	interChainIndexes := make(map[int32]int32)
 	txDepends := make([][]int, len(reqs), len(reqs))
+	allNextAccountNumbers := make(map[string]uint64)
 
 	namespaceBlockTxIndexes := make(map[uint64]int)
 
@@ -339,7 +340,14 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 
 	for idx, tx := range reqs {
 		namespaceId := s.namespaceList[idx]
-		nextAccountNumbers := s.nextAccountNumberHandler(ctx.WithNamepace(namespaceId), tx.SdkTx)
+		nextAccountNumbers := s.nextAccountNumberHandler(ctx.WithNamepace(namespaceId).WithNextAccountNumber(allNextAccountNumbers), tx.SdkTx)
+
+		if nextAccountNumbers != nil && len(nextAccountNumbers) > 0 {
+			for addr, ac := range nextAccountNumbers {
+				allNextAccountNumbers[addr] = ac
+			}
+		}
+
 		namespaceBlockTxIndex := 0
 		if nsBlockTxIndex, ok := namespaceBlockTxIndexes[namespaceId]; ok {
 			namespaceBlockTxIndex = nsBlockTxIndex + 1
@@ -380,7 +388,6 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 
 func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) []abci.ExecTxResult {
 	res := make([]abci.ExecTxResult, 0, len(tasks))
-	//evmTxIndex := 0
 	logSizes := make(map[uint64]uint64)
 	txLogses := make(map[uint64][]string)
 	consumeGasWanted := make(map[uint64]int64)
@@ -407,15 +414,6 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) []
 
 		for _, e := range t.Response.Events {
 
-			//if e.Type == "ethereum_tx" {
-			//	for i := range e.Attributes {
-			//		if e.Attributes[i].Key != "txIndex" {
-			//			continue
-			//		}
-			//		println("======beforeIndex ==", e.Attributes[i].Value, "afterIndex=", evmTxIndex, "txIndex=", t.AbsoluteIndex, "namespace=", t.NamespaceId, "height=", ctx.BlockHeight())
-			//		break
-			//	}
-			//}
 			if e.Type == "tx_log" {
 				for i := range e.Attributes {
 					if e.Attributes[i].Key != "txLog" {
@@ -439,7 +437,6 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) []
 				}
 			}
 		}
-		//evmTxIndex++
 
 		//if t.TxTracer != nil {
 		//	t.TxTracer.Commit()
