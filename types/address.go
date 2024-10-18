@@ -97,7 +97,7 @@ var (
 
 func init() {
 	var err error
-	SetAddrCacheEnabled(true)
+	SetAddrCacheEnabled(false)
 
 	// in total the cache size is 61k entries. Key is 32 bytes and value is around 50-70 bytes.
 	// That will make around 92 * 61k * 2 (LRU) bytes ~ 11 MB

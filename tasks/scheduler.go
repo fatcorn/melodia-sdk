@@ -661,7 +661,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 		// these are retries which apply to metrics
 		s.metrics.retries += len(toExecute)
 
-		println("=========", "t1", t1.String(), "t2", t2.String(), "t3", t3.String(), "t4", t4.String(), "t5", t5.String(), "sub", t5.Sub(t1).String())
+		println("=========", "executeAll time", t2.Sub(t1).String(), "new key", t3.Sub(t2).String(), "write version store", t4.Sub(t3).String(), "validateAll", t5.Sub(t4).String())
 		iterations++
 	}
 	t2 := time.Now()
@@ -1022,6 +1022,11 @@ func printSystemStats(desc string) {
 	fmt.Printf("TotalAlloc = %v MiB\n", m.TotalAlloc/1024/1024)
 	fmt.Printf("Sys = %v MiB\n", m.Sys/1024/1024)
 	fmt.Printf("NumGC = %v\n", m.NumGC)
+	fmt.Printf("HeapAlloc: %v MB\n", m.HeapAlloc/1024/1024) // 堆上实际使用的内存
+	fmt.Printf("HeapSys: %v MB\n", m.HeapSys/1024/1024)     // 系统分配给堆的内存
+	fmt.Printf("HeapObjects: %v\n", m.HeapObjects)          // 堆上分配的对象数量
+
+
 	//printCpu()
 }
 
