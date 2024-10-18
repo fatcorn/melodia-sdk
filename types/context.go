@@ -111,6 +111,10 @@ func (c Context) HeaderHash() []byte {
 	return hash
 }
 
+func (c Context) HeadProposalAddress() []byte {
+	return c.header.ProposerAddress
+}
+
 func (c Context) ConsensusParams() cmtproto.ConsensusParams {
 	return c.consParams
 }
