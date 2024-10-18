@@ -70,7 +70,7 @@ message MsgCreateValidator {
   string                   validator_address = 5 [(cosmos_proto.scalar) = "cosmos.ValidatorAddressString"];
   google.protobuf.Any      pubkey            = 6 [(cosmos_proto.accepts_interface) = "cosmos.crypto.PubKey"];
   cosmos.base.v1beta1.Coin value             = 7 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
-  bytes      vote_pubkey       = 8 ;
+  bytes                    vote_pubkey       = 8;
   bytes                    signature         = 9;
 }
 

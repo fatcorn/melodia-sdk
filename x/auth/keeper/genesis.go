@@ -1,6 +1,9 @@
 package keeper
 
 import (
+	"fmt"
+	tmtypes "github.com/cometbft/cometbft/types"
+	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/auth/types"
 )
@@ -25,7 +28,10 @@ func (ak AccountKeeper) InitGenesis(ctx sdk.Context, data types.GenesisState) {
 	for _, acc := range accounts {
 		accNum := acc.GetAccountNumber()
 		for lastAccNum == nil || *lastAccNum < accNum {
-			n := ak.NextAccountNumber(ctx)
+			n := ctx.NextAccountNumber(acc.GetAddress().String())
+			if n <= 0 {
+				n = ak.NextAccountNumber(ctx)
+			}
 			lastAccNum = &n
 		}
 		ak.SetAccount(ctx, acc)
@@ -46,4 +52,33 @@ func (ak AccountKeeper) ExportGenesis(ctx sdk.Context) *types.GenesisState {
 	})
 
 	return types.NewGenesisState(params, genAccounts)
+}
+
+// ChainserviceHandler the namespace init genesis handler
+type ChainserviceHandler struct {
+	keeper AccountKeeper
+}
+
+// NamespaceInitGenesis namespace initializes the module's state from a provided genesis state.
+func (c ChainserviceHandler) NamespaceInitGenesis(ctx sdk.Context, genesis sdk.NamespaceGenesis) error {
+	ctx.Logger().Info(fmt.Sprintf("Namespace init genesis %s namespaceId= %v", types.ModuleName, genesis.NamespaceId))
+	cdc := c.keeper.GetCdc().(codec.Codec)
+
+	var genesisState types.GenesisState
+	err := cdc.UnmarshalJSON(genesis.Data, &genesisState)
+	if err != nil {
+		return err
+	}
+
+	c.keeper.InitGenesis(ctx, genesisState)
+	return nil
+}
+
+func (_c ChainserviceHandler) ListDependentModulesStoreNames() []tmtypes.DependModuleStoreInfo {
+	return []tmtypes.DependModuleStoreInfo{}
+}
+
+// NewChainserviceHandler create new handler
+func NewChainserviceHandler(k AccountKeeper) ChainserviceHandler {
+	return ChainserviceHandler{keeper: k}
 }

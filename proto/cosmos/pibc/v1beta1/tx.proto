@@ -17,23 +17,23 @@ service Msg {
 
 // MsgRecvPacket represents a message will execute in namespace B
 message MsgRecvPacket {
-   option (cosmos.msg.v1.signer) = "sender";
+  option (cosmos.msg.v1.signer) = "sender";
 
-   BasePacket packet = 1;
-   bytes source_packet_tx_id = 2;
-   string sender = 3;
+  BasePacket packet              = 1;
+  bytes      source_packet_tx_id = 2;
+  string     sender              = 3;
 }
 
 // MsgAcknowledgement represents a message will execute in namespace A to roll back the first namespaceA msg
 message MsgAcknowledgement {
   option (cosmos.msg.v1.signer) = "sender";
 
-  BasePacket packet = 1;
-  bytes source_packet_tx_id = 2;
-  string sender = 3;
+  BasePacket packet              = 1;
+  bytes      source_packet_tx_id = 2;
+  string     sender              = 3;
 }
 
-message BasePacket  {
+message BasePacket {
   // Source namespace
   uint64 source_namespace_id = 1;
   /// Target namespace

@@ -10,8 +10,5 @@ option go_package = "github.com/cosmos/cosmos-sdk/x/pibc/types";
 // GenesisState defines the pibc module's genesis state.
 message GenesisState {
   // params defines all the parameters of the module.
-  Params params = 1 [
-    (gogoproto.nullable) = false,
-    (amino.dont_omitempty) = true
-  ];
+  Params params = 1 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
 }

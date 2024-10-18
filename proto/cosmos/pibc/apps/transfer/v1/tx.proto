@@ -1,7 +1,6 @@
 syntax = "proto3";
 package cosmos.pibc.apps.transfer.v1;
 
-
 option go_package = "github.com/cosmos/cosmos-sdk/x/pibc/apps/transfer/types";
 
 import "gogoproto/gogo.proto";
@@ -56,5 +55,5 @@ message Packet {
 
 // TransactionState save the transaction state
 message TransactionState {
-   uint32  state = 1;
+  uint32 state = 1;
 }

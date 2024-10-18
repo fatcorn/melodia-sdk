@@ -467,7 +467,7 @@ func (s *scheduler) consumeGas(ctx sdk.Context, task *deliverTxTask) {
 	} else {
 		consumed = gasUsed
 	}
-	ctx.BlockGasMeter().WithNamespaceId(taskCtx.Namespace()).ConsumeGas(
+	ctx.BlockGasMeter().WithNamespaceId(task.NamespaceId).ConsumeGas(
 		consumed, "block gas meter",
 	)
 }

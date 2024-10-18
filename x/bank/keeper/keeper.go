@@ -56,6 +56,7 @@ type Keeper interface {
 
 	DelegateCoins(ctx context.Context, delegatorAddr, moduleAccAddr sdk.AccAddress, amt sdk.Coins) error
 	UndelegateCoins(ctx context.Context, moduleAccAddr, delegatorAddr sdk.AccAddress, amt sdk.Coins) error
+	GetMinGasPrices(ctx sdk.Context) sdk.DecCoins
 
 	types.QueryServer
 }
@@ -629,4 +630,19 @@ func (k BaseKeeper) IterateDeferredBalances(ctx sdk.Context, cb func(addr sdk.Ac
 	}
 	// pass cb to deferred cache iterator
 	k.deferredCache.IterateDeferredBalances(ctx, cb)
+}
+
+func (k BaseKeeper) GetMinGasPrices(ctx sdk.Context) sdk.DecCoins {
+	params := k.GetParams(ctx)
+	gasPrices, err := sdk.ParseDecCoins(params.MinimumGasPrices)
+	if err != nil {
+		panic(fmt.Sprintf("invalid minimum gas prices: %v", err))
+	}
+
+	return gasPrices
+}
+
+// GetCdc return the cdc
+func (k BaseKeeper) GetCdc() codec.BinaryCodec {
+	return k.cdc
 }

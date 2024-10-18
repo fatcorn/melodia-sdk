@@ -3,6 +3,8 @@ package tx
 import (
 	"context"
 	"fmt"
+	"github.com/cometbft/cometbft/rpc/core"
+	cmttypes "github.com/cometbft/cometbft/types"
 	"strings"
 
 	gogogrpc "github.com/cosmos/gogoproto/grpc"
@@ -95,7 +97,12 @@ func (s txServer) Simulate(ctx context.Context, req *txtypes.SimulateRequest) (*
 		return nil, status.Errorf(codes.InvalidArgument, "empty txBytes is not allowed")
 	}
 
-	gasInfo, result, err := s.simulate(txBytes, s.clientCtx.NamespaceId)
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	namespaceId, err := core.GetTxNamespaceId(cmttypes.Namespace(s.clientCtx.NamespaceId), cmttypes.Namespace(sdkCtx.Namespace()))
+	if err != nil {
+		return nil, err
+	}
+	gasInfo, result, err := s.simulate(txBytes, uint64(namespaceId))
 	if err != nil {
 		return nil, status.Errorf(codes.Unknown, "%v with gas used: '%d'", err, gasInfo.GasUsed)
 	}

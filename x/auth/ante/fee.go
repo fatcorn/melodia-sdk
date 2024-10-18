@@ -49,6 +49,11 @@ func (dfd DeductFeeDecorator) AnteHandle(ctx sdk.Context, tx sdk.Tx, simulate bo
 		return ctx, errorsmod.Wrap(sdkerrors.ErrInvalidGasLimit, "must provide positive gas")
 	}
 
+	minGasPrices := dfd.bankKeeper.GetMinGasPrices(ctx)
+	if minGasPrices != nil {
+		ctx = ctx.WithMinGasPrices(minGasPrices)
+	}
+
 	var (
 		priority int64
 		err      error

@@ -289,3 +289,8 @@ func (ak AccountKeeper) GetParams(ctx context.Context) (params types.Params) {
 	}
 	return params
 }
+
+// GetCdc return the cdc
+func (k AccountKeeper) GetCdc() codec.BinaryCodec {
+	return k.cdc
+}
