@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/base64"
 	"fmt"
 	"github.com/cometbft/cometbft/crypto"
 	"github.com/cometbft/cometbft/privval"
@@ -112,16 +113,24 @@ where we can get the pubkey using "%s tendermint show-validator"
 			pvKeyFile := serverCtx.Config.PrivValidatorKeyFile()
 
 			pvStateFile := serverCtx.Config.PrivValidatorStateFile()
-			filePV := privval.LoadOrGenFilePV(pvKeyFile, pvStateFile)
-			if filePV.GetVotePubKey() != nil {
-				msg.VotePubkey = filePV.GetVotePubKey().Bytes()
-			}
-			if filePV.GetVotePriKey() != nil {
-				sign, err := filePV.GetVotePriKey().Sign(msg.VotePubkey)
+			if validator.SignPubKey != "" {
+				msg.VotePubkey, err = base64.StdEncoding.DecodeString(validator.SignPubKey)
 				if err != nil {
 					return err
 				}
-				msg.Signature = sign
+				msg.Signature, err = base64.StdEncoding.DecodeString(validator.Signature)
+			} else {
+				filePV := privval.LoadOrGenFilePV(pvKeyFile, pvStateFile)
+				if filePV.GetVotePubKey() != nil {
+					msg.VotePubkey = filePV.GetVotePubKey().Bytes()
+				}
+				if filePV.GetVotePriKey() != nil {
+					sign, err := filePV.GetVotePriKey().Sign(msg.VotePubkey)
+					if err != nil {
+						return err
+					}
+					msg.Signature = sign
+				}
 			}
 
 			return tx.GenerateOrBroadcastTxWithFactory(clientCtx, txf, msg)
