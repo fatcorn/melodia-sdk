@@ -325,6 +325,7 @@ func AddCommands(rootCmd *cobra.Command, defaultNodeHome string, appCreator type
 	cometCmd.AddCommand(
 		ShowNodeIDCmd(),
 		ShowValidatorCmd(),
+		SignValidatorPubKey(),
 		ShowAddressCmd(),
 		VersionCmd(),
 		cmtcmd.ResetAllCmd,

@@ -14,7 +14,7 @@ service Query {
   // SourcePacket queries the cross namespace tx source packet
   rpc SourcePacket(QuerySourcePacketRequest) returns (QuerySourcePacketResponse) {
     option (cosmos.query.v1.module_query_safe) = true;
-    option (google.api.http).get = "/cosmos/pibc/v1beta1/sourcePacket/{tx_id}";
+    option (google.api.http).get               = "/cosmos/pibc/v1beta1/sourcePacket/{tx_id}";
   }
 }
 

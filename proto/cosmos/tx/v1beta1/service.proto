@@ -233,7 +233,7 @@ message GetBlockWithTxsResponse {
 // Since: cosmos-sdk 0.45.2
 message GetBlockWithTxsByNamespaceRequest {
   // height is the height of the block to query.
-  int64 height = 1;
+  int64 height     = 1;
   uint64 namespace = 2;
   // pagination defines a pagination for the request.
   cosmos.base.query.v1beta1.PageRequest pagination = 3;
@@ -245,7 +245,7 @@ message GetBlockWithTxsByNamespaceRequest {
 // Since: cosmos-sdk 0.45.2
 message GetBlockWithTxsByNamespaceResponse {
   // txs are the transactions in the block.
-  repeated cosmos.tx.v1beta1.Tx txs      = 1;
+  repeated cosmos.tx.v1beta1.Tx txs = 1;
   // pagination defines a pagination for the response.
   cosmos.base.query.v1beta1.PageResponse pagination = 2;
 }

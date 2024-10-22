@@ -8,6 +8,6 @@ option go_package = "github.com/cosmos/cosmos-sdk/x/pibc/types";
 
 // Params defines the parameters for the module.
 message Params {
-  option (amino.name) = "cosmos-sdk/x/pibc/Params";
+  option (amino.name)      = "cosmos-sdk/x/pibc/Params";
   option (gogoproto.equal) = true;
 }
