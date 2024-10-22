@@ -95,17 +95,18 @@ type BaseApp struct {
 
 	pibcPacketGeneratorHadler *sdk.PIBCPacketGeneratorHandler
 
-	initChainer         sdk.InitChainer  // ABCI InitChain handler
-	preBlocker          sdk.PreBlocker   // logic to run before BeginBlocker
-	beginBlocker        sdk.BeginBlocker // (legacy ABCI) BeginBlock handler
-	endBlocker          sdk.EndBlocker   // (legacy ABCI) EndBlock handler
-	namespaceBlockMaker sdk.NamespaceMakeBlock
-	processProposal     sdk.ProcessProposalHandler     // ABCI ProcessProposal handler
-	prepareProposal     sdk.PrepareProposalHandler     // ABCI PrepareProposal
-	extendVote          sdk.ExtendVoteHandler          // ABCI ExtendVote handler
-	verifyVoteExt       sdk.VerifyVoteExtensionHandler // ABCI VerifyVoteExtension handler
-	prepareCheckStater  sdk.PrepareCheckStater         // logic to run during commit using the checkState
-	precommiter         sdk.Precommiter                // logic to run during commit using the deliverState
+	initChainer            sdk.InitChainer  // ABCI InitChain handler
+	preBlocker             sdk.PreBlocker   // logic to run before BeginBlocker
+	beginBlocker           sdk.BeginBlocker // (legacy ABCI) BeginBlock handler
+	endBlocker             sdk.EndBlocker   // (legacy ABCI) EndBlock handler
+	namespaceBlockPreparer sdk.NamespaceBlockPreparer
+	namespaceBlockMaker    sdk.NamespaceMakeBlock
+	processProposal        sdk.ProcessProposalHandler     // ABCI ProcessProposal handler
+	prepareProposal        sdk.PrepareProposalHandler     // ABCI PrepareProposal
+	extendVote             sdk.ExtendVoteHandler          // ABCI ExtendVote handler
+	verifyVoteExt          sdk.VerifyVoteExtensionHandler // ABCI VerifyVoteExtension handler
+	prepareCheckStater     sdk.PrepareCheckStater         // logic to run during commit using the checkState
+	precommiter            sdk.Precommiter                // logic to run during commit using the deliverState
 
 	addrPeerFilter sdk.PeerFilter // filter peers by address and port
 	idPeerFilter   sdk.PeerFilter // filter peers by node ID
@@ -1083,13 +1084,13 @@ func (app *BaseApp) deliverTx(tx []byte, opts ...sdk.Context) *abci.ExecTxResult
 	return resp
 }
 
-// makeNamespaceBlock is an application-defined function that is called after transactions
+// prepareNamespaceBlock is an application-defined function that is called after transactions
 // have been processed in FinalizeBlock.
-func (app *BaseApp) makeNamespaceBlock(ctx context.Context, txs [][]byte, nsTable []*cmtproto.NamespaceTableEntries, globalEvents *[]abci.Event) error {
+func (app *BaseApp) prepareNamespaceBlock(ctx context.Context, txs [][]byte, nsTable []*cmtproto.NamespaceTableEntries) error {
 
-	if app.namespaceBlockMaker != nil {
+	if app.namespaceBlockPreparer != nil {
 		namespaceMakeBLockContext := app.finalizeBlockState.Context()
-		namespacesBLockData, err := app.namespaceBlockMaker(namespaceMakeBLockContext, txs, nsTable, globalEvents)
+		namespacesBLockData, err := app.namespaceBlockPreparer(namespaceMakeBLockContext, txs, nsTable)
 		if err != nil {
 			return err
 		}
@@ -1104,11 +1105,44 @@ func (app *BaseApp) makeNamespaceBlock(ctx context.Context, txs [][]byte, nsTabl
 				return err
 			}
 			// todo, get namespaceId height and block hash
-			namespaceBLockStore, ok := app.namespaceStoreManager.GetNamespaceStoreByKey(storeKey)
+			namespaceBlockStore, ok := app.namespaceStoreManager.GetNamespaceStoreByKey(storeKey)
 			if !ok {
 				panic("Load namespace block store failed")
 			}
-			namespaceBLockStore.CacheBlock(&namespaceBLock)
+			namespaceBlockStore.CacheBlock(&namespaceBLock)
+		}
+
+	}
+
+	return nil
+}
+
+// makeNamespaceBlock is an application-defined function that is called after transactions
+// have been processed in FinalizeBlock.
+func (app *BaseApp) makeNamespaceBlock(ctx context.Context, globalEvents *[]abci.Event) error {
+
+	if app.namespaceBlockMaker != nil {
+		namespaceMakeBLockContext := app.finalizeBlockState.Context()
+		namespacesBLockData, err := app.namespaceBlockMaker(namespaceMakeBLockContext, globalEvents)
+		if err != nil {
+			return err
+		}
+
+		for storeKey, datum := range namespacesBLockData {
+			if len(datum) == 0 {
+				continue
+			}
+			var namespaceBLock nsblockstore.NamespaceBLock
+			err = borsh.Deserialize(&namespaceBLock, datum)
+			if err != nil {
+				return err
+			}
+			// todo, get namespaceId height and block hash
+			namespaceBlockStore, ok := app.namespaceStoreManager.GetNamespaceStoreByKey(storeKey)
+			if !ok {
+				panic("Load namespace block store failed")
+			}
+			namespaceBlockStore.UpdateBlock(&namespaceBLock)
 		}
 
 	}
@@ -1166,6 +1200,8 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	} else {
 		ctx = app.getContextForTx(mode, txBytes)
 	}
+
+	ctx = ctx.WithNamespaceBlockManager(app.namespaceStoreManager)
 
 	ms := ctx.MultiStore()
 

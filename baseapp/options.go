@@ -232,10 +232,18 @@ func (app *BaseApp) SetEndBlocker(endBlocker sdk.EndBlocker) {
 
 func (app *BaseApp) SetNamespaceBlockMaker(namespaceBlockMaker sdk.NamespaceMakeBlock) {
 	if app.sealed {
-		panic("SetEndBlocker() on sealed BaseApp")
+		panic("SetNamespaceBlockMaker() on sealed BaseApp")
 	}
 
 	app.namespaceBlockMaker = namespaceBlockMaker
+}
+
+func (app *BaseApp) SetNamespaceBlockPreparer(namespaceBlockPreparer sdk.NamespaceBlockPreparer) {
+	if app.sealed {
+		panic("SetNamespaceBlockPreparer() on sealed BaseApp")
+	}
+
+	app.namespaceBlockPreparer = namespaceBlockPreparer
 }
 
 func (app *BaseApp) SetPrepareCheckStater(prepareCheckStater sdk.PrepareCheckStater) {

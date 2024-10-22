@@ -826,6 +826,12 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 
 	events = append(events, beginBlock.Events...)
 
+	err = app.prepareNamespaceBlock(app.finalizeBlockState.Context(), req.Txs, req.NsTable)
+
+	if err != nil {
+		return nil, err
+	}
+
 	// Reset the gas meter so that the AnteHandlers aren't required to
 	gasMeter = app.getBlockGasMeter(app.finalizeBlockState.Context())
 	app.finalizeBlockState.SetContext(app.finalizeBlockState.Context().WithBlockGasMeter(gasMeter))
@@ -863,6 +869,12 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	finalizeCtx := app.getContext(execModeFinalize)
 
 	batchResult := app.DeliverTxBatch(finalizeCtx, sdk.DeliverTxBatchRequest{TxEntries: entries, Orders: req.Orders}, namespaceList)
+
+	err = app.makeNamespaceBlock(app.finalizeBlockState.Context(), &events)
+	if err != nil {
+		return nil, err
+	}
+
 	for idx, result := range batchResult.Results {
 		txResults[idx] = &result.Response
 		app.HandleInternalEvent(sdk.SdkEventsFromABCIEvent(result.Response.Events))
@@ -881,12 +893,6 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 
 	if app.finalizeBlockState.ms.TracingEnabled() {
 		app.finalizeBlockState.ms = app.finalizeBlockState.ms.SetTracingContext(nil).(storetypes.CacheMultiStore)
-	}
-
-	err = app.makeNamespaceBlock(app.finalizeBlockState.Context(), req.Txs, req.NsTable, &events)
-
-	if err != nil {
-		return nil, err
 	}
 
 	endBlock, err := app.endBlock(app.finalizeBlockState.Context())
@@ -1229,6 +1235,7 @@ func (app *BaseApp) handleQueryGRPC(handler GRPCQueryHandler, req *abci.RequestQ
 	}
 	ctx.SetNamespace(req.NamespaceId)
 
+	ctx = ctx.WithNamespaceBlockManager(app.namespaceStoreManager)
 	resp, err := handler(ctx, req)
 	if err != nil {
 		resp = sdkerrors.QueryResult(gRPCErrorToSDKError(err), app.trace)
@@ -1519,7 +1526,7 @@ func (app *BaseApp) DeliverTxBatch(ctx sdk.Context, req sdk.DeliverTxBatchReques
 	scheduler := tasks.NewScheduler(app.concurrencyWorkers, app.deliverTx, namespaceList)
 	scheduler.SetSchedulerHandlers(app.modifyLogIndexHandler, app.setBlockBloomTransientHandler, app.isEVMTxHandler, app.nextAccountNumberHandler, app.txAccountInfoHandler, app.addTransientGasWanted)
 
-	txRes, err := scheduler.ProcessAll(ctx, req)
+	txRes, err := scheduler.ProcessAll(ctx.WithNamespaceBlockManager(app.namespaceStoreManager), req)
 
 	if err != nil {
 		ctx.Logger().Error("error while processing scheduler", "err", err)

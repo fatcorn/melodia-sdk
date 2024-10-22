@@ -803,21 +803,18 @@ func (m *Manager) BeginBlock(ctx sdk.Context) (sdk.BeginBlock, error) {
 	}, nil
 }
 
-// MakeNamespaceBlock performs end block functionality for all modules. It creates a
+// PrepareNamespaceBlock performs end block functionality for all modules. It creates a
 // child context with an event manager to aggregate events emitted from all
 // modules.
-func (m *Manager) MakeNamespaceBlock(
+func (m *Manager) PrepareNamespaceBlock(
 	ctx sdk.Context,
 	txs [][]byte, nsTable []*tdmtypes.NamespaceTableEntries,
 	mannager *nsblockstore.NamespaceStoreManager,
 	cms storetypes.CommitMultiStore,
-	globalEvents *[]abci.Event,
-	indexSet map[string]struct{},
 ) (map[string]appmodule.NamespaceBlockData, error) {
 	ctx = ctx.WithEventManager(sdk.NewEventManager())
 	ret := make(map[string]appmodule.NamespaceBlockData)
 	namespaceIDsMoudle := mannager.GetNamespaceIdsModule()
-	moudleRelatedMoudles := mannager.GetModuleRelatedModules()
 	//stores := mannager.GetNamespaceStores()
 
 	namespaceTxsMap := bfttypes.ListNamespaceTxsWithNSTable(txs, nsTable)
@@ -833,7 +830,7 @@ func (m *Manager) MakeNamespaceBlock(
 		if !ok {
 			panic("Registerd namespace store not found in block stores")
 		}
-		args := appmodule.NamespaceBlockMakeCommonArgs{}
+		args := appmodule.NamespaceBlockPrepareCommonArgs{}
 		// todo, add genesis block logic
 		lastBlock := store.LoadBlock(store.Height())
 		if lastBlock != nil {
@@ -847,6 +844,62 @@ func (m *Manager) MakeNamespaceBlock(
 			args.TxRootHash = merkle.GenerateBlockDataNmtRootHash([]uint64{}, emptyNamespaceTxs)
 		}
 
+		if module, ok := m.Modules[moduleName].(appmodule.HasVMNamespaceBLockMaker); ok {
+
+			namespaceBlockData, err := module.PrepareNamespaceBlock(ctx, args)
+			if err != nil {
+				return nil, err
+			}
+
+			key := nsblockstore.CaculateStoreKey(namespaceId, moduleName)
+			ret[key] = namespaceBlockData
+
+		}
+		// not every module needs to generate block
+		//else {
+		//	panic("Registerd namespace related moudle not found in moudles manager")
+		//}
+	}
+
+	return ret, nil
+}
+
+// MakeNamespaceBlock performs end block functionality for all modules. It creates a
+// child context with an event manager to aggregate events emitted from all
+// modules.
+func (m *Manager) MakeNamespaceBlock(
+	ctx sdk.Context,
+	//txs [][]byte, nsTable []*tdmtypes.NamespaceTableEntries,
+	mannager *nsblockstore.NamespaceStoreManager,
+	cms storetypes.CommitMultiStore,
+	globalEvents *[]abci.Event,
+	indexSet map[string]struct{},
+) (map[string]appmodule.NamespaceBlockData, error) {
+	ctx = ctx.WithEventManager(sdk.NewEventManager()).WithNamespaceBlockManager(mannager)
+	ret := make(map[string]appmodule.NamespaceBlockData)
+	namespaceIDsMoudle := mannager.GetNamespaceIdsModule()
+	moudleRelatedMoudles := mannager.GetModuleRelatedModules()
+	//stores := mannager.GetNamespaceStores()
+
+	//namespaceTxsMap := bfttypes.ListNamespaceTxsWithNSTable(txs, nsTable)
+	// todo, every tendermint block will generate every namespace block
+	for _, value := range namespaceIDsMoudle {
+		namespaceId := value.NamespaceId
+		moduleName := value.ModuleName
+		store, ok := mannager.GetNamespaceStore(namespaceId, moduleName)
+		// unactive namespace not produce block
+		if !store.GetNamespaceState() {
+			continue
+		}
+		if !ok {
+			panic("Registerd namespace store not found in block stores")
+		}
+		args := appmodule.NamespaceBlockMakeCommonArgs{}
+		// todo, add genesis block logic
+		cahcedBlock := store.CurrentBlock()
+
+		args.CachedBlockData = cahcedBlock.Data
+
 		relatedMoudles := moudleRelatedMoudles[moduleName]
 		moudles := append([]string{moduleName}, relatedMoudles...)
 
@@ -858,7 +911,7 @@ func (m *Manager) MakeNamespaceBlock(
 			if err != nil {
 				return nil, err
 			}
-			namespaceBlockData, err := module.MakeBlock(ctx, args)
+			namespaceBlockData, err := module.FinalizeNamespaceBlock(ctx, args)
 			if err != nil {
 				return nil, err
 			}

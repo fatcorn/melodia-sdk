@@ -13,6 +13,7 @@ import (
 	"cosmossdk.io/log"
 	"cosmossdk.io/store/gaskv"
 	storetypes "cosmossdk.io/store/types"
+	"github.com/cosmos/cosmos-sdk/nsblockstore"
 	"strconv"
 )
 
@@ -72,6 +73,8 @@ type Context struct {
 	namespaceId        uint64 // The tx related namespaceId
 	nextAccountNumbers map[string]uint64
 	synchronous        bool
+
+	namespaceBlockManager *nsblockstore.NamespaceStoreManager
 }
 
 // Proposed rename, not done to avoid API breakage
@@ -110,6 +113,9 @@ func (c Context) NextAccountNumber(address string) uint64 {
 	}
 	return 0
 }
+func (c Context) NamespaceBlockManager() *nsblockstore.NamespaceStoreManager {
+	return c.namespaceBlockManager
+}
 
 // clone the header before returning
 func (c Context) BlockHeader() cmtproto.Header {
@@ -122,6 +128,15 @@ func (c Context) HeaderHash() []byte {
 	hash := make([]byte, len(c.headerHash))
 	copy(hash, c.headerHash)
 	return hash
+}
+
+// NamespaceBlock returns the namespaceId vm module current block
+func (c Context) NamespaceBlock(moduleName string) *nsblockstore.NamespaceBLock {
+	store, exist := c.namespaceBlockManager.GetNamespaceStore(c.namespaceId, moduleName)
+	if !exist {
+		panic("Namespace block store not exist")
+	}
+	return store.CurrentBlock()
 }
 
 func (c Context) ConsensusParams() cmtproto.ConsensusParams {
@@ -355,6 +370,12 @@ func (c Context) WithHeaderInfo(headerInfo header.Info) Context {
 	// Settime to UTC
 	headerInfo.Time = headerInfo.Time.UTC()
 	c.headerInfo = headerInfo
+	return c
+}
+
+// WithNamespaceBlockManager returns a Context with namespace
+func (c Context) WithNamespaceBlockManager(m *nsblockstore.NamespaceStoreManager) Context {
+	c.namespaceBlockManager = m
 	return c
 }
 
