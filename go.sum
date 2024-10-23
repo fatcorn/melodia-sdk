@@ -17,8 +17,8 @@ git.everylink.ai/blockchain/hotbeat-consensus v0.38.7-0.20241016090830-113a3004a
 git.everylink.ai/blockchain/hotbeat-consensus v0.38.7-0.20241016090830-113a3004a708/go.mod h1:1E5EUSCaKLqEVpMbKs1N6JSAk0vmD7Juu7tp5ez/Dls=
 git.everylink.ai/blockchain/melodiasdk-io-api v0.7.4-0.20240703080149-6c21938bf6f8 h1:WhEDGri7xOMij9utzTjQCvRjjhjTGD37MDAHpAT2LIw=
 git.everylink.ai/blockchain/melodiasdk-io-api v0.7.4-0.20240703080149-6c21938bf6f8/go.mod h1:IcxpYS5fMemZGqyYtErK7OqvdM0C8kdW3dq8Q/XIG38=
-git.everylink.ai/blockchain/melodiasdk-io-collections v0.4.1-0.20240926051011-95eb7134d620 h1:7O3j9sI6gT1JE+80T90Hc8m8RrfKc25K3mjXqbrhgOY=
-git.everylink.ai/blockchain/melodiasdk-io-collections v0.4.1-0.20240926051011-95eb7134d620/go.mod h1:oa5lUING2dP+gdDquow+QjlF45eL1t4TJDypgGd+tv0=
+git.everylink.ai/blockchain/melodiasdk-io-collections v0.4.1-0.20241022082508-640d6124f476 h1:Pqd2B1G4NEj2kiom6rQPMSfRmrbIG/oM1nGJGnZl3PY=
+git.everylink.ai/blockchain/melodiasdk-io-collections v0.4.1-0.20241022082508-640d6124f476/go.mod h1:oa5lUING2dP+gdDquow+QjlF45eL1t4TJDypgGd+tv0=
 git.everylink.ai/blockchain/melodiasdk-io-core v0.11.1-0.20241022072036-1884b6e54ee1 h1:A0RKmTyGpOrA5dMVGagDBGfRH8f5euSFvCKrqIczs/k=
 git.everylink.ai/blockchain/melodiasdk-io-core v0.11.1-0.20241022072036-1884b6e54ee1/go.mod h1:LaTtayWBSoacF5xNzoF8tmLhehqlA9z1SWiPuNC6X1w=
 git.everylink.ai/blockchain/melodiasdk-io-store v1.0.3-0.20241010091126-1649ab1ee7e2 h1:kF4ji1CiFTyc6JW0ELqJQi1wycABEtVMLVdV26Z2dLU=
