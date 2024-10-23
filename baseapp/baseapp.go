@@ -1721,8 +1721,8 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 					return
 				}
 				//3、to contract static analysis must be serial
-				result := app.contractStaticAnalysisResultHandler(ctx.WithNamepace(namespaceId), to)
-				if !result {
+				isSerialResult := app.contractStaticAnalysisResultHandler(ctx.WithNamepace(namespaceId), to)
+				if isSerialResult {
 					if len(staticToSerialIndexes) > 0 {
 						staticToSerialIndexes = append(staticToSerialIndexes, int32(txIdx))
 						nsTransactionIndexes[staticToSerialIndex].Indexes = staticToSerialIndexes
