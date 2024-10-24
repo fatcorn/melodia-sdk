@@ -2,10 +2,9 @@ package keeper
 
 import (
 	"context"
-	"errors"
-
 	"cosmossdk.io/collections"
-
+	scheduler "cosmossdk.io/store/types/occ"
+	"errors"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
@@ -68,6 +67,12 @@ func (ak AccountKeeper) GetAllAccounts(ctx context.Context) (accounts []sdk.Acco
 func (ak AccountKeeper) SetAccount(ctx context.Context, acc sdk.AccountI) {
 	err := ak.Accounts.Set(ctx, acc.GetAddress(), acc)
 	if err != nil {
+		if errors.Is(err, collections.ErrConflict) {
+			sdkCtx := sdk.UnwrapSDKContext(ctx)
+			if !sdkCtx.Synchronous() {
+				panic(scheduler.NewErrNextAccountNumber(sdkCtx.TxIndex()))
+			}
+		}
 		panic(err)
 	}
 }
