@@ -70,6 +70,7 @@ func (ak AccountKeeper) SetAccount(ctx context.Context, acc sdk.AccountI) {
 		if errors.Is(err, collections.ErrConflict) {
 			sdkCtx := sdk.UnwrapSDKContext(ctx)
 			if !sdkCtx.Synchronous() {
+				sdkCtx.Logger().Error("Set account panic with next account number", "accountNumber", acc.GetAccountNumber(), "address", acc.GetAddress().String(), "height", sdkCtx.BlockHeight())
 				panic(scheduler.NewErrNextAccountNumber(sdkCtx.TxIndex()))
 			}
 		}
