@@ -906,7 +906,8 @@ func (rs *Store) loadCommitStoreFromParams(key types.StoreKey, params storeParam
 			// Wrap and get a CommitKVStore with inter-block caching. Note, this should
 			// only wrap the primary CommitKVStore, not any store that is already
 			// branched as that will create unexpected behavior.
-			rs.interBlockCache.GetStoreCache(key, store)
+			newStore := rs.interBlockCache.GetStoreCache(key, store)
+			return types.CommitKVStore(newStore), nil
 		}
 
 		return types.CommitKVStore(store), nil

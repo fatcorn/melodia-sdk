@@ -31,6 +31,7 @@ import (
 	"cosmossdk.io/store/multiversion"
 	storetypes "cosmossdk.io/store/types"
 	"cosmossdk.io/store/types/occ"
+	"encoding/hex"
 )
 
 type status string
@@ -601,26 +602,56 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 		listStore := os.Getenv("listStore")
 		totalExecuted := 0
 
-		if listStore != "" {
+		if listStore != "" && !s.synchronous {
+			t := time.Now()
+			tt := 0
+			multiVersionMap := make(map[string]multiversion.MultiVersionValue)
+			keyVersionCountMao := make(map[string]int)
+
 			for _, task := range toExecute {
-				if task.IsStatus(statusExecuted) {
-					totalExecuted++
-					tt := 0
+				if task.Status == statusExecuted {
 					for _, v := range task.VersionStores {
-						writeset := v.GetWriteset()
+						writeset := v.Writeset
 						for key, _ := range writeset {
-							v.NewKey(key, task.TotalTask)
-							tt++
+							keyVersionCountMao[key] += 1
 						}
 					}
-
 				}
 			}
+			tn := time.Now()
+			for _, task := range toExecute {
+				if task.Status == statusExecuted {
+					totalExecuted++
+					for _, v := range task.VersionStores {
+						writeset := v.Writeset
+						for key, _ := range writeset {
+							//t8 := time.Now()
+							listItem, found := multiVersionMap[key]
+							if !found {
+								count := keyVersionCountMao[key]
+								if count > 1 {
+									bytesKey := hex.EncodeToString([]byte(key))
+									println("not found key", "key", bytesKey, "count", count)
+									listItem = multiversion.NewMultiVersionListItem(task.TotalTask)
+								} else {
+									listItem = multiversion.NewMultiVersionListItem(1)
+								}
+								multiVersionMap[key] = listItem
+							}
+							//listItem := multiversion.NewMultiVersionListItem(task.TotalTask)
+							v.NewKey(key, task.TotalTask, listItem)
+							tt++
+							//println("t8888888888", "tt", time.Now().Sub(t8).String())
+						}
+					}
+				}
+			}
+			println("new key time =========================", "count time", tn.Sub(t).String(), "sub time", time.Now().Sub(tn).String(), "count", tt)
 		}
 
 		t3 := time.Now()
 
-		if listStore != "" {
+		if listStore != "" && !s.synchronous {
 			wg := &sync.WaitGroup{}
 			wg.Add(totalExecuted)
 
@@ -661,7 +692,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 		// these are retries which apply to metrics
 		s.metrics.retries += len(toExecute)
 
-		println("=========", "executeAll time", t2.Sub(t1).String(), "new key", t3.Sub(t2).String(), "write version store", t4.Sub(t3).String(), "validateAll", t5.Sub(t4).String())
+		println("=========", "executeAll time", t2.Sub(t1).String(), "new key", t3.Sub(t2).String(), "write version store", t4.Sub(t3).String(), "validateAll", t5.Sub(t4).String(), "iterations", iterations)
 		iterations++
 	}
 	t2 := time.Now()
@@ -835,12 +866,12 @@ func (s *scheduler) prepareAndRunTask(wg *sync.WaitGroup, ctx sdk.Context, task 
 	task.Ctx = ctx
 	s.executeTask(task)
 	listStore := os.Getenv("listStore")
-	if listStore == "" {
+	if listStore != "" {
 		if s.synchronous {
 			for _, v := range task.VersionStores {
 				writeset := v.GetWriteset()
 				for key, _ := range writeset {
-					v.NewKey(key, task.TotalTask)
+					v.NewKey(key, task.TotalTask, nil)
 				}
 				v.WriteToMultiVersionStore()
 			}
