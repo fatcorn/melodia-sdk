@@ -1720,8 +1720,6 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 
 			from, to = app.txAccountInfoHandler(tx)
 
-			println("txIndex=", txIdx, "to=", to, "from=", from)
-
 			fromIdx, fromExists = addressIndexMap[from]
 			toIdx, toExists = addressIndexMap[to]
 
