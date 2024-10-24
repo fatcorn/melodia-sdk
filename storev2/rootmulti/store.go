@@ -15,6 +15,7 @@ import (
 	storetypes "cosmossdk.io/store/types"
 	"encoding/json"
 	goerrors "errors"
+
 	"fmt"
 	hashmetrics "github.com/hashicorp/go-metrics"
 
@@ -59,18 +60,19 @@ var (
 )
 
 type Store struct {
-	logger         log.Logger
-	mtx            sync.RWMutex
-	scStore        sctypes.Committer
-	ssStore        sstypes.StateStore
-	lastCommitInfo *types.CommitInfo
-	storesParams   map[types.StoreKey]storeParams
-	storeKeys      map[string]types.StoreKey
-	ckvStores      map[types.StoreKey]types.CommitKVStore
-	pendingChanges chan VersionedChangesets
-	pruningManager *pruning.Manager
-	commitHeader   cmtproto.Header
-	removalMap     map[types.StoreKey]bool
+	logger          log.Logger
+	mtx             sync.RWMutex
+	scStore         sctypes.Committer
+	ssStore         sstypes.StateStore
+	lastCommitInfo  *types.CommitInfo
+	storesParams    map[types.StoreKey]storeParams
+	storeKeys       map[string]types.StoreKey
+	ckvStores       map[types.StoreKey]types.CommitKVStore
+	pendingChanges  chan VersionedChangesets
+	pruningManager  *pruning.Manager
+	commitHeader    cmtproto.Header
+	removalMap      map[types.StoreKey]bool
+	interBlockCache types.MultiStorePersistentCache
 }
 
 func (rs *Store) Commit() types.CommitID {
@@ -899,7 +901,15 @@ func (rs *Store) loadCommitStoreFromParams(key types.StoreKey, params storeParam
 			rs.scStore.ApplyUpgrades([]*proto.TreeNameUpgrade{&upgrade})
 			tree = rs.scStore.GetTreeByName(key.Name())
 		}
-		return types.CommitKVStore(commitment.NewStore(tree, rs.logger)), nil
+		store := commitment.NewStore(tree, rs.logger)
+		if rs.interBlockCache != nil {
+			// Wrap and get a CommitKVStore with inter-block caching. Note, this should
+			// only wrap the primary CommitKVStore, not any store that is already
+			// branched as that will create unexpected behavior.
+			rs.interBlockCache.GetStoreCache(key, store)
+		}
+
+		return types.CommitKVStore(store), nil
 	case types.StoreTypeDB:
 		panic("recursive MultiStores not yet supported")
 	case types.StoreTypeTransient:
@@ -926,7 +936,9 @@ func (rs *Store) LoadVersion(ver int64) error {
 }
 
 // SetInterBlockCache is a noop since we do caching on its own, which works well with zero-copy.
-func (rs *Store) SetInterBlockCache(_ types.MultiStorePersistentCache) {}
+func (rs *Store) SetInterBlockCache(inter types.MultiStorePersistentCache) {
+	rs.interBlockCache = inter
+}
 
 // SetInitialVersion Implements interface CommitMultiStore
 // used by InitChain when the initial height is bigger than 1
