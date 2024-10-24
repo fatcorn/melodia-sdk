@@ -23,6 +23,7 @@ import (
 	"os"
 	"runtime/pprof"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -58,22 +59,21 @@ type deliverTxTask struct {
 	Ctx     sdk.Context
 	AbortCh chan occ.Abort
 
-	mx                    sync.RWMutex
-	Status                status
-	Dependencies          map[int]struct{}
-	Abort                 *occ.Abort
-	Incarnation           int
-	Request               []byte
-	SdkTx                 sdk.Tx
-	Checksum              [32]byte
-	AbsoluteIndex         int
-	NamespaceBlockTxIndex int
-	Response              *abci.ExecTxResult
-	VersionStores         map[storetypes.StoreKey]*multiversion.VersionIndexedStore
-	IsEVMTx               bool
-	NamespaceId           uint64
-	TotalTask             int
-	AccountNumbers        map[string]uint64
+	mx             sync.RWMutex
+	Status         status
+	Dependencies   map[int]struct{}
+	Abort          *occ.Abort
+	Incarnation    int
+	Request        []byte
+	SdkTx          sdk.Tx
+	Checksum       [32]byte
+	AbsoluteIndex  int
+	Response       *abci.ExecTxResult
+	VersionStores  map[storetypes.StoreKey]*multiversion.VersionIndexedStore
+	IsEVMTx        bool
+	NamespaceId    uint64
+	TotalTask      int
+	AccountNumbers map[string]uint64
 	//TxTracer      sdk.TxTracer
 }
 
@@ -306,8 +306,6 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 	txDepends := make([][]int, len(reqs), len(reqs))
 	allNextAccountNumbers := make(map[string]uint64)
 
-	namespaceBlockTxIndexes := make(map[uint64]int)
-
 	if orders != nil {
 		if orders.NsInterChainTransactionOrders != nil {
 			for _, orderEntry := range orders.NsInterChainTransactionOrders.Entries {
@@ -348,26 +346,16 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 			}
 		}
 
-		namespaceBlockTxIndex := 0
-		isEVMTx := s.isEVMTxHandler(ctx, tx.SdkTx)
-		if isEVMTx {
-			if nsBlockTxIndex, ok := namespaceBlockTxIndexes[namespaceId]; ok {
-				namespaceBlockTxIndex = nsBlockTxIndex + 1
-			}
-			namespaceBlockTxIndexes[namespaceId] = namespaceBlockTxIndex
-		}
-
 		task := &deliverTxTask{
-			Request:               tx.Request,
-			SdkTx:                 tx.SdkTx,
-			Checksum:              tx.Checksum,
-			AbsoluteIndex:         tx.AbsoluteIndex,
-			Status:                statusPending,
-			Dependencies:          map[int]struct{}{},
-			TotalTask:             totalTask,
-			IsEVMTx:               isEVMTx,
-			AccountNumbers:        nextAccountNumbers,
-			NamespaceBlockTxIndex: namespaceBlockTxIndex,
+			Request:        tx.Request,
+			SdkTx:          tx.SdkTx,
+			Checksum:       tx.Checksum,
+			AbsoluteIndex:  tx.AbsoluteIndex,
+			Status:         statusPending,
+			Dependencies:   map[int]struct{}{},
+			TotalTask:      totalTask,
+			IsEVMTx:        false,
+			AccountNumbers: nextAccountNumbers,
 
 			//TxTracer:      r.TxTracer,
 		}
@@ -394,6 +382,7 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) []
 	logSizes := make(map[uint64]uint64)
 	txLogses := make(map[uint64][]string)
 	consumeGasWanted := make(map[uint64]int64)
+	namespaceBlockTxIndexes := make(map[uint64]int)
 
 	// start time
 	startTime := time.Now()
@@ -408,15 +397,28 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) []
 		} else {
 			consumeGasWanted[t.NamespaceId] = t.Response.GasWanted
 		}
-		//t.IsEVMTx = s.isEVMTxHandler(ctx, t.SdkTx)
+		t.IsEVMTx = s.isEVMTxHandler(ctx, t.SdkTx)
 
 		if !t.IsEVMTx {
 			continue
 		}
+		evmTxIndex := 0
+		if idx, ok := namespaceBlockTxIndexes[t.NamespaceId]; ok {
+			evmTxIndex = idx
+		} else {
+			namespaceBlockTxIndexes[t.NamespaceId] = evmTxIndex
+		}
 
 		for _, e := range t.Response.Events {
-
-			if e.Type == "tx_log" {
+			if e.Type == "ethereum_tx" {
+				for i := range e.Attributes {
+					if e.Attributes[i].Key != "txIndex" {
+						continue
+					}
+					e.Attributes[i].Value = strconv.Itoa(evmTxIndex)
+					break
+				}
+			} else if e.Type == "tx_log" {
 				for i := range e.Attributes {
 					if e.Attributes[i].Key != "txLog" {
 						continue
@@ -439,6 +441,7 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) []
 				}
 			}
 		}
+		namespaceBlockTxIndexes[t.NamespaceId] = evmTxIndex + 1
 
 		//if t.TxTracer != nil {
 		//	t.TxTracer.Commit()
@@ -846,7 +849,7 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 		//	//println("run tast time", "sub", time.Now().Sub(now))
 		//})
 		s.DoExecute(func() {
-			sdkCtx := ctx.WithNamepace(t.NamespaceId).WithNextAccountNumber(t.AccountNumbers).WithSynchronous(s.synchronous).WithTxIndex(task.AbsoluteIndex).WithNamespaceBlockTxIndex(task.NamespaceBlockTxIndex)
+			sdkCtx := ctx.WithNamepace(t.NamespaceId).WithNextAccountNumber(t.AccountNumbers).WithSynchronous(s.synchronous).WithTxIndex(task.AbsoluteIndex)
 			//now := time.Now()
 			s.prepareAndRunTask(wg, sdkCtx, t)
 			//println("run tast time", "sub", time.Now().Sub(now))

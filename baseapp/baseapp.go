@@ -1649,15 +1649,11 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 
 		// Static analysis
 		var (
-			txs                   = make([]sdk.Tx, 0)
-			byteTxs               = make([]sdk.ByteTx, 0)
-			fromIndexMap          = make(map[string]int)
-			toIndexMap            = make(map[string]int)
-			lastTxFromIndexMap    = make(map[string]int)
-			lastTxToIndexMap      = make(map[string]int)
-			staticToSerialIndexes = make([]int32, 0)
-			staticToSerialIndex   int32
-			nsTransactionIndexes  = make([]*cmtproto.NsTransactionIndexes, 0)
+			txs                  = make([]sdk.Tx, 0)
+			byteTxs              = make([]sdk.ByteTx, 0)
+			addressIndexMap      = make(map[string]int)
+			lastTxIndexMap       = make(map[string]int)
+			nsTransactionIndexes = make([]*cmtproto.NsTransactionIndexes, 0)
 		)
 
 		// If the iterator is nil use the NoOpMempool, get all namespace txs
@@ -1674,14 +1670,9 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 			app.logger.Info("4.1->sortTxs iterator TxEncodeBatch  time", "used", fmt.Sprintf("%v ms", time.Since(batchTime).Milliseconds()), "namespaceId", namespaceId, "height", ctx.BlockHeight())
 		}
 
-		handleNsTransactionDependOrders := func(tx sdk.Tx, txIdx int, namespaceId uint64, from string, to string) {
-			if to == "" {
-				return
-			}
-			if lastToIdx, toExists := lastTxToIndexMap[to]; toExists {
-
-				if lastFromIdx, fromExists := lastTxFromIndexMap[from]; !fromExists || lastFromIdx != lastToIdx {
-
+		handleNsTransactionDependOrders := func(txIdx int, namespaceId uint64, from string, to string) {
+			if lastToIdx, toExists := lastTxIndexMap[to]; toExists {
+				if lastFromIdx, fromExists := lastTxIndexMap[from]; !fromExists || lastFromIdx != lastToIdx {
 					entry := &cmtproto.NsInterChainTransactionOrderEntry{
 						Indexes: []*cmtproto.NsInterChainTransactionIndex{
 							{
@@ -1696,55 +1687,80 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 					}
 					orders.NsInterChainTransactionOrders.Entries = append(orders.NsInterChainTransactionOrders.Entries, entry)
 				}
-
 			}
-			lastTxFromIndexMap[from] = txIdx
-			lastTxToIndexMap[to] = txIdx
+			lastTxIndexMap[from] = txIdx
+			lastTxIndexMap[to] = txIdx
 		}
 
 		handleNsTransactionOrders := func(tx sdk.Tx, txIdx int, namespaceId uint64) {
-			from, to := app.txAccountInfoHandler(tx)
+
+			var (
+				fromIdx    int
+				toIdx      int
+				fromExists bool
+				toExists   bool
+				from       string
+				to         string
+				curIdx     int
+				isToSerial bool
+				toIsSerial = func(namespaceId uint64, to string) bool {
+					isContract, isContractSerial := app.contractStaticAnalysisResultHandler(ctx.WithNamepace(namespaceId), to)
+					if isContract {
+						return isContractSerial
+					}
+					return true
+				}
+			)
 
 			defer func() {
-				handleNsTransactionDependOrders(tx, txIdx, namespaceId, from, to)
+				if isToSerial {
+					handleNsTransactionDependOrders(txIdx, namespaceId, from, to)
+				}
 			}()
 
-			//1、from the same must be serial
-			if idx, exists := fromIndexMap[from]; exists {
-				nsTransactionIndexes[idx].Indexes = append(nsTransactionIndexes[idx].Indexes, int32(txIdx))
-				return
-			}
-			//2、to the same must be serial
-			if to != "" {
-				if idx, exists := toIndexMap[to]; exists {
-					nsTransactionIndexes[idx].Indexes = append(nsTransactionIndexes[idx].Indexes, int32(txIdx))
-					return
-				}
-				//3、to contract static analysis must be serial
-				isSerialResult := app.contractStaticAnalysisResultHandler(ctx.WithNamepace(namespaceId), to)
-				if isSerialResult {
-					if len(staticToSerialIndexes) > 0 {
-						staticToSerialIndexes = append(staticToSerialIndexes, int32(txIdx))
-						nsTransactionIndexes[staticToSerialIndex].Indexes = staticToSerialIndexes
-					} else {
-						staticToSerialIndexes = append(staticToSerialIndexes, int32(txIdx))
-						nsTransactionIndexes = append(nsTransactionIndexes, &cmtproto.NsTransactionIndexes{
-							Indexes: staticToSerialIndexes,
-						})
-						staticToSerialIndex = int32(len(nsTransactionIndexes) - 1)
-					}
-					return
-				}
-			}
-			indexes := make([]int32, 1)
-			indexes[0] = int32(txIdx)
-			newIndex := &cmtproto.NsTransactionIndexes{Indexes: indexes}
-			nsTransactionIndexes = append(nsTransactionIndexes, newIndex)
-			fromIndexMap[from] = len(nsTransactionIndexes) - 1
-			if to != "" {
-				toIndexMap[to] = len(nsTransactionIndexes) - 1
-			}
+			from, to = app.txAccountInfoHandler(tx)
 
+			println("txIndex=", txIdx, "to=", to, "from=", from)
+
+			fromIdx, fromExists = addressIndexMap[from]
+			toIdx, toExists = addressIndexMap[to]
+
+			if fromExists && toExists {
+				//Both exist,add from index
+				curIdx = fromIdx
+				nsTransactionIndexes[curIdx].Indexes = append(nsTransactionIndexes[curIdx].Indexes, int32(txIdx))
+
+				//Check if they should be depends
+				if toIsSerial(namespaceId, to) {
+					isToSerial = true
+				}
+			} else if fromExists {
+				// Only from exists, add to index
+				curIdx = fromIdx
+				nsTransactionIndexes[curIdx].Indexes = append(nsTransactionIndexes[curIdx].Indexes, int32(txIdx))
+				addressIndexMap[to] = curIdx
+			} else if toExists {
+				// Only to exists, add from index
+				if toIsSerial(namespaceId, to) {
+					isToSerial = true
+					//append to index
+					curIdx = toIdx
+					nsTransactionIndexes[curIdx].Indexes = append(nsTransactionIndexes[curIdx].Indexes, int32(txIdx))
+					addressIndexMap[from] = curIdx
+				} else {
+					//create new from index
+					nsTransactionIndexes = append(nsTransactionIndexes, &cmtproto.NsTransactionIndexes{Indexes: []int32{int32(txIdx)}})
+					curIdx = len(nsTransactionIndexes) - 1
+					addressIndexMap[from] = curIdx
+				}
+			} else {
+				// Neither exists, create both indices
+				//create new from & to index
+				nsTransactionIndexes = append(nsTransactionIndexes, &cmtproto.NsTransactionIndexes{Indexes: []int32{int32(txIdx)}})
+				curIdx = len(nsTransactionIndexes) - 1
+				addressIndexMap[from] = curIdx
+				addressIndexMap[to] = curIdx
+			}
 		}
 
 		orderTime := time.Now()
@@ -1781,6 +1797,17 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 	}
 	app.logger.Info("4->sortTxs total orders time", "used", fmt.Sprintf("%v ms", time.Since(staticTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
 	app.logger.Info("5->sortTxs total time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
+
+	//for _, order := range orders.NsTransactionOrders.Entries {
+	//	for _, idx := range order.Indexes {
+	//		if len(idx.Indexes) > 1 {
+	//			println("Namespace=", order.Namespace, "Indexes=", fmt.Sprintf("%v", idx.Indexes))
+	//		}
+	//	}
+	//}
+	//for _, order := range orders.NsInterChainTransactionOrders.Entries {
+	//	println("InterIndexes=", fmt.Sprintf("%v", order.Indexes))
+	//}
 	return &abci.ResponseSortTxs{Txs: sortTxs, NsTable: nsTable, Orders: orders}, nil
 }
 
