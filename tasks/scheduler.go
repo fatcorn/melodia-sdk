@@ -441,7 +441,9 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) []
 				}
 			}
 		}
-		namespaceBlockTxIndexes[t.NamespaceId] = evmTxIndex + 1
+		if t.Response.Code == 0 {
+			namespaceBlockTxIndexes[t.NamespaceId] = evmTxIndex + 1
+		}
 
 		//if t.TxTracer != nil {
 		//	t.TxTracer.Commit()
