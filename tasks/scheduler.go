@@ -573,6 +573,8 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	s.start1(workerCtx, s.collectCh, workers)
 	t6 := time.Now()
 	println("======================", "sub", t6.Sub(now).String())
+	multiVersionMap := make(map[string]multiversion.MultiVersionValue)
+
 	toExecute := tasks
 	for !allValidated(tasks) {
 		// if the max incarnation >= x, we should revert to synchronous
@@ -605,12 +607,15 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 			t := time.Now()
 			tt := 0
 			//multiVersionMap := make(map[string]multiversion.MultiVersionValue)
+			multiVersionMap = make(map[string]multiversion.MultiVersionValue, len(tasks)*20)
+
 			keyVersionCountMao := make(map[string]int, len(tasks)*20)
 			var mu sync.Mutex
 
 			var wg sync.WaitGroup
 			for _, task := range tasks {
 				if task.Status == statusExecuted {
+					totalExecuted++
 					wg.Add(1)
 					go func(task *deliverTxTask) {
 						defer wg.Done()
@@ -623,6 +628,14 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 						mu.Lock()
 						for key, count := range localCount {
 							keyVersionCountMao[key] += count
+							if keyVersionCountMao[key] > 1 {
+								_, find := multiVersionMap[key]
+								if !find {
+									listItem := multiversion.NewMultiVersionListItem(task.TotalTask)
+									multiVersionMap[key] = listItem
+								}
+
+							}
 						}
 						mu.Unlock()
 					}(task)
@@ -630,27 +643,24 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 			}
 			wg.Wait()
 			tn := time.Now()
-			multiVersionMap := make(map[string]multiversion.MultiVersionValue)
-
+			wg.Add(totalExecuted)
 			for _, task := range tasks {
 				if task.Status == statusExecuted {
-					totalExecuted++
-
-					wg.Add(1)
-					go func(task *deliverTxTask) {
+					writeTask := task
+					s.DoWrite(func() {
 						defer wg.Done()
-						for _, v := range task.VersionStores {
+						for _, v := range writeTask.VersionStores {
 							for key, _ := range v.Writeset {
 								//t8 := time.Now()
 								listItem, found := multiVersionMap[key]
 								if !found {
 									listItem = multiversion.NewMultiVersionListItem(1)
 								}
-								v.NewKey(key, task.TotalTask, listItem)
+								v.NewKey(key, writeTask.TotalTask, listItem)
 							}
 						}
-					}(task)
 
+					})
 				}
 			}
 			wg.Wait()
