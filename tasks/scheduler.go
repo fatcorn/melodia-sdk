@@ -697,7 +697,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 		// validate returns any that should be re-executed
 		// note this processes ALL tasks, not just those recently executed
 		// validation tasks uses length of tasks to avoid blocking on validation
-		s.startVal(workerCtx, s.validateCh, len(tasks))
+		s.startVal(workerCtx, s.validateCh, workers)
 
 		var err error
 		toExecute, err = s.validateAll(ctx, tasks)
