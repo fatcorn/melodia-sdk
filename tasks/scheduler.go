@@ -31,7 +31,6 @@ import (
 	"cosmossdk.io/store/multiversion"
 	storetypes "cosmossdk.io/store/types"
 	"cosmossdk.io/store/types/occ"
-	"encoding/hex"
 )
 
 type status string
@@ -360,7 +359,7 @@ func toTasks(_ sdk.Context, req sdk.DeliverTxBatchRequest) ([]*deliverTxTask, ma
 		}
 	}
 	if len(allTasks) != len(reqs) {
-		panic(fmt.Errorf("toTasks NsTransactionOrders total.Size(%s) != txs.Size(%s)", len(allTasks), len(reqs)))
+		panic(fmt.Errorf("toTasks NsTransactionOrders total.Size(%d) != txs.Size(%d)", len(allTasks), len(reqs)))
 	}
 
 	return allTasks, tasksMap
@@ -605,47 +604,56 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 		if listStore != "" && !s.synchronous {
 			t := time.Now()
 			tt := 0
-			multiVersionMap := make(map[string]multiversion.MultiVersionValue)
-			keyVersionCountMao := make(map[string]int)
+			//multiVersionMap := make(map[string]multiversion.MultiVersionValue)
+			keyVersionCountMao := make(map[string]int, len(tasks)*20)
+			var mu sync.Mutex
 
-			for _, task := range toExecute {
+			var wg sync.WaitGroup
+			for _, task := range tasks {
 				if task.Status == statusExecuted {
-					for _, v := range task.VersionStores {
-						writeset := v.Writeset
-						for key, _ := range writeset {
-							keyVersionCountMao[key] += 1
+					wg.Add(1)
+					go func(task *deliverTxTask) {
+						defer wg.Done()
+						localCount := make(map[string]int)
+						for _, v := range task.VersionStores {
+							for key := range v.Writeset {
+								localCount[key]++
+							}
 						}
-					}
+						mu.Lock()
+						for key, count := range localCount {
+							keyVersionCountMao[key] += count
+						}
+						mu.Unlock()
+					}(task)
 				}
 			}
+			wg.Wait()
 			tn := time.Now()
-			for _, task := range toExecute {
+			multiVersionMap := make(map[string]multiversion.MultiVersionValue)
+
+			for _, task := range tasks {
 				if task.Status == statusExecuted {
 					totalExecuted++
-					for _, v := range task.VersionStores {
-						writeset := v.Writeset
-						for key, _ := range writeset {
-							//t8 := time.Now()
-							listItem, found := multiVersionMap[key]
-							if !found {
-								count := keyVersionCountMao[key]
-								if count > 1 {
-									bytesKey := hex.EncodeToString([]byte(key))
-									println("not found key", "key", bytesKey, "count", count)
-									listItem = multiversion.NewMultiVersionListItem(task.TotalTask)
-								} else {
+
+					wg.Add(1)
+					go func(task *deliverTxTask) {
+						defer wg.Done()
+						for _, v := range task.VersionStores {
+							for key, _ := range v.Writeset {
+								//t8 := time.Now()
+								listItem, found := multiVersionMap[key]
+								if !found {
 									listItem = multiversion.NewMultiVersionListItem(1)
 								}
-								multiVersionMap[key] = listItem
+								v.NewKey(key, task.TotalTask, listItem)
 							}
-							//listItem := multiversion.NewMultiVersionListItem(task.TotalTask)
-							v.NewKey(key, task.TotalTask, listItem)
-							tt++
-							//println("t8888888888", "tt", time.Now().Sub(t8).String())
 						}
-					}
+					}(task)
+
 				}
 			}
+			wg.Wait()
 			println("new key time =========================", "count time", tn.Sub(t).String(), "sub time", time.Now().Sub(tn).String(), "count", tt)
 		}
 
@@ -1056,7 +1064,6 @@ func printSystemStats(desc string) {
 	fmt.Printf("HeapAlloc: %v MB\n", m.HeapAlloc/1024/1024) // 堆上实际使用的内存
 	fmt.Printf("HeapSys: %v MB\n", m.HeapSys/1024/1024)     // 系统分配给堆的内存
 	fmt.Printf("HeapObjects: %v\n", m.HeapObjects)          // 堆上分配的对象数量
-
 
 	//printCpu()
 }
