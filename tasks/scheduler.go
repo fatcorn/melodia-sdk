@@ -605,7 +605,6 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 
 		if listStore != "" && !s.synchronous {
 			t := time.Now()
-			tt := 0
 			//multiVersionMap := make(map[string]multiversion.MultiVersionValue)
 			multiVersionMap = make(map[string]multiversion.MultiVersionValue, len(tasks)*20)
 
@@ -664,7 +663,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 				}
 			}
 			wg.Wait()
-			println("new key time =========================", "count time", tn.Sub(t).String(), "sub time", time.Now().Sub(tn).String(), "count", tt)
+			println("new key time =========================", "count time", tn.Sub(t).String(), "sub time", time.Now().Sub(tn).String(), "totalExecuted", totalExecuted)
 		}
 
 		t3 := time.Now()
@@ -673,15 +672,14 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 			wg := &sync.WaitGroup{}
 			wg.Add(totalExecuted)
 
-			for _, task := range toExecute {
+			for _, task := range tasks {
 				if task.IsStatus(statusExecuted) {
 					writeTask := task
 					s.DoWrite(func() {
-
+						defer wg.Done()
 						for _, v := range writeTask.VersionStores {
 							v.WriteToMultiVersionStore()
 						}
-						defer wg.Done()
 
 					})
 				}
@@ -863,6 +861,7 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 		wg.Add(1)
 		s.DoExecute(func() {
 			//now := time.Now()
+			defer wg.Done()
 			s.prepareAndRunTask(wg, ctx, t)
 			//println("run task time", "sub", time.Now().Sub(now).String())
 		})
@@ -877,7 +876,6 @@ func (s *scheduler) prepareAndRunTask(wg *sync.WaitGroup, ctx sdk.Context, task 
 	//eCtx, eSpan := s.traceSpan(ctx, "SchedulerExecute", task)
 	//defer eSpan.End()
 	//now := time.Now()
-	defer wg.Done()
 
 	//C.printThreadID() // 打印线程ID
 	//now := cmttime.Now()
