@@ -1797,17 +1797,8 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 	app.logger.Info("4->sortTxs total orders time", "used", fmt.Sprintf("%v ms", time.Since(staticTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
 	app.logger.Info("5->sortTxs total time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
 
-	//for _, order := range orders.NsTransactionOrders.Entries {
-	//	for _, idx := range order.Indexes {
-	//		if len(idx.Indexes) > 1 {
-	//			println("Namespace=", order.Namespace, "Indexes=", fmt.Sprintf("%v", idx.Indexes))
-	//		}
-	//	}
-	//}
-	//for _, order := range orders.NsInterChainTransactionOrders.Entries {
-	//	println("InterIndexes=", fmt.Sprintf("%v", order.Indexes))
-	//}
-	return &abci.ResponseSortTxs{Txs: sortTxs, NsTable: nsTable, Orders: orders}, nil
+	//return &abci.ResponseSortTxs{Txs: sortTxs, NsTable: nsTable, Orders: orders}, nil
+	return &abci.ResponseSortTxs{Txs: make([][]byte, 0), NsTable: nil, Orders: nil}, nil
 }
 
 // PrepareProposalVerifyTx performs transaction verification when a proposer is
