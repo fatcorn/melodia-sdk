@@ -14,6 +14,7 @@ import (
 	"context"
 	"cosmossdk.io/store"
 	"fmt"
+	"github.com/allegro/bigcache"
 	abci "github.com/cometbft/cometbft/abci/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/shirou/gopsutil/cpu"
@@ -573,7 +574,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	s.start1(workerCtx, s.collectCh, workers)
 	t6 := time.Now()
 	println("======================", "sub", t6.Sub(now).String())
-	multiVersionMap := make(map[string]multiversion.MultiVersionValue)
+	//multiVersionMap := make(map[string]multiversion.MultiVersionValue)
 
 	toExecute := tasks
 	for !allValidated(tasks) {
@@ -606,63 +607,72 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 		if listStore != "" && !s.synchronous {
 			t := time.Now()
 			//multiVersionMap := make(map[string]multiversion.MultiVersionValue)
-			multiVersionMap = make(map[string]multiversion.MultiVersionValue, len(tasks)*20)
+			//multiVersionMap = make(map[string]multiversion.MultiVersionValue, len(tasks)*20)
 
-			keyVersionCountMao := make(map[string]int, len(tasks)*20)
-			var mu sync.Mutex
+			//keyVersionCountMao := make(map[string]int, len(tasks)*20)
+
+			config := bigcache.DefaultConfig(time.Second * 500)
+			config.Shards = 131072
+			//cache, err := bigcache.NewBigCache(config)
+			if err != nil {
+				panic("new big cache error")
+			}
+
+			//var mu sync.Mutex
 
 			var wg sync.WaitGroup
 			for _, task := range tasks {
 				if task.Status == statusExecuted {
 					totalExecuted++
 					wg.Add(1)
-					go func(task *deliverTxTask) {
-						defer wg.Done()
-						localCount := make(map[string]int)
-						for _, v := range task.VersionStores {
-							for key := range v.Writeset {
-								localCount[key]++
-							}
-						}
-						mu.Lock()
-						for key, count := range localCount {
-							keyVersionCountMao[key] += count
-							if keyVersionCountMao[key] > 1 {
-								_, find := multiVersionMap[key]
-								if !find {
-									listItem := multiversion.NewMultiVersionListItem(task.TotalTask)
-									multiVersionMap[key] = listItem
-								}
-
-							}
-						}
-						mu.Unlock()
-					}(task)
-				}
-			}
-			wg.Wait()
-			tn := time.Now()
-			wg.Add(totalExecuted)
-			for _, task := range tasks {
-				if task.Status == statusExecuted {
 					writeTask := task
 					s.DoWrite(func() {
 						defer wg.Done()
+						//localCount := make(map[string]int)
 						for _, v := range writeTask.VersionStores {
-							for key, _ := range v.Writeset {
-								//t8 := time.Now()
-								listItem, found := multiVersionMap[key]
-								if !found {
-									listItem = multiversion.NewMultiVersionListItem(1)
-								}
-								v.NewKey(key, writeTask.TotalTask, listItem)
+							for key := range v.Writeset {
+								v.NewKey(key, writeTask.TotalTask, multiversion.NewMultiVersionListItem(1))
 							}
 						}
-
+						//mu.Lock()
+						//for key, count := range localCount {
+						//	keyVersionCountMao[key] += count
+						//	if keyVersionCountMao[key] > 1 {
+						//		_, find := multiVersionMap[key]
+						//		if !find {
+						//			listItem := multiversion.NewMultiVersionListItem(task.TotalTask)
+						//			multiVersionMap[key] = listItem
+						//		}
+						//
+						//	}
+						//}
+						//mu.Unlock()
 					})
 				}
 			}
 			wg.Wait()
+			tn := time.Now()
+			//wg.Add(totalExecuted)
+			//for _, task := range tasks {
+			//	if task.Status == statusExecuted {
+			//		writeTask := task
+			//		s.DoWrite(func() {
+			//			defer wg.Done()
+			//			for _, v := range writeTask.VersionStores {
+			//				for key, _ := range v.Writeset {
+			//					//t8 := time.Now()
+			//					listItem, found := multiVersionMap[key]
+			//					if !found {
+			//						listItem = multiversion.NewMultiVersionListItem(1)
+			//					}
+			//					v.NewKey(key, writeTask.TotalTask, listItem)
+			//				}
+			//			}
+			//
+			//		})
+			//	}
+			//}
+			//wg.Wait()
 			println("new key time =========================", "count time", tn.Sub(t).String(), "sub time", time.Now().Sub(tn).String(), "totalExecuted", totalExecuted)
 		}
 
