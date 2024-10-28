@@ -1647,13 +1647,14 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 		iterator := nsIterator.Iterator
 		namespaceId := nsIterator.NamespaceId
 
+		txSize := nsMempool.CountTxByNamespaceId(namespaceId)
 		// Static analysis
 		var (
-			txs                  = make([]sdk.Tx, 0)
-			byteTxs              = make([]sdk.ByteTx, 0)
+			txs                  = make([]sdk.Tx, 0, txSize)
+			byteTxs              = make([]sdk.ByteTx, 0, txSize)
 			addressIndexMap      = make(map[string]int)
 			lastTxIndexMap       = make(map[string]int)
-			nsTransactionIndexes = make([]*cmtproto.NsTransactionIndexes, 0)
+			nsTransactionIndexes = make([]*cmtproto.NsTransactionIndexes, 0, txSize)
 		)
 
 		// If the iterator is nil use the NoOpMempool, get all namespace txs
