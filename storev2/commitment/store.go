@@ -245,3 +245,7 @@ func (st *Store) GetChangedPairs(prefix []byte) (res []*iavl.KVPair) {
 	}
 	return
 }
+
+func (st *Store) GetParentStore() types.CommitKVStore {
+	return nil
+}

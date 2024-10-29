@@ -394,15 +394,28 @@ func (rs *Store) flush() error {
 	for key := range rs.ckvStores {
 		// it'll unwrap the inter-block cache
 		store := rs.GetCommitKVStore(key)
-		if commitStore, ok := store.(*commitment.Store); ok {
-			cs := commitStore.PopChangeSet()
-			if len(cs.Pairs) > 0 {
-				changeSets = append(changeSets, &proto.NamedChangeSet{
-					Name:      key.Name(),
-					Changeset: cs,
-				})
+		if store.GetParentStore() != nil {
+			if commitStore, ok := store.GetParentStore().(*commitment.Store); ok {
+				cs := commitStore.PopChangeSet()
+				if len(cs.Pairs) > 0 {
+					changeSets = append(changeSets, &proto.NamedChangeSet{
+						Name:      key.Name(),
+						Changeset: cs,
+					})
+				}
+			}
+		} else {
+			if commitStore, ok := store.(*commitment.Store); ok {
+				cs := commitStore.PopChangeSet()
+				if len(cs.Pairs) > 0 {
+					changeSets = append(changeSets, &proto.NamedChangeSet{
+						Name:      key.Name(),
+						Changeset: cs,
+					})
+				}
 			}
 		}
+
 	}
 	if changeSets != nil && len(changeSets) > 0 {
 		sort.SliceStable(changeSets, func(i, j int) bool {
@@ -1347,4 +1360,8 @@ func (rs *Store) GetEarliestVersion() int64 {
 		return version
 	}
 	return latestVersion
+}
+
+func (st *Store) GetParentStore() types.CommitKVStore {
+	return nil
 }
