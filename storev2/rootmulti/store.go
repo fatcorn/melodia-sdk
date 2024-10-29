@@ -389,6 +389,7 @@ func (rs *Store) StateStoreCommit() {
 
 // Flush all the pending changesets to commit store.
 func (rs *Store) flush() error {
+	t1 := time.Now()
 	var changeSets []*proto.NamedChangeSet
 	currentVersion := rs.lastCommitInfo.Version + 1
 	for key := range rs.ckvStores {
@@ -415,8 +416,9 @@ func (rs *Store) flush() error {
 				}
 			}
 		}
-
 	}
+	t2 := time.Now()
+
 	if changeSets != nil && len(changeSets) > 0 {
 		sort.SliceStable(changeSets, func(i, j int) bool {
 			return changeSets[i].Name < changeSets[j].Name
@@ -428,7 +430,12 @@ func (rs *Store) flush() error {
 			}
 		}
 	}
-	return rs.scStore.ApplyChangeSets(changeSets)
+	t3 := time.Now()
+
+	err := rs.scStore.ApplyChangeSets(changeSets)
+	t4 := time.Now()
+	println("flush time=======", "set changs set ", t2.Sub(t1).String(), "sort set ", t3.Sub(t2).String(), "apply change set", t4.Sub(t3).String())
+	return err
 }
 
 func (rs *Store) Close() error {
@@ -1123,12 +1130,21 @@ func convertCommitInfo(commitInfo *proto.CommitInfo) *types.CommitInfo {
 
 // GetWorkingHash returns the working app hash
 func (rs *Store) GetWorkingHash() ([]byte, error) {
+	t1 := time.Now()
 	if err := rs.flush(); err != nil {
 		return nil, err
 	}
-	commitInfo := convertCommitInfo(rs.scStore.WorkingCommitInfo())
+	t2 := time.Now()
+	info := rs.scStore.WorkingCommitInfo()
+	t25 := time.Now()
+
+	commitInfo := convertCommitInfo(info)
+	t3 := time.Now()
+
 	// for sdk 0.46 and backward compatibility
 	commitInfo = amendCommitInfo(commitInfo, rs.storesParams)
+	t4 := time.Now()
+	println("get working hash", "flush time", t2.Sub(t1).String(), "working commit info", t25.Sub(t2).String(), "convert commit info", t3.Sub(t25).String(), "amend commit info", t4.Sub(t3).String())
 	return commitInfo.Hash(), nil
 }
 
