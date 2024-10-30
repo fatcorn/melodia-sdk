@@ -30,6 +30,11 @@ type Store struct {
 	changeSet iavl.ChangeSet
 }
 
+func (st *Store) GetParent() types.KVStore {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (st *Store) Commit() types.CommitID {
 	//TODO implement me
 	panic("memiavl store is not supposed to be committed alone")

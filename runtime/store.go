@@ -193,6 +193,11 @@ type kvStoreAdapter struct {
 	store store.KVStore
 }
 
+func (s kvStoreAdapter) GetParent() storetypes.KVStore {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (kvStoreAdapter) CacheWrap() storetypes.CacheWrap {
 	panic("unimplemented")
 }

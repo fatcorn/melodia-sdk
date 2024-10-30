@@ -28,6 +28,11 @@ type Store struct {
 	version  int64
 }
 
+func (st *Store) GetParent() types.KVStore {
+	//TODO implement me
+	panic("implement me")
+}
+
 func NewStore(store sstypes.StateStore, storeKey types.StoreKey, version int64) *Store {
 	return &Store{store, storeKey, version}
 }

@@ -14,7 +14,6 @@ import (
 	"context"
 	"cosmossdk.io/store"
 	"fmt"
-	"github.com/allegro/bigcache"
 	abci "github.com/cometbft/cometbft/abci/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/shirou/gopsutil/cpu"
@@ -550,22 +549,22 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	workerCtx, cancel := context.WithCancel(ctx.Context())
 	defer cancel()
 	// set trace store file
-
-	nowTime := strconv.Itoa(int(now.UnixMilli()))
-	tracePath := "trace/trace" + nowTime + ".out"
 	tracePathEnv := os.Getenv("tracePath")
 	if tracePathEnv != "" {
+		nowTime := strconv.Itoa(int(now.UnixMilli()))
+		tracePath := "trace/trace" + nowTime + ".out"
 		tracePath = tracePathEnv + tracePath
-	}
-	f, err := os.Create(tracePath)
+		f, err := os.Create(tracePath)
 
-	if err != nil {
-		println("err", "err", err.Error())
+		if err != nil {
+			println("err", "err", err.Error())
+		}
+		// start trace
+		if err := trace.Start(f); err != nil {
+			panic(err)
+		}
 	}
-	// start trace
-	if err := trace.Start(f); err != nil {
-		panic(err)
-	}
+
 	//go printCpuCount()
 
 	// execution tasks are limited by workers
@@ -574,7 +573,6 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	s.start1(workerCtx, s.collectCh, workers)
 	t6 := time.Now()
 	println("======================", "sub", t6.Sub(now).String())
-	//multiVersionMap := make(map[string]multiversion.MultiVersionValue)
 
 	toExecute := tasks
 	for !allValidated(tasks) {
@@ -589,7 +587,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 			toExecute = tasks[startIdx:]
 		}
 		//go printCpuCount()
-		printSystemStats("start ")
+		//printSystemStats("start ")
 
 		// execute sets statuses of tasks to either executed or aborted
 		t1 := time.Now()
@@ -606,20 +604,6 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 
 		if listStore != "" && !s.synchronous {
 			t := time.Now()
-			//multiVersionMap := make(map[string]multiversion.MultiVersionValue)
-			//multiVersionMap = make(map[string]multiversion.MultiVersionValue, len(tasks)*20)
-
-			//keyVersionCountMao := make(map[string]int, len(tasks)*20)
-
-			config := bigcache.DefaultConfig(time.Second * 500)
-			config.Shards = 131072
-			//cache, err := bigcache.NewBigCache(config)
-			if err != nil {
-				panic("new big cache error")
-			}
-
-			//var mu sync.Mutex
-
 			var wg sync.WaitGroup
 			for _, task := range tasks {
 				if task.Status == statusExecuted {
@@ -634,46 +618,12 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 								v.NewKey(key, writeTask.TotalTask, multiversion.NewMultiVersionListItem(1))
 							}
 						}
-						//mu.Lock()
-						//for key, count := range localCount {
-						//	keyVersionCountMao[key] += count
-						//	if keyVersionCountMao[key] > 1 {
-						//		_, find := multiVersionMap[key]
-						//		if !find {
-						//			listItem := multiversion.NewMultiVersionListItem(task.TotalTask)
-						//			multiVersionMap[key] = listItem
-						//		}
-						//
-						//	}
-						//}
-						//mu.Unlock()
+
 					})
 				}
 			}
 			wg.Wait()
-			tn := time.Now()
-			//wg.Add(totalExecuted)
-			//for _, task := range tasks {
-			//	if task.Status == statusExecuted {
-			//		writeTask := task
-			//		s.DoWrite(func() {
-			//			defer wg.Done()
-			//			for _, v := range writeTask.VersionStores {
-			//				for key, _ := range v.Writeset {
-			//					//t8 := time.Now()
-			//					listItem, found := multiVersionMap[key]
-			//					if !found {
-			//						listItem = multiversion.NewMultiVersionListItem(1)
-			//					}
-			//					v.NewKey(key, writeTask.TotalTask, listItem)
-			//				}
-			//			}
-			//
-			//		})
-			//	}
-			//}
-			//wg.Wait()
-			println("new key time =========================", "count time", tn.Sub(t).String(), "sub time", time.Now().Sub(tn).String(), "totalExecuted", totalExecuted)
+			println("new key time =========================", "count time", time.Now().Sub(t).String(), "totalExecuted", totalExecuted)
 		}
 
 		t3 := time.Now()
@@ -698,18 +648,11 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 		}
 
 		t4 := time.Now()
-
-		//writeSleepDuration := cmttime.Now().Sub(writeNow)
-		//println("WriteToMultiVersionStore time: ", writeSleepDuration, " from: ", writeNow.String())
-
-		// validate returns any that should be re-executed
-		// note this processes ALL tasks, not just those recently executed
-		// validation tasks uses length of tasks to avoid blocking on validation
 		s.startVal(workerCtx, s.validateCh, workers)
 
 		var err error
 		toExecute, err = s.validateAll(ctx, tasks)
-		printSystemStats("end ")
+		//printSystemStats("end ")
 		t5 := time.Now()
 
 		if err != nil {
@@ -741,15 +684,16 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	// end trace
 	s.metrics.maxIncarnation = s.maxIncarnation
 
-	ctx.Logger().Info("occ scheduler", "height", ctx.BlockHeight(), "txs", len(tasks), "latency_ms", time.Since(startTime).String(), "retries", s.metrics.retries, "maxIncarnation", s.maxIncarnation, "iterations", iterations, "sync", s.synchronous, "workers", workers)
-
 	res, evmTxs := s.collectResponses(ctx, tasks)
-	printSystemStats("after process")
+	//printSystemStats("after process")
 
 	s.setMsgsHandler(ctx, evmTxs)
-	t7 := time.Now()
-	trace.Stop()
-	println("trace time===============", "sub", time.Now().Sub(t7).String())
+	if tracePathEnv != "" {
+		t7 := time.Now()
+		trace.Stop()
+		println("trace time===============", "sub", time.Now().Sub(t7).String())
+	}
+	ctx.Logger().Info("occ scheduler", "height", ctx.BlockHeight(), "txs", len(tasks), "latency_ms", time.Since(startTime).String(), "retries", s.metrics.retries, "maxIncarnation", s.maxIncarnation, "iterations", iterations, "sync", s.synchronous, "workers", workers)
 
 	return res, nil
 }
