@@ -845,10 +845,13 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	}
 
 	wg.Wait()
+	t1 := time.Now()
 
 	finalizeCtx := app.getContext(execModeFinalize)
 
 	batchResult := app.DeliverTxBatch(finalizeCtx, sdk.DeliverTxBatchRequest{TxEntries: entries, Orders: req.Orders}, namespaceList)
+	t2 := time.Now()
+
 	for idx, result := range batchResult.Results {
 		txResults[idx] = &result.Response
 		app.HandleInternalEvent(sdk.SdkEventsFromABCIEvent(result.Response.Events))
@@ -866,7 +869,7 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	events = append(events, defaultDeferredWriteEvents...)
 
 	// calculate time used by scheduler
-	fmt.Printf("========= Scheduler Time used: %v\n", time.Since(startTime))
+	fmt.Printf("========= Scheduler Time used: %v,decode tx time %v,deliver tx %v,append time %v\n", time.Since(startTime).String(), t1.Sub(startTime).String(), t2.Sub(t1).String(), time.Since(t2).String())
 	//app.logger.Info("FinalizeBlock", "schedulerTime", time.Since(startTime))
 
 	if app.finalizeBlockState.ms.TracingEnabled() {
