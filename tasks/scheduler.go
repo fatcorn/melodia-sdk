@@ -441,7 +441,7 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) ([
 		s.setBlockBloomTransientHandler(ctx, txLogs)
 	}
 	// calculate time used
-	fmt.Printf("========= Time used: %v\n", time.Since(startTime))
+	fmt.Printf("========= CollectResponses Time used: %v\n", time.Since(startTime))
 	return res, evmTxs
 }
 
@@ -572,7 +572,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 
 	s.start1(workerCtx, s.collectCh, workers)
 	t6 := time.Now()
-	println("======================", "sub", t6.Sub(now).String())
+	//println("======================", "sub", t6.Sub(now).String())
 
 	toExecute := tasks
 	for !allValidated(tasks) {
@@ -679,7 +679,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	}
 	wg.Wait()
 	t3 := time.Now()
-	println("write latest to store", "sub", t3.Sub(t2).String(), "ex sub", t2.Sub(t6).String())
+	println("write latest to store", "sub", t3.Sub(t2).String(), "start total sub", t2.Sub(startTime).String())
 
 	// end trace
 	s.metrics.maxIncarnation = s.maxIncarnation
