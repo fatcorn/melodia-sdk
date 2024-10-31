@@ -1,0 +1,47 @@
+syntax = "proto3";
+package cosmos.pibc.v1beta1;
+
+import "cosmos/msg/v1/msg.proto";
+option go_package = "github.com/cosmos/cosmos-sdk/x/pibc/types";
+
+// Msg defines the ibc/channel Msg service.
+service Msg {
+  option (cosmos.msg.v1.service) = true;
+
+  // RecvPacket defines a rpc handler method for MsgRecvPacket.
+  rpc RecvPacket(MsgRecvPacket) returns (MsgRecvPacketResponse);
+
+  // Acknowledgement defines a rpc handler method for MsgAcknowledgement.
+  rpc Acknowledgement(MsgAcknowledgement) returns (MsgAcknowledgementResponse);
+}
+
+// MsgRecvPacket represents a message will execute in namespace B
+message MsgRecvPacket {
+  option (cosmos.msg.v1.signer) = "sender";
+
+  BasePacket packet              = 1;
+  bytes      source_packet_tx_id = 2;
+  string     sender              = 3;
+}
+
+// MsgAcknowledgement represents a message will execute in namespace A to roll back the first namespaceA msg
+message MsgAcknowledgement {
+  option (cosmos.msg.v1.signer) = "sender";
+
+  BasePacket packet              = 1;
+  bytes      source_packet_tx_id = 2;
+  string     sender              = 3;
+}
+
+message BasePacket {
+  // Source namespace
+  uint64 source_namespace_id = 1;
+  /// Target namespace
+  uint64 target_namespace_id = 2;
+  // the packet data, custom defined by pibc apps
+  bytes data = 3;
+}
+
+message MsgRecvPacketResponse {}
+
+message MsgAcknowledgementResponse {}

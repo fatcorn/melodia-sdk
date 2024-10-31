@@ -2,8 +2,10 @@ package keeper
 
 import (
 	"context"
+	scheduler "cosmossdk.io/store/types/occ"
 	"errors"
 	"fmt"
+	"github.com/cometbft/cometbft/crypto/merkle"
 
 	"cosmossdk.io/collections"
 	"cosmossdk.io/collections/indexes"
@@ -185,7 +187,14 @@ func (ak AccountKeeper) GetSequence(ctx context.Context, addr sdk.AccAddress) (u
 // NextAccountNumber returns and increments the global account number counter.
 // If the global account number is not set, it initializes it with value 0.
 func (ak AccountKeeper) NextAccountNumber(ctx context.Context) uint64 {
-	n, err := ak.AccountNumber.Next(ctx)
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	if sdkCtx.ExecMode() == sdk.ExecModeFinalize {
+		if !sdkCtx.Synchronous() {
+			panic(scheduler.NewErrNextAccountNumber(sdkCtx.TxIndex()))
+		}
+	}
+	n, err := ak.AccountNumber.Next(sdkCtx.WithNamepace(merkle.DefaultTxNamespaceID))
 	if err != nil {
 		panic(err)
 	}
@@ -279,4 +288,9 @@ func (ak AccountKeeper) GetParams(ctx context.Context) (params types.Params) {
 		panic(err)
 	}
 	return params
+}
+
+// GetCdc return the cdc
+func (k AccountKeeper) GetCdc() codec.BinaryCodec {
+	return k.cdc
 }

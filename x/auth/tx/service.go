@@ -3,6 +3,8 @@ package tx
 import (
 	"context"
 	"fmt"
+	"github.com/cometbft/cometbft/rpc/core"
+	cmttypes "github.com/cometbft/cometbft/types"
 	"strings"
 
 	gogogrpc "github.com/cosmos/gogoproto/grpc"
@@ -22,7 +24,7 @@ import (
 )
 
 // baseAppSimulateFn is the signature of the Baseapp#Simulate function.
-type baseAppSimulateFn func(txBytes []byte) (sdk.GasInfo, *sdk.Result, error)
+type baseAppSimulateFn func(txBytes []byte, namespaceId uint64) (sdk.GasInfo, *sdk.Result, error)
 
 // txServer is the server for the protobuf Tx service.
 type txServer struct {
@@ -95,7 +97,12 @@ func (s txServer) Simulate(ctx context.Context, req *txtypes.SimulateRequest) (*
 		return nil, status.Errorf(codes.InvalidArgument, "empty txBytes is not allowed")
 	}
 
-	gasInfo, result, err := s.simulate(txBytes)
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	namespaceId, err := core.GetTxNamespaceId(cmttypes.Namespace(s.clientCtx.NamespaceId), cmttypes.Namespace(sdkCtx.Namespace()))
+	if err != nil {
+		return nil, err
+	}
+	gasInfo, result, err := s.simulate(txBytes, uint64(namespaceId))
 	if err != nil {
 		return nil, status.Errorf(codes.Unknown, "%v with gas used: '%d'", err, gasInfo.GasUsed)
 	}

@@ -36,16 +36,14 @@ func NewNamespaceMempool() *NamespaceMempool {
 	return nsm
 }
 
-func (nsm *NamespaceMempool) SelectWithNsTable(ctx context.Context, txs [][]byte, nsTable []*cmtproto.NamespaceTableEntries) ([]NamespaceInterator, map[uint64][][]byte) {
+func (nsm *NamespaceMempool) SelectWithNsTable(ctx context.Context, txs [][]byte, nsTable []*cmtproto.NamespaceTableEntries) []NamespaceInterator {
 
 	var (
 		nsIters []NamespaceInterator
-		nsTxs   map[uint64][][]byte
 		wg      sync.WaitGroup
 	)
 
 	nsIters = make([]NamespaceInterator, 0)
-	nsTxs = make(map[uint64][][]byte)
 	lastOffset := int32(0)
 	for _, entry := range nsTable {
 		namespaceTxs := txs[lastOffset:entry.Offset]
@@ -64,7 +62,6 @@ func (nsm *NamespaceMempool) SelectWithNsTable(ctx context.Context, txs [][]byte
 				})
 			}(ctx, namespaceTxs, namespaceId)
 		}
-		nsTxs[namespaceId] = namespaceTxs
 		lastOffset = entry.Offset
 	}
 
@@ -76,7 +73,7 @@ func (nsm *NamespaceMempool) SelectWithNsTable(ctx context.Context, txs [][]byte
 		return bytes.Compare(iBytes, jBytes) < 0
 	})
 
-	return nsIters, nsTxs
+	return nsIters
 }
 
 func (nsm *NamespaceMempool) Init(ctx context.Context) Mempool {
@@ -140,6 +137,14 @@ func (nsm *NamespaceMempool) CountTx() int {
 		count += mem.CountTx()
 	}
 	return count
+}
+func (nsm *NamespaceMempool) CountTxByNamespaceId(namespaceId uint64) int {
+	nsm.mtx.RLock()
+	defer nsm.mtx.RUnlock()
+	if pool, ok := nsm.pools[namespaceId]; ok {
+		return pool.CountTx()
+	}
+	return 0
 }
 func (nsm *NamespaceMempool) RemoveByNamespaceId(namespaceId uint64, tx sdk.Tx) error {
 	nsm.mtx.RLock()

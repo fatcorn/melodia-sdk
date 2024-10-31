@@ -135,7 +135,7 @@ message Validator {
   // list of unbonding ids, each uniquely identifing an unbonding of this validator
   repeated uint64 unbonding_ids = 13;
 
-  bytes sign_pubkey = 14 ;
+  bytes sign_pubkey = 14;
 }
 
 // BondStatus is the status of a validator.

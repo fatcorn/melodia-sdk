@@ -4,21 +4,24 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"github.com/cockroachdb/errors"
-	cmtdbm "github.com/cometbft/cometbft-db"
-	abci "github.com/cometbft/cometbft/abci/types"
-	cmtcfg "github.com/cometbft/cometbft/config"
-	"github.com/cometbft/cometbft/crypto/tmhash"
-	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
-	dbm "github.com/cosmos/cosmos-db"
-	"github.com/cosmos/gogoproto/proto"
-	"golang.org/x/exp/maps"
-	protov2 "google.golang.org/protobuf/proto"
 	"math"
 	"sort"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/cockroachdb/errors"
+	cmtdbm "github.com/cometbft/cometbft-db"
+	abci "github.com/cometbft/cometbft/abci/types"
+
+	cmtcfg "github.com/cometbft/cometbft/config"
+	"github.com/cometbft/cometbft/crypto/tmhash"
+	tmbytes "github.com/cometbft/cometbft/libs/bytes"
+	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	dbm "github.com/cosmos/cosmos-db"
+	"github.com/cosmos/gogoproto/proto"
+	"golang.org/x/exp/maps"
+	protov2 "google.golang.org/protobuf/proto"
 
 	"cosmossdk.io/core/header"
 	errorsmod "cosmossdk.io/errors"
@@ -34,6 +37,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/baseapp/oe"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	"github.com/cosmos/cosmos-sdk/nsblockstore"
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
 	rootmultiv2 "github.com/cosmos/cosmos-sdk/storev2/rootmulti"
@@ -90,17 +94,20 @@ type BaseApp struct {
 	anteHandler sdk.AnteHandler // ante handler for fee and auth
 	postHandler sdk.PostHandler // post handler, optional
 
-	initChainer         sdk.InitChainer  // ABCI InitChain handler
-	preBlocker          sdk.PreBlocker   // logic to run before BeginBlocker
-	beginBlocker        sdk.BeginBlocker // (legacy ABCI) BeginBlock handler
-	endBlocker          sdk.EndBlocker   // (legacy ABCI) EndBlock handler
-	namespaceBlockMaker sdk.NamespaceMakeBlock
-	processProposal     sdk.ProcessProposalHandler     // ABCI ProcessProposal handler
-	prepareProposal     sdk.PrepareProposalHandler     // ABCI PrepareProposal
-	extendVote          sdk.ExtendVoteHandler          // ABCI ExtendVote handler
-	verifyVoteExt       sdk.VerifyVoteExtensionHandler // ABCI VerifyVoteExtension handler
-	prepareCheckStater  sdk.PrepareCheckStater         // logic to run during commit using the checkState
-	precommiter         sdk.Precommiter                // logic to run during commit using the deliverState
+	pibcPacketGeneratorHadler *sdk.PIBCPacketGeneratorHandler
+
+	initChainer            sdk.InitChainer  // ABCI InitChain handler
+	preBlocker             sdk.PreBlocker   // logic to run before BeginBlocker
+	beginBlocker           sdk.BeginBlocker // (legacy ABCI) BeginBlock handler
+	endBlocker             sdk.EndBlocker   // (legacy ABCI) EndBlock handler
+	namespaceBlockPreparer sdk.NamespaceBlockPreparer
+	namespaceBlockMaker    sdk.NamespaceMakeBlock
+	processProposal        sdk.ProcessProposalHandler     // ABCI ProcessProposal handler
+	prepareProposal        sdk.PrepareProposalHandler     // ABCI PrepareProposal
+	extendVote             sdk.ExtendVoteHandler          // ABCI ExtendVote handler
+	verifyVoteExt          sdk.VerifyVoteExtensionHandler // ABCI VerifyVoteExtension handler
+	prepareCheckStater     sdk.PrepareCheckStater         // logic to run during commit using the checkState
+	precommiter            sdk.Precommiter                // logic to run during commit using the deliverState
 
 	addrPeerFilter sdk.PeerFilter // filter peers by address and port
 	idPeerFilter   sdk.PeerFilter // filter peers by node ID
@@ -213,19 +220,22 @@ type BaseApp struct {
 
 	namespaceStoreManager *nsblockstore.NamespaceStoreManager
 
-	transactionAddressHandler               sdk.TransactionAddressHandler
-	writeDeferredBalancesHandler            sdk.WriteDeferredBalancesHandler
-	addCosmosEventsToEVMReceiptIfApplicable sdk.AddCosmosEventsToEVMReceiptIfApplicable
-	setMsgsHandler                          sdk.SetMsgsHandler
-	modifyLogIndexHandler                   sdk.ModifyLogIndexHandler
-	setBlockBloomTransientHandler           sdk.SetBlockBloomTransientHandler
-	getAllNamespacePortsHandler             sdk.GetAllNamespacePortsHandler
-	contractStaticAnalysisHandler           sdk.ContractStaticAnalysisHandler
-	contractStaticAnalysisResultHandler     sdk.ContractStaticAnalysisResultHandler
-	isEVMTxHandler                          sdk.IsEVMTxHandler
-	txAccountInfoHandler                    sdk.TxAccountInfoHandler
-	deliverTxHooks                          []DeliverTxHook
-	concurrencyWorkers                      int
+	signerKeyring keyring.Keyring
+
+	signerName string
+
+	writeDeferredBalancesHandler               sdk.WriteDeferredBalancesHandler
+	addCosmosEventsToEVMReceiptIfApplicable    sdk.AddCosmosEventsToEVMReceiptIfApplicable
+	addTransientGasWanted                      sdk.AddTransientGasWanted
+	modifyLogIndexHandler                      sdk.ModifyLogIndexHandler
+	setBlockBloomTransientHandler              sdk.SetBlockBloomTransientHandler
+	contractStaticAnalysisResultHandler        sdk.ContractStaticAnalysisResultHandler
+	isEVMTxHandler                             sdk.IsEVMTxHandler
+	txAccountInfoHandler                       sdk.TxAccountInfoHandler
+	nextAccountNumberHandler                   sdk.NextAccountNumberHandler
+	crossNamespaceTransactionIdentifierHandler sdk.CrossNamespaceTransactionIdentifierHandler
+	deliverTxHooks                             []DeliverTxHook
+	concurrencyWorkers                         int
 }
 
 //type NamespaceStoreManager struct {
@@ -646,6 +656,11 @@ func (app *BaseApp) NamespaceStoreManager() *nsblockstore.NamespaceStoreManager 
 	return app.namespaceStoreManager
 }
 
+// IndexEvents returns the indexEvents.
+func (app *BaseApp) IndexEvents() map[string]struct{} {
+	return app.indexEvents
+}
+
 // LoadVersion loads the BaseApp application version. It will panic if called
 // more than once on a running baseapp.
 func (app *BaseApp) LoadVersion(version int64) error {
@@ -1054,7 +1069,7 @@ func (app *BaseApp) deliverTx(tx []byte, opts ...sdk.Context) *abci.ExecTxResult
 		telemetry.SetGauge(float32(gInfo.GasWanted), "tx", "gas", "wanted")
 	}()
 
-	gInfo, result, anteEvents, err := app.runTx(execModeFinalize, tx, ctx)
+	gInfo, result, anteEvents, _, err := app.runTx(execModeFinalize, tx, ctx)
 	if err != nil {
 		resultStr = "failed"
 		resp = sdkerrors.ResponseExecTxResultWithEvents(
@@ -1084,13 +1099,13 @@ func (app *BaseApp) deliverTx(tx []byte, opts ...sdk.Context) *abci.ExecTxResult
 	return resp
 }
 
-// makeNamespaceBlock is an application-defined function that is called after transactions
+// prepareNamespaceBlock is an application-defined function that is called after transactions
 // have been processed in FinalizeBlock.
-func (app *BaseApp) makeNamespaceBlock(ctx context.Context, txs [][]byte, nsTable []*cmtproto.NamespaceTableEntries) error {
+func (app *BaseApp) prepareNamespaceBlock(ctx context.Context, txs [][]byte, nsTable []*cmtproto.NamespaceTableEntries) error {
 
-	if app.namespaceBlockMaker != nil {
+	if app.namespaceBlockPreparer != nil {
 		namespaceMakeBLockContext := app.finalizeBlockState.Context()
-		namespacesBLockData, err := app.namespaceBlockMaker(namespaceMakeBLockContext, txs, nsTable)
+		namespacesBLockData, err := app.namespaceBlockPreparer(namespaceMakeBLockContext, txs, nsTable)
 		if err != nil {
 			return err
 		}
@@ -1105,11 +1120,44 @@ func (app *BaseApp) makeNamespaceBlock(ctx context.Context, txs [][]byte, nsTabl
 				return err
 			}
 			// todo, get namespaceId height and block hash
-			namespaceBLockStore, ok := app.namespaceStoreManager.GetNamespaceStoreByKey(storeKey)
+			namespaceBlockStore, ok := app.namespaceStoreManager.GetNamespaceStoreByKey(storeKey)
 			if !ok {
 				panic("Load namespace block store failed")
 			}
-			namespaceBLockStore.CacheBlock(&namespaceBLock)
+			namespaceBlockStore.CacheBlock(&namespaceBLock)
+		}
+
+	}
+
+	return nil
+}
+
+// makeNamespaceBlock is an application-defined function that is called after transactions
+// have been processed in FinalizeBlock.
+func (app *BaseApp) makeNamespaceBlock(ctx context.Context, globalEvents *[]abci.Event) error {
+
+	if app.namespaceBlockMaker != nil {
+		namespaceMakeBLockContext := app.finalizeBlockState.Context()
+		namespacesBLockData, err := app.namespaceBlockMaker(namespaceMakeBLockContext, globalEvents)
+		if err != nil {
+			return err
+		}
+
+		for storeKey, datum := range namespacesBLockData {
+			if len(datum) == 0 {
+				continue
+			}
+			var namespaceBLock nsblockstore.NamespaceBLock
+			err = borsh.Deserialize(&namespaceBLock, datum)
+			if err != nil {
+				return err
+			}
+			// todo, get namespaceId height and block hash
+			namespaceBlockStore, ok := app.namespaceStoreManager.GetNamespaceStoreByKey(storeKey)
+			if !ok {
+				panic("Load namespace block store failed")
+			}
+			namespaceBlockStore.UpdateBlock(&namespaceBLock)
 		}
 
 	}
@@ -1153,7 +1201,7 @@ func (app *BaseApp) endBlock(ctx context.Context) (sdk.EndBlock, error) {
 // Note, gas execution info is always returned. A reference to a Result is
 // returned if the tx does not run out of gas and if all the messages are valid
 // and execute successfully. An error is returned otherwise.
-func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (gInfo sdk.GasInfo, result *sdk.Result, anteEvents []abci.Event, err error) {
+func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (gInfo sdk.GasInfo, result *sdk.Result, anteEvents []abci.Event, packetMsg *sdk.PIBCPacket, err error) {
 	// NOTE: GasWanted should be returned by the AnteHandler. GasUsed is
 	// determined by the GasMeter. We need access to the context to get the gas
 	// meter, so we initialize upfront.
@@ -1168,11 +1216,13 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 		ctx = app.getContextForTx(mode, txBytes)
 	}
 
+	ctx = ctx.WithNamespaceBlockManager(app.namespaceStoreManager)
+
 	ms := ctx.MultiStore()
 
 	// only run the tx if there is block gas remaining
 	if mode == execModeFinalize && ctx.BlockGasMeter().IsOutOfGas() {
-		return gInfo, nil, nil, errorsmod.Wrap(sdkerrors.ErrOutOfGas, "no block gas left to run tx")
+		return gInfo, nil, nil, nil, errorsmod.Wrap(sdkerrors.ErrOutOfGas, "no block gas left to run tx")
 	}
 
 	defer func() {
@@ -1180,25 +1230,31 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			recoveryMW := newOutOfGasRecoveryMiddleware(gasWanted, ctx, app.runTxRecoveryMiddleware)
 			recoveryMW = newOCCAbortRecoveryMiddleware(recoveryMW)
 			err, result = processRecovery(r, recoveryMW), nil
-			ctx.Logger().Error("panic recovered in runTx", "err", err)
-		}
+			ctx.Logger().Warn("panic recovered in runTx", "err", err, "height", ctx.BlockHeight(), "txIndex", ctx.TxIndex())
 
+		}
 		gInfo = sdk.GasInfo{GasWanted: gasWanted, GasUsed: ctx.GasMeter().GasConsumed()}
 	}()
 
-	blockGasConsumed := false
+	//blockGasConsumed := false
 
 	// consumeBlockGas makes sure block gas is consumed at most once. It must
 	// happen after tx processing, and must be executed even if tx processing
 	// fails. Hence, it's execution is deferred.
-	consumeBlockGas := func() {
-		if !blockGasConsumed {
-			blockGasConsumed = true
-			ctx.BlockGasMeter().ConsumeGas(
-				ctx.GasMeter().GasConsumedToLimit(), "block gas meter",
-			)
-		}
-	}
+	//consumeBlockGas := func() {
+	//	//if !blockGasConsumed {
+	//	//	blockGasConsumed = true
+	//	//	txHash := tmbytes.HexBytes(tmtypes.Tx(txBytes).Hash())
+	//	//
+	//	//	before := ctx.BlockGasMeter().GasConsumedToLimit()
+	//	//	ctx.BlockGasMeter().ConsumeGas(
+	//	//		ctx.GasMeter().GasConsumedToLimit(), "block gas meter",
+	//	//	)
+	//	//	after := ctx.BlockGasMeter().GasConsumedToLimit()
+	//	//	println("height=", ctx.BlockHeight(), "txHash=", fmt.Sprintf("%x", txHash), "After GasUsed=", after, "Before GasUsed=", before)
+	//	//
+	//	//}
+	//}
 
 	// If BlockGasMeter() panics it will be caught by the above recover and will
 	// return an error - in any case BlockGasMeter will consume gas past the limit.
@@ -1206,24 +1262,24 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	// NOTE: consumeBlockGas must exist in a separate defer function from the
 	// general deferred recovery function to recover from consumeBlockGas as it'll
 	// be executed first (deferred statements are executed as stack).
-	if mode == execModeFinalize {
-		defer consumeBlockGas()
-	}
+	//if mode == execModeFinalize {
+	//	defer consumeBlockGas()
+	//}
 
 	tx, err := app.txDecoder(txBytes)
 	if err != nil {
-		return sdk.GasInfo{}, nil, nil, err
+		return sdk.GasInfo{}, nil, nil, nil, err
 	}
 
 	msgs := tx.GetMsgs()
 	if err := validateBasicTxMsgs(msgs); err != nil {
-		return sdk.GasInfo{}, nil, nil, err
+		return sdk.GasInfo{}, nil, nil, nil, err
 	}
 
 	for _, msg := range msgs {
 		handler := app.msgServiceRouter.Handler(msg)
 		if handler == nil {
-			return sdk.GasInfo{}, nil, nil, errorsmod.Wrapf(sdkerrors.ErrUnknownRequest, "no message handler found for %T", msg)
+			return sdk.GasInfo{}, nil, nil, nil, errorsmod.Wrapf(sdkerrors.ErrUnknownRequest, "no message handler found for %T", msg)
 		}
 	}
 
@@ -1263,7 +1319,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 		gasWanted = ctx.GasMeter().Limit()
 
 		if err != nil {
-			return gInfo, nil, nil, err
+			return gInfo, nil, nil, nil, err
 		}
 
 		//now = cmttime.Now()
@@ -1279,7 +1335,22 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	if mode == execModeCheck {
 		err = app.mempool.Insert(ctx, tx)
 		if err != nil {
-			return gInfo, nil, anteEvents, err
+			return gInfo, nil, anteEvents, nil, err
+		}
+		if app.pibcPacketGeneratorHadler != nil && app.signerName != "" {
+			record, err := app.signerKeyring.Key(app.signerName)
+			if err != nil {
+				panic(fmt.Errorf("load tx signer failed"))
+			}
+			signerAddr, err := record.GetAddress()
+			if err != nil {
+				panic(fmt.Errorf("load tx signer address failed"))
+			}
+			msg, err := app.pibcPacketGeneratorHadler.Handle(ctx, tx, signerAddr)
+			if err != nil {
+				return gInfo, nil, anteEvents, nil, err
+			}
+			packetMsg = msg
 		}
 	} else if mode == execModeFinalize {
 		nsMempool, isNsOp := app.mempool.(*mempool.NamespaceMempool)
@@ -1289,7 +1360,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			err = app.mempool.Remove(tx)
 		}
 		if err != nil && !errors.Is(err, mempool.ErrTxNotFound) {
-			return gInfo, nil, anteEvents,
+			return gInfo, nil, anteEvents, nil,
 				fmt.Errorf("failed to remove tx from mempool: %w", err)
 		}
 	}
@@ -1325,7 +1396,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 
 		newCtx, errPostHandler := app.postHandler(postCtx, tx, mode == execModeSimulate, err == nil)
 		if errPostHandler != nil {
-			return gInfo, nil, anteEvents, errors.Join(err, errPostHandler)
+			return gInfo, nil, anteEvents, nil, errors.Join(err, errPostHandler)
 		}
 
 		// we don't want runTx to panic if runMsgs has failed earlier
@@ -1338,7 +1409,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	if err == nil {
 		if mode == execModeFinalize {
 			// When block gas exceeds, it'll panic and won't commit the cached store.
-			consumeBlockGas()
+			//consumeBlockGas()
 
 			msCache.Write()
 		}
@@ -1352,7 +1423,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	//	sleepDuration := cmttime.Now().Sub(now)
 	//	println("stage5 task: ", ctx.TxIndex(), " time: ", sleepDuration, " from: ", now.String())
 	//}
-	return gInfo, result, anteEvents, err
+	return gInfo, result, anteEvents, packetMsg, err
 }
 
 // runMsgs iterates through a list of messages and executes them with the provided
@@ -1459,36 +1530,41 @@ func createEvents(cdc codec.Codec, events sdk.Events, msg sdk.Msg, msgV2 protov2
 
 func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.ResponseSortTxs, error) {
 	startTime := time.Now()
-
+	reqByteTxs, _ := app.TxDecodeBatch(req.Txs)
+	app.logger.Info("1->sortTxs TxDecodeBatch time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(req.Txs), "height", ctx.BlockHeight())
+	insertTime := time.Now()
 	var (
 		sortTxs                 = make([][]byte, 0)
-		lastOffset              = int32(0)
 		wg                      sync.WaitGroup
 		nsMempool               = mempool.NewNamespaceMempool()
 		beforeInterChainPairTxs = make(map[string][]*cmtproto.NsInterChainTransactionIndex)
 		afterInterChainPairTxs  = make(map[string][]*cmtproto.NsInterChainTransactionIndex)
-		isInterChainTx          = func(tx sdk.Tx) (string, bool) {
-			//TODO 获取id，返回是否是跨链
-			return "", false
+
+		listNamespaceByteTxs = func(byteTxs []sdk.ByteTx, nsTable []*cmtproto.NamespaceTableEntries) map[uint64][]sdk.ByteTx {
+			nsByteTxs := make(map[uint64][]sdk.ByteTx)
+			lastOffset := int32(0)
+			for _, entry := range nsTable {
+				namespaceTxs := byteTxs[lastOffset:entry.Offset]
+				namespaceId := entry.Namespace
+				lastOffset = entry.Offset
+				nsByteTxs[namespaceId] = namespaceTxs
+			}
+			return nsByteTxs
 		}
-		sortInterChainTxOrders = func(txs []*cmtproto.NsInterChainTransactionIndex) []*cmtproto.NsInterChainTransactionIndex {
-			idxes := make([]*cmtproto.NsInterChainTransactionIndex, 2)
-			//TODO 根据交易类型排序
-			idxes[0] = txs[0]
-			idxes[1] = txs[1]
-			return idxes
-		}
-		nsMempoolInsertTxs = func(ctx sdk.Context, namespaceTxs [][]byte, namespaceId uint64) {
+
+		nsMempoolInsertTxs = func(ctx sdk.Context, namespaceTxs []sdk.ByteTx, namespaceId uint64) {
 			defer wg.Done()
 			singleStartTime := time.Now()
-			for idx, txBz := range namespaceTxs {
-				tx, err := app.TxDecode(txBz)
-				if err != nil {
+			for idx, byteTx := range namespaceTxs {
+				tx := byteTx.Tx
+				txBz := byteTx.TxBytes
+				if tx == nil || txBz == nil {
 					continue
 				}
 
-				txId, isInter := isInterChainTx(tx)
-				if isInter {
+				txIdBz, isCross, _ := app.crossNamespaceTransactionIdentifierHandler(ctx.WithTxBytes(txBz), tx)
+				if isCross {
+					txId := tmbytes.HexBytes(txIdBz).String()
 					if _, ok := beforeInterChainPairTxs[txId]; ok {
 						beforeInterChainPairTxs[txId] = append(beforeInterChainPairTxs[txId], &cmtproto.NsInterChainTransactionIndex{
 							Namespace: namespaceId,
@@ -1508,21 +1584,22 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 				_ = nsMempool.Insert(ctx, tx)
 
 			}
-			app.logger.Info("sortTxs single namespace insert time", "used", fmt.Sprintf("%v ms", time.Since(singleStartTime).Milliseconds()), "size", len(namespaceTxs), "namespaceId", namespaceId)
+			app.logger.Info("2.1->sortTxs single namespace insert time", "used", fmt.Sprintf("%v ms", time.Since(singleStartTime).Milliseconds()), "size", len(namespaceTxs), "namespaceId", namespaceId, "height", ctx.BlockHeight())
 		}
 	)
-	for _, entry := range req.NsTable {
-		namespaceTxs := req.Txs[lastOffset:entry.Offset]
-		namespaceId := entry.Namespace
-		lastOffset = entry.Offset
+	nsByteTxs := listNamespaceByteTxs(reqByteTxs, req.NsTable)
+
+	for namespaceId, byteTxs := range nsByteTxs {
 		wg.Add(1)
-		go nsMempoolInsertTxs(ctx, namespaceTxs, namespaceId)
+		go nsMempoolInsertTxs(ctx, byteTxs, namespaceId)
 	}
 	wg.Wait()
+	app.logger.Info("2->sortTxs total insert time", "used", fmt.Sprintf("%v ms", time.Since(insertTime).Milliseconds()), "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
 
 	sortTime := time.Now()
-	nsIterators, nsTxs := nsMempool.SelectWithNsTable(ctx, req.Txs, req.NsTable)
-	app.logger.Info("sortTxs sort time", "sort used", fmt.Sprintf("%v ms", time.Since(sortTime).Milliseconds()), "insert total used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "reqSize", len(req.Txs), "reqNsTable", req.NsTable)
+	nsIterators := nsMempool.SelectWithNsTable(ctx, req.Txs, req.NsTable)
+
+	app.logger.Info("3->sortTxs sort time", "used", fmt.Sprintf("%v ms", time.Since(sortTime).Milliseconds()), "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
 
 	var (
 		offset  = 0
@@ -1534,17 +1611,15 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 				Entries: make([]*cmtproto.NsInterChainTransactionOrderEntry, 0),
 			},
 		}
-		staticAnalysisResult = &sync.Map{}
-		txIndex              = 0
+		txIndex = 0
 	)
-	if app.contractStaticAnalysisResultHandler != nil {
-		staticAnalysisResult = app.contractStaticAnalysisResultHandler(ctx)
-	}
-
-	handleNsInterChainTransactionOrders := func(tx sdk.Tx, txIdx int, namespaceId uint64) bool {
-
-		txId, isInter := isInterChainTx(tx)
-		if isInter {
+	staticTime := time.Now()
+	handleNsInterChainTransactionOrders := func(byteTx sdk.ByteTx, txIdx int, namespaceId uint64) bool {
+		tx := byteTx.Tx
+		txBz := byteTx.TxBytes
+		txIdBz, isCross, isFirst := app.crossNamespaceTransactionIdentifierHandler(ctx.WithTxBytes(txBz), tx)
+		if isCross {
+			txId := tmbytes.HexBytes(txIdBz).String()
 			if pairTxs, inPair := beforeInterChainPairTxs[txId]; inPair {
 				if len(pairTxs) != 2 {
 					return false
@@ -1556,8 +1631,19 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 					Namespace: namespaceId,
 					Index:     int32(txIdx),
 				})
+
+				idxes := make([]*cmtproto.NsInterChainTransactionIndex, 2)
+
+				if isFirst {
+					idxes[0] = interTxs[1]
+					idxes[1] = interTxs[0]
+				} else {
+					idxes[0] = interTxs[0]
+					idxes[1] = interTxs[1]
+				}
+
 				entry := &cmtproto.NsInterChainTransactionOrderEntry{
-					Indexes: sortInterChainTxOrders(interTxs),
+					Indexes: idxes,
 				}
 				orders.NsInterChainTransactionOrders.Entries = append(orders.NsInterChainTransactionOrders.Entries, entry)
 			} else {
@@ -1572,110 +1658,160 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 		return true
 	}
 
-	staticTime := time.Now()
 	for _, nsIterator := range nsIterators {
 		iterator := nsIterator.Iterator
 		namespaceId := nsIterator.NamespaceId
 
+		txSize := nsMempool.CountTxByNamespaceId(namespaceId)
 		// Static analysis
 		var (
-			fromIndexMap          = make(map[string]int)
-			toIndexMap            = make(map[string]int)
-			staticToSerialIndexes = make([]int32, 0)
-			staticToSerialIndex   int32
-			nsTransactionIndexes  = make([]*cmtproto.NsTransactionIndexes, 0)
+			txs                  = make([]sdk.Tx, 0, txSize)
+			byteTxs              = make([]sdk.ByteTx, 0, txSize)
+			addressIndexMap      = make(map[string]int)
+			lastTxIndexMap       = make(map[string]int)
+			nsTransactionIndexes = make([]*cmtproto.NsTransactionIndexes, 0, txSize)
 		)
-
-		handleNsTransactionOrders := func(tx sdk.Tx, txIdx int, namespaceId uint64) {
-			from, to := app.txAccountInfoHandler(tx)
-			//1、from the same must be serial
-			if idx, exists := fromIndexMap[from]; exists {
-				nsTransactionIndexes[idx].Indexes = append(nsTransactionIndexes[idx].Indexes, int32(txIdx))
-				return
-			}
-			//2、to the same must be serial
-			if to != "" {
-				if idx, exists := toIndexMap[to]; exists {
-					nsTransactionIndexes[idx].Indexes = append(nsTransactionIndexes[idx].Indexes, int32(txIdx))
-					return
-				}
-				//3、to contract static analysis must be serial
-				if staticToSerial, exists := staticAnalysisResult.Load(to); exists {
-					if !staticToSerial.(bool) {
-						if len(staticToSerialIndexes) > 0 {
-							staticToSerialIndexes = append(staticToSerialIndexes, int32(txIdx))
-							nsTransactionIndexes[staticToSerialIndex].Indexes = staticToSerialIndexes
-						} else {
-							staticToSerialIndexes = append(staticToSerialIndexes, int32(txIdx))
-							nsTransactionIndexes = append(nsTransactionIndexes, &cmtproto.NsTransactionIndexes{
-								Indexes: staticToSerialIndexes,
-							})
-							staticToSerialIndex = int32(len(nsTransactionIndexes) - 1)
-						}
-						return
-					}
-				}
-			}
-			indexes := make([]int32, 1)
-			indexes[0] = int32(txIdx)
-			newIndex := &cmtproto.NsTransactionIndexes{Indexes: indexes}
-			nsTransactionIndexes = append(nsTransactionIndexes, newIndex)
-			fromIndexMap[from] = len(nsTransactionIndexes) - 1
-			if to != "" {
-				toIndexMap[to] = len(nsTransactionIndexes) - 1
-			}
-		}
 
 		// If the iterator is nil use the NoOpMempool, get all namespace txs
 		if iterator == nil {
-			txs := nsTxs[namespaceId]
-			for _, txBz := range txs {
-				tx, err := app.TxDecode(txBz)
-				if err != nil {
-					return nil, err
-				}
-				ok := handleNsInterChainTransactionOrders(tx, txIndex, namespaceId)
-				if !ok {
-					continue
-				}
-				sortTxs = append(sortTxs, txBz)
-				offset++
-
-				handleNsTransactionOrders(tx, txIndex, namespaceId)
-				txIndex++
-			}
+			byteTxs = nsByteTxs[namespaceId]
 		} else {
-
 			for iterator != nil {
 				tx := iterator.Tx()
-				txBz, err := app.TxEncode(tx)
-				if err != nil {
-					return nil, err
-				}
-
-				ok := handleNsInterChainTransactionOrders(tx, txIndex, namespaceId)
-				if !ok {
-					continue
-				}
-
-				sortTxs = append(sortTxs, txBz)
-				offset++
+				txs = append(txs, tx)
 				iterator = iterator.Next()
+			}
+			batchTime := time.Now()
+			byteTxs, _ = app.TxEncodeBatch(txs)
+			app.logger.Info("4.1->sortTxs iterator TxEncodeBatch  time", "used", fmt.Sprintf("%v ms", time.Since(batchTime).Milliseconds()), "namespaceId", namespaceId, "height", ctx.BlockHeight())
+		}
 
-				handleNsTransactionOrders(tx, txIndex, namespaceId)
-				txIndex++
+		handleNsTransactionDependOrders := func(txIdx int, namespaceId uint64, from string, to string) {
+			if lastToIdx, toExists := lastTxIndexMap[to]; toExists {
+				if lastFromIdx, fromExists := lastTxIndexMap[from]; !fromExists || lastFromIdx != lastToIdx {
+					entry := &cmtproto.NsInterChainTransactionOrderEntry{
+						Indexes: []*cmtproto.NsInterChainTransactionIndex{
+							{
+								Namespace: namespaceId,
+								Index:     int32(lastToIdx),
+							},
+							{
+								Namespace: namespaceId,
+								Index:     int32(txIdx),
+							},
+						},
+					}
+					orders.NsInterChainTransactionOrders.Entries = append(orders.NsInterChainTransactionOrders.Entries, entry)
+				}
+			}
+			lastTxIndexMap[from] = txIdx
+			lastTxIndexMap[to] = txIdx
+		}
+
+		handleNsTransactionOrders := func(tx sdk.Tx, txIdx int, namespaceId uint64) {
+
+			var (
+				fromIdx    int
+				toIdx      int
+				fromExists bool
+				toExists   bool
+				from       string
+				to         string
+				curIdx     int
+				isToSerial bool
+				toIsSerial = func(namespaceId uint64, to string) bool {
+					isContract, isContractSerial := app.contractStaticAnalysisResultHandler(ctx.WithNamepace(namespaceId), to)
+					if isContract {
+						return isContractSerial
+					}
+					return true
+				}
+			)
+
+			defer func() {
+				if isToSerial {
+					handleNsTransactionDependOrders(txIdx, namespaceId, from, to)
+				}
+			}()
+
+			from, to = app.txAccountInfoHandler(tx)
+
+			fromIdx, fromExists = addressIndexMap[from]
+			toIdx, toExists = addressIndexMap[to]
+
+			if fromExists && toExists {
+				//Both exist,add from index
+				curIdx = fromIdx
+				nsTransactionIndexes[curIdx].Indexes = append(nsTransactionIndexes[curIdx].Indexes, int32(txIdx))
+
+				//Check if they should be depends
+				if toIsSerial(namespaceId, to) {
+					isToSerial = true
+				}
+			} else if fromExists {
+				// Only from exists, add to index
+				curIdx = fromIdx
+				nsTransactionIndexes[curIdx].Indexes = append(nsTransactionIndexes[curIdx].Indexes, int32(txIdx))
+				addressIndexMap[to] = curIdx
+			} else if toExists {
+				// Only to exists, add from index
+				if toIsSerial(namespaceId, to) {
+					isToSerial = true
+					//append to index
+					curIdx = toIdx
+					nsTransactionIndexes[curIdx].Indexes = append(nsTransactionIndexes[curIdx].Indexes, int32(txIdx))
+					addressIndexMap[from] = curIdx
+				} else {
+					//create new from index
+					nsTransactionIndexes = append(nsTransactionIndexes, &cmtproto.NsTransactionIndexes{Indexes: []int32{int32(txIdx)}})
+					curIdx = len(nsTransactionIndexes) - 1
+					addressIndexMap[from] = curIdx
+				}
+			} else {
+				// Neither exists, create both indices
+				//create new from & to index
+				nsTransactionIndexes = append(nsTransactionIndexes, &cmtproto.NsTransactionIndexes{Indexes: []int32{int32(txIdx)}})
+				curIdx = len(nsTransactionIndexes) - 1
+				addressIndexMap[from] = curIdx
+				addressIndexMap[to] = curIdx
 			}
 		}
-		nsTable = append(nsTable, &cmtproto.NamespaceTableEntries{
-			Namespace: namespaceId,
-			Offset:    int32(offset),
-		})
-		orders.NsTransactionOrders.Entries = append(orders.NsTransactionOrders.Entries, &cmtproto.NsTransactionOrderEntry{
-			Namespace: namespaceId,
-			Indexes:   nsTransactionIndexes,
-		})
+
+		orderTime := time.Now()
+		for _, byteTx := range byteTxs {
+			txBz := byteTx.TxBytes
+			tx := byteTx.Tx
+			if tx == nil || txBz == nil {
+				continue
+			}
+			ok := handleNsInterChainTransactionOrders(byteTx, txIndex, namespaceId)
+			if !ok {
+				continue
+			}
+
+			sortTxs = append(sortTxs, txBz)
+			offset++
+
+			handleNsTransactionOrders(tx, txIndex, namespaceId)
+			txIndex++
+		}
+		app.logger.Info("4.2->sortTxs orders time", "used", fmt.Sprintf("%v ms", time.Since(orderTime).Milliseconds()), "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
+
+		if len(nsTransactionIndexes) > 0 {
+			nsTable = append(nsTable, &cmtproto.NamespaceTableEntries{
+				Namespace: namespaceId,
+				Offset:    int32(offset),
+			})
+			orders.NsTransactionOrders.Entries = append(orders.NsTransactionOrders.Entries, &cmtproto.NsTransactionOrderEntry{
+				Namespace: namespaceId,
+				Indexes:   nsTransactionIndexes,
+			})
+		}
+
 	}
-	app.logger.Info("sortTxs total time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "orders time used", fmt.Sprintf("%v ms", time.Since(staticTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable)
+	app.logger.Info("4->sortTxs total orders time", "used", fmt.Sprintf("%v ms", time.Since(staticTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
+	app.logger.Info("5->sortTxs total time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
+
 	return &abci.ResponseSortTxs{Txs: sortTxs, NsTable: nsTable, Orders: orders}, nil
 }
 
@@ -1690,7 +1826,7 @@ func (app *BaseApp) PrepareProposalVerifyTx(tx sdk.Tx) ([]byte, error) {
 		return nil, err
 	}
 
-	_, _, _, err = app.runTx(execModePrepareProposal, bz)
+	_, _, _, _, err = app.runTx(execModePrepareProposal, bz)
 	if err != nil {
 		return nil, err
 	}
@@ -1709,7 +1845,7 @@ func (app *BaseApp) ProcessProposalVerifyTx(txBz []byte) (sdk.Tx, error) {
 		return nil, err
 	}
 
-	_, _, _, err = app.runTx(execModeProcessProposal, txBz)
+	_, _, _, _, err = app.runTx(execModeProcessProposal, txBz)
 	if err != nil {
 		return nil, err
 	}
@@ -1723,6 +1859,49 @@ func (app *BaseApp) TxDecode(txBytes []byte) (sdk.Tx, error) {
 
 func (app *BaseApp) TxEncode(tx sdk.Tx) ([]byte, error) {
 	return app.txEncoder(tx)
+}
+
+func (app *BaseApp) TxDecodeBatch(txsBytes [][]byte) ([]sdk.ByteTx, error) {
+
+	wg := sync.WaitGroup{}
+	decodeTxs := make([]sdk.ByteTx, len(txsBytes))
+
+	//f, _ := os.Create("trace.out")
+	//
+	//if err := trace.Start(f); err != nil {
+	//	//panic(err)
+	//}
+	for idx, txBz := range txsBytes {
+		wg.Add(1)
+		go func(txBz []byte, idx int) {
+			defer wg.Done()
+			tx, err := app.txDecoder(txBz)
+			if err == nil {
+				decodeTxs[idx] = sdk.ByteTx{Tx: tx, TxBytes: txBz}
+			}
+		}(txBz, idx)
+	}
+	//trace.Stop()
+	wg.Wait()
+
+	return decodeTxs, nil
+}
+func (app *BaseApp) TxEncodeBatch(txs []sdk.Tx) ([]sdk.ByteTx, error) {
+
+	wg := sync.WaitGroup{}
+	encodeTxs := make([]sdk.ByteTx, len(txs))
+	for idx, tx := range txs {
+		wg.Add(1)
+		go func(tx sdk.Tx, idx int) {
+			defer wg.Done()
+			txBz, err := app.txEncoder(tx)
+			if err == nil {
+				encodeTxs[idx] = sdk.ByteTx{Tx: tx, TxBytes: txBz}
+			}
+		}(tx, idx)
+	}
+	wg.Wait()
+	return encodeTxs, nil
 }
 
 // Close is called in start cmd to gracefully cleanup resources.

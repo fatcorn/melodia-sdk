@@ -17,6 +17,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/baseapp/oe"
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/codec/types"
+	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/mempool"
 )
@@ -57,6 +58,18 @@ func SetNamespaceDBManager(info nsblockstore.NamespaceStoreDBInfo) func(*BaseApp
 			bapp.loadNamespaceBLockStore(namespaceModule.NamespaceId, db, namespaceModule.ModuleName, relatedModules)
 		}
 		bapp.namespaceStoreManager.SetDBRootDir(info.DbRootDir)
+	}
+}
+
+func SetSignerKeyring(keyring keyring.Keyring) func(*BaseApp) {
+	return func(bapp *BaseApp) {
+		bapp.signerKeyring = keyring
+	}
+}
+
+func SetSignerName(signerName string) func(*BaseApp) {
+	return func(bapp *BaseApp) {
+		bapp.signerName = signerName
 	}
 }
 
@@ -219,10 +232,18 @@ func (app *BaseApp) SetEndBlocker(endBlocker sdk.EndBlocker) {
 
 func (app *BaseApp) SetNamespaceBlockMaker(namespaceBlockMaker sdk.NamespaceMakeBlock) {
 	if app.sealed {
-		panic("SetEndBlocker() on sealed BaseApp")
+		panic("SetNamespaceBlockMaker() on sealed BaseApp")
 	}
 
 	app.namespaceBlockMaker = namespaceBlockMaker
+}
+
+func (app *BaseApp) SetNamespaceBlockPreparer(namespaceBlockPreparer sdk.NamespaceBlockPreparer) {
+	if app.sealed {
+		panic("SetNamespaceBlockPreparer() on sealed BaseApp")
+	}
+
+	app.namespaceBlockPreparer = namespaceBlockPreparer
 }
 
 func (app *BaseApp) SetPrepareCheckStater(prepareCheckStater sdk.PrepareCheckStater) {
@@ -247,6 +268,14 @@ func (app *BaseApp) SetAnteHandler(ah sdk.AnteHandler) {
 	}
 
 	app.anteHandler = ah
+}
+
+func (app *BaseApp) SetPIBCPacketGeneratorHandler(ppgh *sdk.PIBCPacketGeneratorHandler) {
+	if app.sealed {
+		panic("SetPIBCPacketGeneratorHandler() on sealed BaseApp")
+	}
+
+	app.pibcPacketGeneratorHadler = ppgh
 }
 
 func (app *BaseApp) SetPostHandler(ph sdk.PostHandler) {
@@ -327,10 +356,6 @@ func (app *BaseApp) SetTxEncoder(txEncoder sdk.TxEncoder) {
 	app.txEncoder = txEncoder
 }
 
-func (app *BaseApp) SetTransactionAddressHandler(transactionAddressHandler sdk.TransactionAddressHandler) {
-	app.transactionAddressHandler = transactionAddressHandler
-}
-
 func (app *BaseApp) SetIsEVMTxHandler(isEVMTxHandler sdk.IsEVMTxHandler) {
 	app.isEVMTxHandler = isEVMTxHandler
 }
@@ -342,9 +367,8 @@ func (app *BaseApp) SetWriteDeferredBalancesHandler(writeDeferredBalancesHandler
 func (app *BaseApp) SetAddCosmosEventsToEVMReceiptIfApplicable(addCosmosEventsToEVMReceiptIfApplicable sdk.AddCosmosEventsToEVMReceiptIfApplicable) {
 	app.addCosmosEventsToEVMReceiptIfApplicable = addCosmosEventsToEVMReceiptIfApplicable
 }
-
-func (app *BaseApp) SetSetMsgsHandler(setMsgsHandler sdk.SetMsgsHandler) {
-	app.setMsgsHandler = setMsgsHandler
+func (app *BaseApp) SetAddTransientGasWanted(addTransientGasWanted sdk.AddTransientGasWanted) {
+	app.addTransientGasWanted = addTransientGasWanted
 }
 
 func (app *BaseApp) SetModifyLogIndexHandler(modifyLogIndexHandler sdk.ModifyLogIndexHandler) {
@@ -355,19 +379,18 @@ func (app *BaseApp) SetSetBlockBloomTransientHandler(setBlockBloomTransientHandl
 	app.setBlockBloomTransientHandler = setBlockBloomTransientHandler
 }
 
-func (app *BaseApp) SetGetAllNamespacePortsHandler(getAllNamespacePortsHandler sdk.GetAllNamespacePortsHandler) {
-	app.getAllNamespacePortsHandler = getAllNamespacePortsHandler
-}
-
-func (app *BaseApp) SetContractStaticAnalysisHandler(contractStaticAnalysisHandler sdk.ContractStaticAnalysisHandler) {
-	app.contractStaticAnalysisHandler = contractStaticAnalysisHandler
-}
 func (app *BaseApp) SetContractStaticAnalysisResultHandler(contractStaticAnalysisResultHandler sdk.ContractStaticAnalysisResultHandler) {
 	app.contractStaticAnalysisResultHandler = contractStaticAnalysisResultHandler
 }
 
 func (app *BaseApp) SetTxAccountInfoHandler(txAccountInfoHandler sdk.TxAccountInfoHandler) {
 	app.txAccountInfoHandler = txAccountInfoHandler
+}
+func (app *BaseApp) SetNextAccountNumberHandler(nextAccountNumberHandler sdk.NextAccountNumberHandler) {
+	app.nextAccountNumberHandler = nextAccountNumberHandler
+}
+func (app *BaseApp) SetCrossNamespaceTransactionIdentifierHandler(crossNamespaceTransactionIdentifierHandler sdk.CrossNamespaceTransactionIdentifierHandler) {
+	app.crossNamespaceTransactionIdentifierHandler = crossNamespaceTransactionIdentifierHandler
 }
 
 // SetQueryMultiStore set a alternative MultiStore implementation to support grpc query service.

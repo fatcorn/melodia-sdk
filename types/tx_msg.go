@@ -3,17 +3,13 @@ package types
 import (
 	"encoding/json"
 	fmt "fmt"
-	strings "strings"
-	"sync"
-
-	"github.com/cosmos/gogoproto/proto"
-	protov2 "google.golang.org/protobuf/proto"
-
 	abci "github.com/cometbft/cometbft/abci/types"
-	consensustypes "github.com/cometbft/cometbft/types"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
+	"github.com/cosmos/gogoproto/proto"
+	protov2 "google.golang.org/protobuf/proto"
+	strings "strings"
 )
 
 type (
@@ -84,8 +80,8 @@ type (
 
 	TxWithAccountInfo interface {
 		Tx
-		GetFrom() AccAddress
-		GetTo() AccAddress
+		GetFrom() string
+		GetTo() string
 		GetNonce() uint64
 	}
 
@@ -105,25 +101,19 @@ type TxDecoder func(txBytes []byte) (Tx, error)
 // TxEncoder marshals transaction to bytes
 type TxEncoder func(tx Tx) ([]byte, error)
 
-type TransactionAddressHandler func(ctx Context, tx Tx) (bool, []string, []string)
-
 type TxAccountInfoHandler func(tx Tx) (string, string)
-
-type SetMsgsHandler func(ctx Context, msgs []Msg)
-type ModifyLogIndexHandler func(ctx Context, input string, logIndex uint64) string
-
-type SetBlockBloomTransientHandler func(ctx Context, logs []string)
+type NextAccountNumberHandler func(ctx Context, tx Tx) map[string]uint64
+type CrossNamespaceTransactionIdentifierHandler func(ctx Context, tx Tx) ([]byte, bool, bool)
 
 type WriteDeferredBalancesHandler func(ctx Context) []abci.Event
-
 type AddCosmosEventsToEVMReceiptIfApplicable func(ctx Context, tx Tx, checksum [32]byte, resp *abci.ExecTxResult)
+type AddTransientGasWanted func(ctx Context, gasWanted uint64)
 
-type GetAllNamespacePortsHandler func(ctx Context) []consensustypes.Namespace
-
-type ContractStaticAnalysisHandler func(ctx Context, tx Tx, sender string)
-
-type ContractStaticAnalysisResultHandler func(ctx Context) *sync.Map
 type IsEVMTxHandler func(ctx Context, tx Tx) bool
+type ModifyLogIndexHandler func(ctx Context, input string, logIndex uint64) string
+type SetBlockBloomTransientHandler func(ctx Context, logs []string)
+
+type ContractStaticAnalysisResultHandler func(ctx Context, contractAddress string) (bool, bool)
 
 // MsgTypeURL returns the TypeURL of a `sdk.Msg`.
 var MsgTypeURL = codectypes.MsgTypeURL

@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package cosmos.pibc.v1beta1;
+
+import "cosmos/pibc/v1beta1/tx.proto";
+import "cosmos/query/v1/query.proto";
+import "gogoproto/gogo.proto";
+import "google/api/annotations.proto";
+
+option go_package = "github.com/cosmos/cosmos-sdk/x/pibc/types";
+
+// Query defines the gRPC querier service.
+service Query {
+  // SourcePacket queries the cross namespace tx source packet
+  rpc SourcePacket(QuerySourcePacketRequest) returns (QuerySourcePacketResponse) {
+    option (cosmos.query.v1.module_query_safe) = true;
+    option (google.api.http).get               = "/cosmos/pibc/v1beta1/sourcePacket/{tx_id}";
+  }
+}
+
+// QueryBalanceRequest is the request type for the Query/Balance RPC method.
+message QuerySourcePacketRequest {
+  option (gogoproto.equal)           = false;
+  option (gogoproto.goproto_getters) = false;
+
+  // address is the address to query balances for.
+  bytes tx_id = 1;
+}
+
+// QueryBalanceResponse is the response type for the Query/Balance RPC method.
+message QuerySourcePacketResponse {
+  // balance is the balance of the coin.
+  BasePacket base_packet = 1;
+}

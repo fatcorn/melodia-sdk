@@ -1,0 +1,59 @@
+syntax = "proto3";
+package cosmos.pibc.apps.transfer.v1;
+
+option go_package = "github.com/cosmos/cosmos-sdk/x/pibc/apps/transfer/types";
+
+import "gogoproto/gogo.proto";
+import "cosmos/base/v1beta1/coin.proto";
+import "amino/amino.proto";
+import "cosmos/msg/v1/msg.proto";
+
+// Msg defines the ibc/transfer Msg service.
+service Msg {
+  option (cosmos.msg.v1.service) = true;
+  // Transfer defines a rpc handler method for MsgTransfer.
+  rpc Transfer(MsgTransfer) returns (MsgTransferResponse);
+}
+
+// MsgTransfer defines a msg to transfer fungible tokens (i.e Coins) between
+// ICS20 enabled chains. See ICS Spec here:
+// https://github.com/cosmos/ibc/tree/master/spec/app/ics-020-fungible-token-transfer#data-structures
+message MsgTransfer {
+  option (cosmos.msg.v1.signer) = "sender";
+  option (amino.name)           = "cosmos-sdk/pibc/transfer/MsgTransfer";
+
+  option (gogoproto.equal)           = false;
+  option (gogoproto.goproto_getters) = false;
+
+  // the port on which the packet will be sent
+  uint64 source_namespace_id = 1 [(gogoproto.moretags) = "yaml:\"source_namespace_id\""];
+  // the channel by which the packet will be sent
+  uint64 target_namespace_id = 2 [(gogoproto.moretags) = "yaml:\"target_namespace_id\""];
+  // the tokens to be transferred
+  cosmos.base.v1beta1.Coin token = 3 [(gogoproto.nullable) = false];
+  // the sender address
+  string sender = 4;
+  // the recipient address on the destination chain
+  string receiver = 5;
+}
+
+// MsgTransferResponse defines the Msg/Transfer response type.
+message MsgTransferResponse {
+  // sequence number of the transfer packet sent
+  uint64 sequence = 1;
+}
+
+// Packet save Transaction key info
+message Packet {
+  // the tokens to be transferred
+  cosmos.base.v1beta1.Coin token = 1 [(gogoproto.nullable) = false];
+  // the sender address
+  string sender = 2;
+  // the recipient address on the destination chain
+  string receiver = 3;
+}
+
+// TransactionState save the transaction state
+message TransactionState {
+  uint32 state = 1;
+}

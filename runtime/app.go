@@ -130,6 +130,7 @@ func (a *App) Load(loadLatest bool) error {
 	if len(a.config.NamespaceBlockMakers) != 0 {
 		a.ModuleManager.SetOrderNamespaceBlockMakers(a.config.NamespaceBlockMakers...)
 		a.SetNamespaceBlockMaker(a.NamespaceBlockMaker)
+		a.SetNamespaceBlockPreparer(a.NamespaceBlockPrepare)
 	}
 
 	if len(a.config.EndBlockers) != 0 {
@@ -175,9 +176,14 @@ func (a *App) EndBlocker(ctx sdk.Context) (sdk.EndBlock, error) {
 	return a.ModuleManager.EndBlock(ctx)
 }
 
-// EndBlocker application updates every end block
-func (a *App) NamespaceBlockMaker(ctx sdk.Context, txs [][]byte, nsTable []*tdmtypes.NamespaceTableEntries) (map[string]appmodule.NamespaceBlockData, error) {
-	return a.ModuleManager.MakeNamespaceBlock(ctx, txs, nsTable, a.NamespaceStoreManager(), a.CommitMultiStore())
+// NamespaceBlockMaker generate namespace every vm block
+func (a *App) NamespaceBlockPrepare(ctx sdk.Context, txs [][]byte, nsTable []*tdmtypes.NamespaceTableEntries) (map[string]appmodule.NamespaceBlockData, error) {
+	return a.ModuleManager.PrepareNamespaceBlock(ctx, txs, nsTable, a.NamespaceStoreManager(), a.CommitMultiStore())
+}
+
+// NamespaceBlockMaker generate namespace every vm block
+func (a *App) NamespaceBlockMaker(ctx sdk.Context, globalEvents *[]abci.Event) (map[string]appmodule.NamespaceBlockData, error) {
+	return a.ModuleManager.MakeNamespaceBlock(ctx, a.NamespaceStoreManager(), a.CommitMultiStore(), globalEvents, a.IndexEvents())
 }
 
 // Precommiter application updates every commit

@@ -19,6 +19,10 @@ type NSBlockStore interface {
 
 	CacheBlock(block *NamespaceBLock)
 
+	CurrentBlock() *NamespaceBLock
+
+	UpdateBlock(block *NamespaceBLock)
+
 	Commit()
 
 	SaveBlock(height int64, hash []byte, block *NamespaceBLock)
@@ -207,7 +211,21 @@ func (n *NamespaceBLockStore) SaveBlock(height int64, hash []byte, block *Namesp
 
 func (n *NamespaceBLockStore) CacheBlock(block *NamespaceBLock) {
 	if n.cancheBlock != nil {
-		panic("Cach block not commit in cahch block state")
+		panic("Cache block not commit in cache block state")
+	}
+	n.cancheBlock = block
+}
+
+func (n *NamespaceBLockStore) CurrentBlock() *NamespaceBLock {
+	if n.cancheBlock != nil {
+		return n.cancheBlock
+	}
+	return n.LoadBlock(n.height)
+}
+
+func (n *NamespaceBLockStore) UpdateBlock(block *NamespaceBLock) {
+	if n.cancheBlock == nil {
+		panic("Cache block not generate before")
 	}
 	n.cancheBlock = block
 }

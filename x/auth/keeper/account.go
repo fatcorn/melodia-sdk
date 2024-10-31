@@ -2,10 +2,9 @@ package keeper
 
 import (
 	"context"
-	"errors"
-
 	"cosmossdk.io/collections"
-
+	scheduler "cosmossdk.io/store/types/occ"
+	"errors"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
@@ -22,10 +21,20 @@ func (ak AccountKeeper) NewAccountWithAddress(ctx context.Context, addr sdk.AccA
 
 // NewAccount sets the next account number to a given account interface
 func (ak AccountKeeper) NewAccount(ctx context.Context, acc sdk.AccountI) sdk.AccountI {
-	if err := acc.SetAccountNumber(ak.NextAccountNumber(ctx)); err != nil {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	nextAccountNumber := sdkCtx.NextAccountNumber(acc.GetAddress().String())
+	if nextAccountNumber <= 0 {
+		nextAccountNumber = ak.NextAccountNumber(ctx)
+		if sdkCtx.ExecMode() == sdk.ExecModeFinalize {
+			sdkCtx.Logger().Warn("new account without context account number, new next account number", "accountNumber", nextAccountNumber, "execMode=", sdkCtx.ExecMode(), "address", acc.GetAddress().String(), "namespace", sdkCtx.Namespace(), "height", sdkCtx.BlockHeight())
+		}
+	}
+	if err := acc.SetAccountNumber(nextAccountNumber); err != nil {
 		panic(err)
 	}
-
+	if sdkCtx.ExecMode() == sdk.ExecModeFinalize {
+		sdkCtx.Logger().Info("new account", "accountNumber", acc.GetAccountNumber(), "execMode=", sdkCtx.ExecMode(), "address", acc.GetAddress().String(), "namespace", sdkCtx.Namespace(), "height", sdkCtx.BlockHeight())
+	}
 	return acc
 }
 
@@ -58,6 +67,13 @@ func (ak AccountKeeper) GetAllAccounts(ctx context.Context) (accounts []sdk.Acco
 func (ak AccountKeeper) SetAccount(ctx context.Context, acc sdk.AccountI) {
 	err := ak.Accounts.Set(ctx, acc.GetAddress(), acc)
 	if err != nil {
+		if errors.Is(err, collections.ErrConflict) {
+			sdkCtx := sdk.UnwrapSDKContext(ctx)
+			if !sdkCtx.Synchronous() {
+				sdkCtx.Logger().Error("Set account panic with next account number", "accountNumber", acc.GetAccountNumber(), "address", acc.GetAddress().String(), "height", sdkCtx.BlockHeight())
+				panic(scheduler.NewErrNextAccountNumber(sdkCtx.TxIndex()))
+			}
+		}
 		panic(err)
 	}
 }

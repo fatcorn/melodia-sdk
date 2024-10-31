@@ -356,6 +356,51 @@ func parseOptionalHeight(heightStr string) (*int64, error) {
 	return &tmp, nil
 }
 
+// SignValidatorPubKey - ported from CometBFT, Sign validator pubkey
+func SignValidatorPubKey() *cobra.Command {
+	cmd := cobra.Command{
+		Use:   "sign-pubkey",
+		Short: "Sign validator pubkey",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			serverCtx := GetServerContextFromCmd(cmd)
+			cfg := serverCtx.Config
+
+			privValidator := pvm.LoadFilePV(cfg.PrivValidatorKeyFile(), cfg.PrivValidatorStateFile())
+			votePubkey := []byte{}
+			if privValidator.GetVotePubKey() != nil {
+				votePubkey = privValidator.GetVotePubKey().Bytes()
+			}
+			signature := []byte{}
+			if privValidator.GetVotePriKey() != nil {
+				sign, err := privValidator.GetVotePriKey().Sign(votePubkey)
+				if err != nil {
+					return err
+				}
+				signature = sign
+			}
+			type SignVoteMsg struct {
+				SignPubKey []byte `json:"sign-pubkey"`
+				Signature  []byte `json:"signature"`
+			}
+
+			signVoteMsg := SignVoteMsg{
+				SignPubKey: votePubkey,
+				Signature:  signature,
+			}
+
+			jsonData, err := json.MarshalIndent(signVoteMsg, "", "  ")
+			if err != nil {
+				fmt.Println("Error encoding JSON:", err)
+				return err
+			}
+			cmd.Println(string(jsonData))
+			return nil
+		},
+	}
+
+	return &cmd
+}
+
 func BootstrapStateCmd(appCreator types.AppCreator) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "bootstrap-state",

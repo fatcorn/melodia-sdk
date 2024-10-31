@@ -25,10 +25,14 @@ import (
 	snapshottypes "cosmossdk.io/store/snapshots/types"
 	storetypes "cosmossdk.io/store/types"
 
+	"cosmossdk.io/math"
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/telemetry"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
+	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
+
+	txsigning "github.com/cosmos/cosmos-sdk/types/tx/signing"
 )
 
 // Supported ABCI Query prefixes and paths
@@ -353,9 +357,16 @@ func (app *BaseApp) CheckTx(req *abci.RequestCheckTx) (*abci.ResponseCheckTx, er
 		return nil, fmt.Errorf("unknown RequestCheckTx type: %s", req.Type)
 	}
 	app.checkState.SetContext(app.checkState.Context().WithNamepace(req.NamespaceId))
-	gInfo, result, anteEvents, err := app.runTx(mode, req.Tx)
+
+	gInfo, result, anteEvents, packet, err := app.runTx(mode, req.Tx)
 	if err != nil {
 		return sdkerrors.ResponseCheckTxWithEvents(err, gInfo.GasWanted, gInfo.GasUsed, anteEvents, app.trace), nil
+	}
+
+	var packetTxData []byte
+	if packet != nil && app.signerName != "" && req.NeedGeneratePacket {
+		txBytes := app.signPacketTx(packet)
+		packetTxData = txBytes
 	}
 
 	return &abci.ResponseCheckTx{
@@ -364,6 +375,7 @@ func (app *BaseApp) CheckTx(req *abci.RequestCheckTx) (*abci.ResponseCheckTx, er
 		Log:       result.Log,
 		Data:      result.Data,
 		Events:    sdk.MarkEventsToIndex(result.Events, app.indexEvents),
+		PacketMsg: packetTxData,
 	}, nil
 }
 func (app *BaseApp) SortTxs(req *abci.RequestSortTxs) (resp *abci.ResponseSortTxs, err error) {
@@ -492,9 +504,12 @@ func (app *BaseApp) ProcessProposal(req *abci.RequestProcessProposal) (resp *abc
 	}
 
 	if app.finalizeBlockHeight == req.Height && req.Height > app.initialHeight {
+
 		rms, ok := app.cms.(*rootmulti.Store)
 		if ok {
+
 			err := rms.RollbackToVersion(req.Height - 1)
+
 			if err != nil {
 				app.logger.Error("FinalizeBlock prune stores error.", "height", req.Height, "err", err)
 			}
@@ -812,6 +827,12 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 
 	events = append(events, beginBlock.Events...)
 
+	err = app.prepareNamespaceBlock(app.finalizeBlockState.Context(), req.Txs, req.NsTable)
+
+	if err != nil {
+		return nil, err
+	}
+
 	// Reset the gas meter so that the AnteHandlers aren't required to
 	gasMeter = app.getBlockGasMeter(app.finalizeBlockState.Context())
 	app.finalizeBlockState.SetContext(app.finalizeBlockState.Context().WithBlockGasMeter(gasMeter))
@@ -852,6 +873,11 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	batchResult := app.DeliverTxBatch(finalizeCtx, sdk.DeliverTxBatchRequest{TxEntries: entries, Orders: req.Orders}, namespaceList)
 	t2 := time.Now()
 
+	err = app.makeNamespaceBlock(app.finalizeBlockState.Context(), &events)
+	if err != nil {
+		return nil, err
+	}
+
 	for idx, result := range batchResult.Results {
 		txResults[idx] = &result.Response
 		app.HandleInternalEvent(sdk.SdkEventsFromABCIEvent(result.Response.Events))
@@ -859,14 +885,10 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 
 	// Finalize all Bank Module Transfers here so that events are included for txs
 	// TODO: Since the fee collection rules have not yet been finalized, fees are temporarily stored in the store under the transaction's associated namespace.
-	namespaceIds := app.getAllNamespacePortsHandler(finalizeCtx)
-	for _, namespaceId := range namespaceIds {
-		deferredWriteEvents := app.writeDeferredBalancesHandler(finalizeCtx.WithNamepace(uint64(namespaceId)))
+	for _, namespaceId := range namespaceList {
+		deferredWriteEvents := app.writeDeferredBalancesHandler(finalizeCtx.WithNamepace(namespaceId))
 		events = append(events, deferredWriteEvents...)
 	}
-	// default namespace fee.
-	defaultDeferredWriteEvents := app.writeDeferredBalancesHandler(finalizeCtx.WithNamepace(merkle.DefaultTxNamespaceID))
-	events = append(events, defaultDeferredWriteEvents...)
 
 	// calculate time used by scheduler
 	fmt.Printf("========= Scheduler Time used: %v,decode tx time %v,deliver tx %v,append time %v\n", time.Since(startTime).String(), t1.Sub(startTime).String(), t2.Sub(t1).String(), time.Since(t2).String())
@@ -874,12 +896,6 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 
 	if app.finalizeBlockState.ms.TracingEnabled() {
 		app.finalizeBlockState.ms = app.finalizeBlockState.ms.SetTracingContext(nil).(storetypes.CacheMultiStore)
-	}
-
-	err = app.makeNamespaceBlock(app.finalizeBlockState.Context(), req.Txs, req.NsTable)
-
-	if err != nil {
-		return nil, err
 	}
 
 	endBlock, err := app.endBlock(app.finalizeBlockState.Context())
@@ -1072,7 +1088,7 @@ func handleQueryApp(app *BaseApp, path []string, req *abci.RequestQuery) *abci.R
 		case "simulate":
 			txBytes := req.Data
 
-			gInfo, res, err := app.Simulate(txBytes)
+			gInfo, res, err := app.Simulate(txBytes, req.NamespaceId)
 			if err != nil {
 				return sdkerrors.QueryResult(errorsmod.Wrap(err, "failed to simulate tx"), app.trace)
 			}
@@ -1222,6 +1238,7 @@ func (app *BaseApp) handleQueryGRPC(handler GRPCQueryHandler, req *abci.RequestQ
 	}
 	ctx.SetNamespace(req.NamespaceId)
 
+	ctx = ctx.WithNamespaceBlockManager(app.namespaceStoreManager)
 	resp, err := handler(ctx, req)
 	if err != nil {
 		resp = sdkerrors.QueryResult(gRPCErrorToSDKError(err), app.trace)
@@ -1424,6 +1441,82 @@ func toVoteInfo(votes []abci.ExtendedVoteInfo) []abci.VoteInfo {
 	return legacyVotes
 }
 
+func (app *BaseApp) signPacketTx(packet *sdk.PIBCPacket) []byte {
+	txConfig := NewTxConfig(app.cdc, DefaultSignModes)
+	tx := txConfig.NewTxBuilder()
+	if err := tx.SetMsgs(packet.Msg); err != nil {
+		panic("node generate packet tx failed")
+	}
+
+	//tx.SetMemo("")
+	keyRecord, err := app.signerKeyring.Key(app.signerName)
+	if err != nil {
+		panic(fmt.Errorf("load signer key record failed"))
+	}
+	pubkey, err := keyRecord.GetPubKey()
+	if err != nil {
+		panic(fmt.Errorf("load signer pubkey failed"))
+	}
+	tx.SetFeeAmount(sdk.NewCoins(sdk.NewCoin("stake", math.NewInt(5000))))
+	tx.SetGasLimit(200000)
+	//tx.SetFeeGranter(f.feeGranter)
+	tx.SetFeePayer(sdk.AccAddress(pubkey.Address()))
+	//tx.SetTimeoutHeight(f.TimeoutHeight())
+
+	signerData := authsigning.SignerData{
+		ChainID:       app.chainID,
+		AccountNumber: packet.AccountNumber,
+		Sequence:      packet.SignerNonce,
+		PubKey:        pubkey,
+		Address:       sdk.AccAddress(pubkey.Address()).String(),
+	}
+
+	sigData := txsigning.SingleSignatureData{
+		SignMode:  txsigning.SignMode_SIGN_MODE_DIRECT,
+		Signature: nil,
+	}
+
+	sig := txsigning.SignatureV2{
+		PubKey:   pubkey,
+		Data:     &sigData,
+		Sequence: packet.SignerNonce,
+	}
+
+	if err := tx.SetSignatures(sig); err != nil {
+		panic("validator sign packet tx failed set signatures")
+	}
+
+	bytesToSign, err := authsigning.GetSignBytesAdapter(context.Background(), txConfig.SignModeHandler(), txsigning.SignMode_SIGN_MODE_DIRECT, signerData, tx.GetTx())
+	if err != nil {
+		panic(fmt.Errorf("validator sign packet tx failed get sign bytes with err %v", err))
+	}
+
+	// Sign those bytes
+	sigBytes, _, err := app.signerKeyring.Sign(app.signerName, bytesToSign, txsigning.SignMode_SIGN_MODE_DIRECT)
+	if err != nil {
+		panic(fmt.Errorf("validator sign packet tx failed sign sign bytes with err %v", err))
+	}
+
+	// Construct the SignatureV2 struct
+	sigData = txsigning.SingleSignatureData{
+		SignMode:  txsigning.SignMode_SIGN_MODE_DIRECT,
+		Signature: sigBytes,
+	}
+	sig = txsigning.SignatureV2{
+		PubKey:   pubkey,
+		Data:     &sigData,
+		Sequence: packet.SignerNonce,
+	}
+
+	err = tx.SetSignatures(sig)
+
+	txBytes, err := txConfig.TxEncoder()(tx.GetTx())
+	if err != nil {
+		panic(fmt.Errorf("validator sign packet tx failed get tx bytes with err %v", err))
+	}
+	return txBytes
+}
+
 // DeliverTxBatch executes multiple txs
 func (app *BaseApp) DeliverTxBatch(ctx sdk.Context, req sdk.DeliverTxBatchRequest, namespaceList []uint64) (res sdk.DeliverTxBatchResponse) {
 	responses := make([]*sdk.DeliverTxResult, 0, len(req.TxEntries))
@@ -1434,9 +1527,9 @@ func (app *BaseApp) DeliverTxBatch(ctx sdk.Context, req sdk.DeliverTxBatchReques
 
 	// avoid overhead for empty batches
 	scheduler := tasks.NewScheduler(app.concurrencyWorkers, app.deliverTx, namespaceList)
-	scheduler.SetSchedulerHandlers(app.transactionAddressHandler, app.setMsgsHandler, app.modifyLogIndexHandler, app.setBlockBloomTransientHandler, app.contractStaticAnalysisHandler, app.isEVMTxHandler)
+	scheduler.SetSchedulerHandlers(app.modifyLogIndexHandler, app.setBlockBloomTransientHandler, app.isEVMTxHandler, app.nextAccountNumberHandler, app.txAccountInfoHandler, app.addTransientGasWanted)
 
-	txRes, err := scheduler.ProcessAll(ctx, req)
+	txRes, err := scheduler.ProcessAll(ctx.WithNamespaceBlockManager(app.namespaceStoreManager), req)
 
 	if err != nil {
 		ctx.Logger().Error("error while processing scheduler", "err", err)

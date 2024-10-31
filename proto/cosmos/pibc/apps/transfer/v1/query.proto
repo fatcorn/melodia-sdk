@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+package cosmos.pibc.apps.transfer.v1;
+
+import "gogoproto/gogo.proto";
+import "cosmos/base/query/v1beta1/pagination.proto";
+
+option go_package = "github.com/cosmos/cosmos-sdk/x/pibc/apps/transfer/types";

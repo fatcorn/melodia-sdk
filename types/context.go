@@ -13,6 +13,7 @@ import (
 	"cosmossdk.io/log"
 	"cosmossdk.io/store/gaskv"
 	storetypes "cosmossdk.io/store/types"
+	"github.com/cosmos/cosmos-sdk/nsblockstore"
 	"strconv"
 )
 
@@ -66,8 +67,13 @@ type Context struct {
 	cometInfo            comet.BlockInfo
 	headerInfo           header.Info
 	txIndex              int
+	namespaceBlockHeight int64
 
-	namespaceId uint64 // The tx related namesapceId
+	namespaceId        uint64 // The tx related namespaceId
+	nextAccountNumbers map[string]uint64
+	synchronous        bool
+
+	namespaceBlockManager *nsblockstore.NamespaceStoreManager
 }
 
 // Proposed rename, not done to avoid API breakage
@@ -77,6 +83,7 @@ type Request = Context
 func (c Context) Context() context.Context                      { return c.baseCtx }
 func (c Context) MultiStore() storetypes.MultiStore             { return c.ms }
 func (c Context) BlockHeight() int64                            { return c.header.Height }
+func (c Context) NamespaceBlockHeight() int64                   { return c.namespaceBlockHeight }
 func (c Context) BlockTime() time.Time                          { return c.header.Time }
 func (c Context) ChainID() string                               { return c.chainID }
 func (c Context) TxBytes() []byte                               { return c.txBytes }
@@ -97,6 +104,16 @@ func (c Context) CometInfo() comet.BlockInfo                    { return c.comet
 func (c Context) HeaderInfo() header.Info                       { return c.headerInfo }
 func (c Context) TxIndex() int                                  { return c.txIndex }
 func (c Context) Namespace() uint64                             { return c.namespaceId }
+func (c Context) Synchronous() bool                             { return c.synchronous }
+func (c Context) NextAccountNumber(address string) uint64 {
+	if addr, ok := c.nextAccountNumbers[address]; ok {
+		return addr
+	}
+	return 0
+}
+func (c Context) NamespaceBlockManager() *nsblockstore.NamespaceStoreManager {
+	return c.namespaceBlockManager
+}
 
 // clone the header before returning
 func (c Context) BlockHeader() cmtproto.Header {
@@ -115,6 +132,14 @@ func (c Context) HeadProposalAddress() []byte {
 	return c.header.ProposerAddress
 }
 
+// NamespaceBlock returns the namespaceId vm module current block
+func (c Context) NamespaceBlock(moduleName string) *nsblockstore.NamespaceBLock {
+	store, exist := c.namespaceBlockManager.GetNamespaceStore(c.namespaceId, moduleName)
+	if !exist {
+		panic("Namespace block store not exist")
+	}
+	return store.CurrentBlock()
+}
 func (c Context) ConsensusParams() cmtproto.ConsensusParams {
 	return c.consParams
 }
@@ -147,6 +172,7 @@ func NewContext(ms storetypes.MultiStore, header cmtproto.Header, isCheckTx bool
 		eventManager:         NewEventManager(),
 		kvGasConfig:          storetypes.KVGasConfig(),
 		transientKVGasConfig: storetypes.TransientGasConfig(),
+		nextAccountNumbers:   make(map[string]uint64),
 	}
 }
 
@@ -182,6 +208,19 @@ func (c Context) WithHeaderHash(hash []byte) Context {
 // WithNamepace returns a Context with an namespace.
 func (c Context) WithNamepace(namespaceId uint64) Context {
 	c.namespaceId = namespaceId
+	return c
+}
+func (c Context) WithNamespaceBlockHeight(namespaceBlockHeight int64) Context {
+	c.namespaceBlockHeight = namespaceBlockHeight
+	return c
+}
+
+func (c Context) WithNextAccountNumber(nextAccountNumbers map[string]uint64) Context {
+	c.nextAccountNumbers = nextAccountNumbers
+	return c
+}
+func (c Context) WithSynchronous(synchronous bool) Context {
+	c.synchronous = synchronous
 	return c
 }
 
@@ -328,6 +367,12 @@ func (c Context) WithHeaderInfo(headerInfo header.Info) Context {
 	// Settime to UTC
 	headerInfo.Time = headerInfo.Time.UTC()
 	c.headerInfo = headerInfo
+	return c
+}
+
+// WithNamespaceBlockManager returns a Context with namespace
+func (c Context) WithNamespaceBlockManager(m *nsblockstore.NamespaceStoreManager) Context {
+	c.namespaceBlockManager = m
 	return c
 }
 
