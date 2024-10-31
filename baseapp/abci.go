@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"github.com/cometbft/cometbft/crypto/merkle"
 	consensustypes "github.com/cometbft/cometbft/types"
 	"github.com/cosmos/cosmos-sdk/tasks"
 	"sort"
@@ -877,6 +876,7 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	if err != nil {
 		return nil, err
 	}
+	t21 := time.Now()
 
 	for idx, result := range batchResult.Results {
 		txResults[idx] = &result.Response
@@ -885,13 +885,19 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 
 	// Finalize all Bank Module Transfers here so that events are included for txs
 	// TODO: Since the fee collection rules have not yet been finalized, fees are temporarily stored in the store under the transaction's associated namespace.
+	namespaceMap := make(map[uint64]bool)
 	for _, namespaceId := range namespaceList {
-		deferredWriteEvents := app.writeDeferredBalancesHandler(finalizeCtx.WithNamepace(namespaceId))
-		events = append(events, deferredWriteEvents...)
+		_, ok := namespaceMap[namespaceId]
+		if !ok {
+			deferredWriteEvents := app.writeDeferredBalancesHandler(finalizeCtx.WithNamepace(namespaceId))
+			events = append(events, deferredWriteEvents...)
+			namespaceMap[namespaceId] = true
+		}
+
 	}
 
 	// calculate time used by scheduler
-	fmt.Printf("========= Scheduler Time used: %v,decode tx time %v,deliver tx %v,append time %v\n", time.Since(startTime).String(), t1.Sub(startTime).String(), t2.Sub(t1).String(), time.Since(t2).String())
+	fmt.Printf("========= Scheduler Time used: %v,decode tx time %v,deliver tx %v,append time %v, make namespace block time %v\n", time.Since(startTime).String(), t1.Sub(startTime).String(), t2.Sub(t1).String(), time.Since(t21).String(), t21.Sub(t2).String())
 	//app.logger.Info("FinalizeBlock", "schedulerTime", time.Since(startTime))
 
 	if app.finalizeBlockState.ms.TracingEnabled() {

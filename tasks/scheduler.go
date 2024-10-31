@@ -16,12 +16,13 @@ import (
 	"fmt"
 	abci "github.com/cometbft/cometbft/abci/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/docker"
 	"log"
 	"os"
+	"runtime"
 	"runtime/pprof"
+	"runtime/trace"
 	"sort"
 	"strconv"
 	"sync"
@@ -608,7 +609,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	s.start(workerCtx, s.executeCh, workers)
 
 	s.start1(workerCtx, s.collectCh, workers)
-	t6 := time.Now()
+	//t6 := time.Now()
 	//println("======================", "sub", t6.Sub(now).String())
 
 	toExecute := tasks
@@ -726,10 +727,10 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	// end trace
 	s.metrics.maxIncarnation = s.maxIncarnation
 
-	res, evmTxs := s.collectResponses(ctx, tasks)
+	res := s.collectResponses(ctx, tasks)
 	//printSystemStats("after process")
 
-	s.setMsgsHandler(ctx, evmTxs)
+	//s.setMsgsHandler(ctx, evmTxs)
 	if tracePathEnv != "" {
 		t7 := time.Now()
 		trace.Stop()
