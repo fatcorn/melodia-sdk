@@ -350,7 +350,6 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 		task := &deliverTxTask{
 			Request:        tx.Request,
 			SdkTx:          tx.SdkTx,
-			Checksum:       tx.Checksum,
 			AbsoluteIndex:  tx.AbsoluteIndex,
 			Status:         statusPending,
 			Dependencies:   map[int]struct{}{},
@@ -653,17 +652,14 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 				if task.Status == statusExecuted {
 					totalExecuted++
 					wg.Add(1)
-					writeTask := task
-					s.DoWrite(func() {
+					go func(task *deliverTxTask) {
 						defer wg.Done()
-						//localCount := make(map[string]int)
-						for _, v := range writeTask.VersionStores {
+						for _, v := range task.VersionStores {
 							for key := range v.Writeset {
-								v.NewKey(key, writeTask.TotalTask, multiversion.NewMultiVersionListItem(1))
+								v.NewKey(key, task.TotalTask)
 							}
 						}
-
-					})
+					}(task)
 				}
 			}
 			wg.Wait()
@@ -887,7 +883,7 @@ func (s *scheduler) prepareAndRunTask(wg *sync.WaitGroup, ctx sdk.Context, task 
 			for _, v := range task.VersionStores {
 				writeset := v.GetWriteset()
 				for key, _ := range writeset {
-					v.NewKey(key, task.TotalTask, nil)
+					v.NewKey(key, task.TotalTask)
 				}
 				v.WriteToMultiVersionStore()
 			}

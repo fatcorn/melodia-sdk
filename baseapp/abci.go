@@ -2,7 +2,6 @@ package baseapp
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	consensustypes "github.com/cometbft/cometbft/types"
 	"github.com/cosmos/cosmos-sdk/tasks"
@@ -857,7 +856,6 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 			deliverTxEntry := &sdk.DeliverTxEntry{
 				Request:       rawTx,
 				SdkTx:         tx,
-				Checksum:      sha256.Sum256(rawTx),
 				AbsoluteIndex: txIndex,
 			}
 			entries[txIndex] = deliverTxEntry
@@ -882,6 +880,7 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 		txResults[idx] = &result.Response
 		app.HandleInternalEvent(sdk.SdkEventsFromABCIEvent(result.Response.Events))
 	}
+	t22 := time.Now()
 
 	// Finalize all Bank Module Transfers here so that events are included for txs
 	// TODO: Since the fee collection rules have not yet been finalized, fees are temporarily stored in the store under the transaction's associated namespace.
@@ -889,15 +888,17 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	for _, namespaceId := range namespaceList {
 		_, ok := namespaceMap[namespaceId]
 		if !ok {
+			now := time.Now()
 			deferredWriteEvents := app.writeDeferredBalancesHandler(finalizeCtx.WithNamepace(namespaceId))
 			events = append(events, deferredWriteEvents...)
 			namespaceMap[namespaceId] = true
+			println("write balance handler time", "", time.Since(now).String())
 		}
 
 	}
 
 	// calculate time used by scheduler
-	fmt.Printf("========= Scheduler Time used: %v,decode tx time %v,deliver tx %v,append time %v, make namespace block time %v\n", time.Since(startTime).String(), t1.Sub(startTime).String(), t2.Sub(t1).String(), time.Since(t21).String(), t21.Sub(t2).String())
+	fmt.Printf("========= Scheduler Time used: %v,decode tx time %v,deliver tx %v,append time %v, make namespace block time %v,handler event time %v \n", time.Since(startTime).String(), t1.Sub(startTime).String(), t2.Sub(t1).String(), time.Since(t22).String(), t21.Sub(t2).String(), t22.Sub(t21).String())
 	//app.logger.Info("FinalizeBlock", "schedulerTime", time.Since(startTime))
 
 	if app.finalizeBlockState.ms.TracingEnabled() {

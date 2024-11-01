@@ -9,6 +9,7 @@ import (
 	"fmt"
 	abci "github.com/cometbft/cometbft/abci/types"
 	"sort"
+	"time"
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -604,6 +605,7 @@ func (k BaseKeeper) WriteDeferredBalances(ctx sdk.Context) []abci.Event {
 
 	// iterate through module list and add the balance to module bank balances in sorted order
 	for _, moduleBech32Addr := range moduleList {
+		now := time.Now()
 		amount, ok := moduleAddrBalanceMap[moduleBech32Addr]
 		if !ok {
 			err := fmt.Errorf("Failed to get module balance for writing deferred balances for address=%s", moduleBech32Addr)
@@ -616,7 +618,7 @@ func (k BaseKeeper) WriteDeferredBalances(ctx sdk.Context) []abci.Event {
 			panic(err)
 		}
 		// log namespaceId
-		ctx.Logger().Info(fmt.Sprintf("NamespaceId: %d, Defferred Success add coin=%s to module address=%s", ctx.Namespace(), amount, moduleBech32Addr))
+		ctx.Logger().Info(fmt.Sprintf("NamespaceId: %d, Defferred Success add coin=%s to module address=%s, total time =%s", ctx.Namespace(), amount, moduleBech32Addr, time.Since(now).String()))
 	}
 
 	// clear deferred cache
