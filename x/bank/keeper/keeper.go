@@ -8,7 +8,6 @@ import (
 	"cosmossdk.io/math"
 	"fmt"
 	abci "github.com/cometbft/cometbft/abci/types"
-	"sync"
 	"time"
 
 	"github.com/cosmos/cosmos-sdk/codec"
