@@ -64,6 +64,9 @@ type NamespaceMakeBlock func(Context, *[]abci.Event) (map[string]appmodule.Names
 // NamespaceBlockPreparer
 type NamespaceBlockPreparer func(Context, [][]byte, []*tdmtypes.NamespaceTableEntries) (map[string]appmodule.NamespaceBlockData, error)
 
+// InternalEventDetector
+type InternalEventDetector func(Context, []Tx) (InternalEvents, error)
+
 // EndBlock defines a type which contains endblock events and validator set updates
 type EndBlock struct {
 	ValidatorUpdates []abci.ValidatorUpdate
@@ -72,6 +75,11 @@ type EndBlock struct {
 
 // BeginBlock defines a type which contains beginBlock events
 type BeginBlock struct {
+	Events []abci.Event
+}
+
+// InternalEvent defines a type which contains internal events from InternalEvent detector
+type InternalEvents struct {
 	Events []abci.Event
 }
 

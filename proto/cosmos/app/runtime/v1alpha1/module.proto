@@ -56,6 +56,8 @@ message Module {
   repeated string pre_blockers = 10;
 
   repeated string namespace_block_makers = 11;
+
+  repeated string internal_event_detectors = 12;
 }
 
 // StoreKeyConfig may be supplied to override the default module store key, which

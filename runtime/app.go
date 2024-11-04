@@ -127,6 +127,11 @@ func (a *App) Load(loadLatest bool) error {
 		a.SetBeginBlocker(a.BeginBlocker)
 	}
 
+	if len(a.config.InternalEventDetectors) != 0 {
+		a.ModuleManager.SetOrderInternalEventDetectors(a.config.BeginBlockers...)
+		a.SetInternalEventDetector(a.InternalEventDetector)
+	}
+
 	if len(a.config.NamespaceBlockMakers) != 0 {
 		a.ModuleManager.SetOrderNamespaceBlockMakers(a.config.NamespaceBlockMakers...)
 		a.SetNamespaceBlockMaker(a.NamespaceBlockMaker)
@@ -169,6 +174,11 @@ func (a *App) PreBlocker(ctx sdk.Context, _ *abci.RequestFinalizeBlock) (*sdk.Re
 // BeginBlocker application updates every begin block
 func (a *App) BeginBlocker(ctx sdk.Context) (sdk.BeginBlock, error) {
 	return a.ModuleManager.BeginBlock(ctx)
+}
+
+// InternalEventDetector application updates every begin block
+func (a *App) InternalEventDetector(ctx sdk.Context, txs []sdk.Tx) (sdk.InternalEvents, error) {
+	return a.ModuleManager.InternalEventDetector(ctx, txs)
 }
 
 // EndBlocker application updates every end block

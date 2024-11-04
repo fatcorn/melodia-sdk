@@ -98,7 +98,8 @@ type BaseApp struct {
 	initChainer            sdk.InitChainer  // ABCI InitChain handler
 	preBlocker             sdk.PreBlocker   // logic to run before BeginBlocker
 	beginBlocker           sdk.BeginBlocker // (legacy ABCI) BeginBlock handler
-	endBlocker             sdk.EndBlocker   // (legacy ABCI) EndBlock handler
+	internalEventDetector  sdk.InternalEventDetector
+	endBlocker             sdk.EndBlocker // (legacy ABCI) EndBlock handler
 	namespaceBlockPreparer sdk.NamespaceBlockPreparer
 	namespaceBlockMaker    sdk.NamespaceMakeBlock
 	processProposal        sdk.ProcessProposalHandler     // ABCI ProcessProposal handler
@@ -546,8 +547,6 @@ func (app *BaseApp) HandleInternalEvent(events sdk.Events) {
 				if err != nil {
 					panic(fmt.Sprintf("Dynamic add namesapce store failed %v", err))
 				}
-
-				app.addNewNamespaceBLockStore(uint64(nsPort.NamespaceId), nsPort.Module, nsPort.ListAllDependentMoudlesName())
 			}
 		case InternalEventTypeNamespaceActive:
 			{
@@ -560,6 +559,7 @@ func (app *BaseApp) HandleInternalEvent(events sdk.Events) {
 				if err != nil {
 					panic(fmt.Sprintf("Get InternalEventTypeNewNamespace but unmarshal value failed %v", err))
 				}
+				app.addNewNamespaceBLockStore(uint64(nsPort.NamespaceId), nsPort.Module, nsPort.ListAllDependentMoudlesName())
 				app.activeNamespace(uint64(nsPort.NamespaceId), nsPort.Module)
 			}
 
@@ -1023,6 +1023,32 @@ func (app *BaseApp) beginBlock(req *abci.RequestFinalizeBlock) (sdk.BeginBlock, 
 			resp.Events[i].Attributes = append(
 				event.Attributes,
 				abci.EventAttribute{Key: "mode", Value: "BeginBlock"},
+			)
+		}
+
+		resp.Events = sdk.MarkEventsToIndex(resp.Events, app.indexEvents)
+	}
+
+	return resp, nil
+}
+
+func (app *BaseApp) DetectInternalEvent(txs []sdk.Tx) (sdk.InternalEvents, error) {
+	var (
+		resp sdk.InternalEvents
+		err  error
+	)
+
+	if app.internalEventDetector != nil {
+		resp, err = app.internalEventDetector(app.finalizeBlockState.Context(), txs)
+		if err != nil {
+			return resp, err
+		}
+
+		// append BeginBlock attributes to all events in the EndBlock response
+		for i, event := range resp.Events {
+			resp.Events[i].Attributes = append(
+				event.Attributes,
+				abci.EventAttribute{Key: "mode", Value: "DetectInternalEvent"},
 			)
 		}
 

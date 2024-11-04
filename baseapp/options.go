@@ -222,6 +222,14 @@ func (app *BaseApp) SetBeginBlocker(beginBlocker sdk.BeginBlocker) {
 	app.beginBlocker = beginBlocker
 }
 
+func (app *BaseApp) SetInternalEventDetector(detector sdk.InternalEventDetector) {
+	if app.sealed {
+		panic("SetBeginBlocker() on sealed BaseApp")
+	}
+
+	app.internalEventDetector = detector
+}
+
 func (app *BaseApp) SetEndBlocker(endBlocker sdk.EndBlocker) {
 	if app.sealed {
 		panic("SetEndBlocker() on sealed BaseApp")
