@@ -62,34 +62,18 @@ func (w *wrapper) SetAccountInfo(accountInfo tx.AccountInfo) {
 	w.authInfoBz = nil
 }
 
-func (w *wrapper) GetFrom() sdk.AccAddress {
+func (w *wrapper) GetFrom() string {
 	if w.tx.AuthInfo.AccountInfo == nil {
-		return nil
+		return ""
 	}
-	from := w.tx.AuthInfo.AccountInfo.From
-	if from != "" {
-		fromAddr, err := w.cdc.InterfaceRegistry().SigningContext().AddressCodec().StringToBytes(from)
-		if err != nil {
-			panic(err)
-		}
-		return fromAddr
-	}
-	return sdk.AccAddress(from)
+	return w.tx.AuthInfo.AccountInfo.From
 }
 
-func (w *wrapper) GetTo() sdk.AccAddress {
+func (w *wrapper) GetTo() string {
 	if w.tx.AuthInfo.AccountInfo == nil {
-		return nil
+		return ""
 	}
-	to := w.tx.AuthInfo.AccountInfo.To
-	if to != "" {
-		toAddr, err := w.cdc.InterfaceRegistry().SigningContext().AddressCodec().StringToBytes(to)
-		if err != nil {
-			panic(err)
-		}
-		return toAddr
-	}
-	return sdk.AccAddress(to)
+	return w.tx.AuthInfo.AccountInfo.To
 }
 
 func (w *wrapper) GetNonce() uint64 {

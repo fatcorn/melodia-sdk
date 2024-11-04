@@ -48,10 +48,14 @@ func (DefaultSignerExtractionAdapter) GetSigners(tx sdk.Tx) ([]SignerData, error
 
 	accTx, isAccTx := tx.(sdk.TxWithAccountInfo)
 	if isAccTx {
-		if accTx.GetFrom() != nil && len(accTx.GetFrom().Bytes()) > 0 {
+		if accTx.GetFrom() != "" {
 			signers := make([]SignerData, 0)
+			accAddress, err := sdk.AccAddressFromBech32(accTx.GetFrom())
+			if err != nil {
+				return nil, err
+			}
 			signers = append(signers, NewSignerData(
-				accTx.GetFrom(),
+				accAddress,
 				accTx.GetNonce(),
 			))
 			return signers, nil

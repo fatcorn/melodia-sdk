@@ -1673,13 +1673,14 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 		iterator := nsIterator.Iterator
 		namespaceId := nsIterator.NamespaceId
 
+		txSize := nsMempool.CountTxByNamespaceId(namespaceId)
 		// Static analysis
 		var (
-			txs                  = make([]sdk.Tx, 0)
-			byteTxs              = make([]sdk.ByteTx, 0)
+			txs                  = make([]sdk.Tx, 0, txSize)
+			byteTxs              = make([]sdk.ByteTx, 0, txSize)
 			addressIndexMap      = make(map[string]int)
 			lastTxIndexMap       = make(map[string]int)
-			nsTransactionIndexes = make([]*cmtproto.NsTransactionIndexes, 0)
+			nsTransactionIndexes = make([]*cmtproto.NsTransactionIndexes, 0, txSize)
 		)
 
 		// If the iterator is nil use the NoOpMempool, get all namespace txs
@@ -1822,16 +1823,6 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 	app.logger.Info("4->sortTxs total orders time", "used", fmt.Sprintf("%v ms", time.Since(staticTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
 	app.logger.Info("5->sortTxs total time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
 
-	//for _, order := range orders.NsTransactionOrders.Entries {
-	//	for _, idx := range order.Indexes {
-	//		if len(idx.Indexes) > 1 {
-	//			println("Namespace=", order.Namespace, "Indexes=", fmt.Sprintf("%v", idx.Indexes))
-	//		}
-	//	}
-	//}
-	//for _, order := range orders.NsInterChainTransactionOrders.Entries {
-	//	println("InterIndexes=", fmt.Sprintf("%v", order.Indexes))
-	//}
 	return &abci.ResponseSortTxs{Txs: sortTxs, NsTable: nsTable, Orders: orders}, nil
 }
 

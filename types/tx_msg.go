@@ -80,8 +80,8 @@ type (
 
 	TxWithAccountInfo interface {
 		Tx
-		GetFrom() AccAddress
-		GetTo() AccAddress
+		GetFrom() string
+		GetTo() string
 		GetNonce() uint64
 	}
 

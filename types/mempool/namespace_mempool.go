@@ -138,6 +138,14 @@ func (nsm *NamespaceMempool) CountTx() int {
 	}
 	return count
 }
+func (nsm *NamespaceMempool) CountTxByNamespaceId(namespaceId uint64) int {
+	nsm.mtx.RLock()
+	defer nsm.mtx.RUnlock()
+	if pool, ok := nsm.pools[namespaceId]; ok {
+		return pool.CountTx()
+	}
+	return 0
+}
 func (nsm *NamespaceMempool) RemoveByNamespaceId(namespaceId uint64, tx sdk.Tx) error {
 	nsm.mtx.RLock()
 	defer nsm.mtx.RUnlock()
