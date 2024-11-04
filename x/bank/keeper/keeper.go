@@ -583,23 +583,15 @@ func (k BaseKeeper) WriteDeferredBalances(ctx sdk.Context) []abci.Event {
 	// maps between bech32 stringified module account address and balance
 	moduleAddrBalanceMap := make(map[string]sdk.Coins)
 	// slice of modules to be sorted for consistent write order later
-	var wg sync.WaitGroup
-	var sc sync.Mutex
+	//var wg sync.WaitGroup
+	//var sc sync.Mutex
 
 	// iterate over deferred cache and accumulate totals per module
 	k.deferredCache.IterateDeferredBalances(ctx, func(moduleAddr sdk.AccAddress, amount sdk.Coin) bool {
-		wg.Add(1)
-		go func(moduleAddrTmp sdk.AccAddress, amountTmp sdk.Coin) {
-			// update map
-			defer wg.Done()
-			sc.Lock()
-			moduleAddrBalanceMap[moduleAddrTmp.String()] = moduleAddrBalanceMap[moduleAddrTmp.String()].Add(amountTmp)
-			sc.Unlock()
-
-		}(moduleAddr, amount)
+		moduleAddrBalanceMap[moduleAddr.String()] = moduleAddrBalanceMap[moduleAddr.String()].Add(amount)
 		return false
 	})
-	wg.Wait()
+	//wg.Wait()
 	t2 := time.Now()
 
 	t3 := time.Now()
