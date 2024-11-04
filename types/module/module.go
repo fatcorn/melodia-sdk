@@ -830,7 +830,7 @@ func (m *Manager) InternalEventDetector(ctx sdk.Context, txs []sdk.Tx) (sdk.Inte
 		msgs = append(msgs, tx.GetMsgs()...)
 	}
 	for _, moduleName := range m.OrderBeginBlockers {
-		if module, ok := m.Modules[moduleName].(appmodule.HasInternalEvnetDetector); ok {
+		if module, ok := m.Modules[moduleName].(appmodule.HasInternalEventDetector); ok {
 			if err := module.DetectInternalEvent(ctx, msgs); err != nil {
 				return sdk.InternalEvents{}, err
 			}
