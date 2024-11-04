@@ -8,7 +8,7 @@ import (
 	"cosmossdk.io/math"
 	"fmt"
 	abci "github.com/cometbft/cometbft/abci/types"
-	"sort"
+	"sync"
 	"time"
 
 	"github.com/cosmos/cosmos-sdk/codec"
@@ -579,39 +579,35 @@ func (k BaseKeeper) WriteDeferredBalances(ctx sdk.Context) []abci.Event {
 	}
 	ctx = ctx.WithEventManager(sdk.NewEventManager())
 
+	t1 := time.Now()
 	// maps between bech32 stringified module account address and balance
 	moduleAddrBalanceMap := make(map[string]sdk.Coins)
 	// slice of modules to be sorted for consistent write order later
-	moduleList := []string{}
+	var wg sync.WaitGroup
+	var sc sync.Mutex
 
 	// iterate over deferred cache and accumulate totals per module
 	k.deferredCache.IterateDeferredBalances(ctx, func(moduleAddr sdk.AccAddress, amount sdk.Coin) bool {
-		currCoins, ok := moduleAddrBalanceMap[moduleAddr.String()]
-		if !ok {
-			// add to list of modules
-			moduleList = append(moduleList, moduleAddr.String())
-			// set the map value
-			moduleAddrBalanceMap[moduleAddr.String()] = sdk.NewCoins(amount)
-			return false
-		}
-		// add to currCoins
-		newCoins := currCoins.Add(amount)
-		// update map
-		moduleAddrBalanceMap[moduleAddr.String()] = newCoins
+		wg.Add(1)
+		go func(moduleAddrTmp sdk.AccAddress, amountTmp sdk.Coin) {
+			// update map
+			defer wg.Done()
+			sc.Lock()
+			moduleAddrBalanceMap[moduleAddrTmp.String()] = moduleAddrBalanceMap[moduleAddrTmp.String()].Add(amountTmp)
+			sc.Unlock()
+
+		}(moduleAddr, amount)
 		return false
 	})
-	// sort module list
-	sort.Strings(moduleList)
+	wg.Wait()
+	t2 := time.Now()
+
+	t3 := time.Now()
 
 	// iterate through module list and add the balance to module bank balances in sorted order
-	for _, moduleBech32Addr := range moduleList {
+	for moduleBech32Addr, amount := range moduleAddrBalanceMap {
 		now := time.Now()
-		amount, ok := moduleAddrBalanceMap[moduleBech32Addr]
-		if !ok {
-			err := fmt.Errorf("Failed to get module balance for writing deferred balances for address=%s", moduleBech32Addr)
-			ctx.Logger().Error(err.Error())
-			panic(err)
-		}
+
 		err := k.addCoins(ctx, sdk.MustAccAddressFromBech32(moduleBech32Addr), amount)
 		if err != nil {
 			ctx.Logger().Error(fmt.Sprintf("Failed to add coin=%s to module address=%s, error is: %s", amount, moduleBech32Addr, err))
@@ -620,9 +616,13 @@ func (k BaseKeeper) WriteDeferredBalances(ctx sdk.Context) []abci.Event {
 		// log namespaceId
 		ctx.Logger().Info(fmt.Sprintf("NamespaceId: %d, Defferred Success add coin=%s to module address=%s, total time =%s", ctx.Namespace(), amount, moduleBech32Addr, time.Since(now).String()))
 	}
+	t4 := time.Now()
 
 	// clear deferred cache
-	k.deferredCache.Clear(ctx)
+	go k.deferredCache.Clear(ctx)
+	t5 := time.Now()
+	println("Write Deferred  Balances", "for cache", t2.Sub(t1).String(), "sort ", t3.Sub(t2).String(), "add coins", t4.Sub(t3).String(), "clear cache", t5.Sub(t4).String())
+
 	return ctx.EventManager().ABCIEvents()
 }
 

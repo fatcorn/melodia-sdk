@@ -388,9 +388,7 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) []
 	startTime := time.Now()
 
 	for _, t := range tasks {
-
 		res = append(res, *t.Response)
-
 		s.consumeGas(ctx, t)
 		if gasWanted, ok := consumeGasWanted[t.NamespaceId]; ok {
 			consumeGasWanted[t.NamespaceId] = gasWanted + t.Response.GasWanted
@@ -445,18 +443,17 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) []
 			namespaceBlockTxIndexes[t.NamespaceId] = evmTxIndex + 1
 		}
 
-		//if t.TxTracer != nil {
-		//	t.TxTracer.Commit()
-		//}
-
 	}
+	t1 := time.Now()
 	s.consumeGasWanted(ctx, consumeGasWanted)
+	t2 := time.Now()
 
 	for namespaceId, txLogs := range txLogses {
 		s.setBlockBloomTransientHandler(ctx.WithNamepace(namespaceId), txLogs)
 	}
 	// calculate time used
-	fmt.Printf("========= CollectResponses Time used: %v\n", time.Since(startTime))
+	println("========= CollectResponses ", "for time", t1.Sub(startTime).String(), "connsume gas wanted time", t2.Sub(t1).String(), "set block bloom time", time.Since(t2).String())
+	//fmt.Printf("========= CollectResponses Time used: %v\n", time.Since(startTime))
 	return res
 }
 
@@ -489,7 +486,6 @@ func (s *scheduler) tryInitMultiVersionStore(ctx sdk.Context, totalTask int) {
 	mvs := make(map[storetypes.StoreKey]multiversion.MultiVersionStore)
 	keys := ctx.MultiStore().StoreKeys()
 	listStore := os.Getenv("listStore")
-
 	for _, sk := range keys {
 		if listStore != "" {
 			mvs[sk] = multiversion.NewMultiVersionListStore(ctx.MultiStore().GetKVStore(sk), totalTask)
