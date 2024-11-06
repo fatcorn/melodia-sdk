@@ -572,8 +572,8 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	// This "optimization" path is being disabled because we don't have a strong reason to have it given that it
 	//s.PrefillEstimates(reqs)
 	toTaskStartTime := time.Now()
-	println("init version store time========", "sub", toTaskStartTime.Sub(startTime).String())
 	tasks, tasksMap := s.toTasks(ctx, req)
+	println("init version store time========", "sub", toTaskStartTime.Sub(startTime).String(), "len(tasks)", len(tasks))
 
 	fmt.Printf("========= toTasks Time used: %v\n", time.Since(toTaskStartTime))
 	now := time.Now()
@@ -638,7 +638,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 		}
 
 		//go printCpuCount()
-		//printSystemStats("start ")
+		printSystemStats("start ")
 
 		// execute sets statuses of tasks to either executed or aborted
 		t1 := time.Now()
@@ -700,7 +700,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 
 		var err error
 		toExecute, err = s.validateAll(ctx, tasks)
-		//printSystemStats("end ")
+		printSystemStats("end ")
 		t5 := time.Now()
 		if err != nil {
 			return nil, err
