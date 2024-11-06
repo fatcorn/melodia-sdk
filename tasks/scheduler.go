@@ -845,6 +845,7 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 	// validations happen in separate goroutines in order to wait on previous index
 	wg := &sync.WaitGroup{}
 
+	now := time.Now()
 	for _, task := range tasks {
 		if !s.synchronous && task.IsStatus(statusWaiting) {
 			continue
@@ -862,7 +863,7 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 		})
 	}
 	//printSystemStats("executing")
-
+	println("do execute to task","",time.Since(now).String(),"task length", len(tasks),"executeCh length", len(s.executeCh))
 	wg.Wait()
 
 	return nil
