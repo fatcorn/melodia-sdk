@@ -612,8 +612,10 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 
 	//go printCpuCount()
 
+	t6 := time.Now()
 	// execution tasks are limited by workers
 	s.start(workerCtx, s.executeCh, workers)
+	println("start worker ctx","",time.Since(t6).String())
 
 	s.start1(workerCtx, s.collectCh, workers)
 	//t6 := time.Now()
@@ -863,7 +865,7 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 		})
 	}
 	//printSystemStats("executing")
-	println("do execute to task","",time.Since(now).String(),"task length", len(tasks),"executeCh length", len(s.executeCh))
+	println("do execute to task", "", time.Since(now).String(), "task length", len(tasks), "executeCh length", len(s.executeCh))
 	wg.Wait()
 
 	return nil
