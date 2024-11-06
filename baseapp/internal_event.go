@@ -7,4 +7,9 @@ const (
 	InternalEventTypeNamespaceAttribute = "namespace_obj"
 
 	InternalEventTypeNamespaceActive = "active_namespace"
+
+	InternalEventTypeStartNamespaceService = "start_namespace_service"
+
+	// the key of bool value, true represents consensus, false for apps
+	InternalEventTypeStartNamespaceServiceTypeAttribute = "namespace_service_type"
 )

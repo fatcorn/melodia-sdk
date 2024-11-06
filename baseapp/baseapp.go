@@ -562,8 +562,36 @@ func (app *BaseApp) HandleInternalEvent(events sdk.Events) {
 				app.addNewNamespaceBLockStore(uint64(nsPort.NamespaceId), nsPort.Module, nsPort.ListAllDependentMoudlesName())
 				app.activeNamespace(uint64(nsPort.NamespaceId), nsPort.Module)
 			}
+		case InternalEventTypeStartNamespaceService:
+			{
+				nsPortObj, hasKey := event.GetAttribute(InternalEventTypeNamespaceAttribute)
+				if !hasKey {
+					panic("Get InternalEventTypeStartNamespaceService but no value")
+				}
+				namespaceType, hasKey := event.GetAttribute(InternalEventTypeStartNamespaceServiceTypeAttribute)
+				if !hasKey {
+					panic("Get InternalEventTypeStartNamespaceService but no value")
+				}
+
+				var isConsensus bool
+				if namespaceType.Value == fmt.Sprintf("%v", bool(true)) {
+					isConsensus = true
+				}
+
+				var nsPort bfttypes.NamespacePort
+				err := json.Unmarshal([]byte(nsPortObj.Value), &nsPort)
+				if err != nil {
+					panic(fmt.Sprintf("Get InternalEventTypeNewNamespace but unmarshal value failed %v", err))
+				}
+				if isConsensus {
+					bfttypes.NamespacePortWaitCh <- nsPort
+				} else {
+					sdk.NamespacePortWaitCh <- nsPort
+				}
+			}
 
 		}
+
 	}
 }
 
