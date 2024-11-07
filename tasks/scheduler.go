@@ -615,7 +615,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	t6 := time.Now()
 	// execution tasks are limited by workers
 	s.start(workerCtx, s.executeCh, workers)
-	println("start worker ctx","",time.Since(t6).String())
+	println("start worker ctx", "", time.Since(t6).String())
 
 	s.start1(workerCtx, s.collectCh, workers)
 	//t6 := time.Now()
@@ -856,12 +856,10 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 		wg.Add(1)
 		s.DoExecute(func() {
 			defer wg.Done()
-
+			now := time.Now()
 			sdkCtx := ctx.WithNamepace(t.NamespaceId).WithNextAccountNumber(t.AccountNumbers).WithSynchronous(s.synchronous).WithTxIndex(task.AbsoluteIndex)
-
-			//now := time.Now()
 			s.prepareAndRunTask(wg, sdkCtx, t)
-			//println("run tast time", "sub", time.Now().Sub(now))
+			println("run task time", "sub", time.Now().Sub(now))
 		})
 	}
 	//printSystemStats("executing")
