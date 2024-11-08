@@ -1,6 +1,7 @@
 package pibc
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/cosmos/cosmos-sdk/x/pibc/keeper"
@@ -123,13 +124,13 @@ func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.Raw
 func (AppModule) ConsensusVersion() uint64 { return 4 }
 
 // BeginBlock returns the begin blocker for the ibc module.
-func (am AppModule) BeginBlock(ctx sdk.Context) error {
+func (am AppModule) BeginBlock(ctx context.Context) error {
 	return nil
 }
 
 // EndBlock returns the end blocker for the ibc module. It returns no validator
 // updates.
-func (am AppModule) EndBlock(ctx sdk.Context) error {
+func (am AppModule) EndBlock(ctx context.Context) error {
 	return nil
 }
 

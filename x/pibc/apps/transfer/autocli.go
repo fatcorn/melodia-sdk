@@ -24,7 +24,7 @@ func (am AppModule) AutoCLIOptions() *autocliv1.ModuleOptions {
 			EnhanceCustomCommand: true, // only required if you want to use the custom command
 			RpcCommandOptions: []*autocliv1.RpcCommandOptions{
 				{
-					RpcMethod: "transfer",
+					RpcMethod: "Transfer",
 					Skip:      true, // skipped because authority gated
 				},
 				// this line is used by ignite scaffolding # autocli/tx

@@ -1066,7 +1066,7 @@ func (app *BaseApp) DetectInternalEvent(txs []sdk.Tx) (sdk.InternalEvents, error
 		err  error
 	)
 
-	if app.internalEventDetector != nil {
+	if app.internalEventDetector != nil && app.finalizeBlockState != nil {
 		resp, err = app.internalEventDetector(app.finalizeBlockState.Context(), txs)
 		if err != nil {
 			return resp, err

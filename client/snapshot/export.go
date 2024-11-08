@@ -5,6 +5,8 @@ import (
 
 	"cosmossdk.io/log"
 
+	"github.com/cosmos/cosmos-sdk/baseapp"
+	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/server"
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
 )
@@ -28,6 +30,13 @@ func ExportSnapshotCmd(appCreator servertypes.AppCreator) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			namespaceDBInfo, err := baseapp.LoadNamespaceStoreInfo(db, home)
+			if err != nil {
+				return err
+			}
+
+			ctx.Viper.Set(flags.FlagNamespaceDB, *namespaceDBInfo)
+
 			logger := log.NewLogger(cmd.OutOrStdout())
 			app := appCreator(logger, db, nil, ctx.Viper)
 

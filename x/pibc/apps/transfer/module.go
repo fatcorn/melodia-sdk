@@ -1,6 +1,7 @@
 package transfer
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -121,13 +122,13 @@ func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.Raw
 func (AppModule) ConsensusVersion() uint64 { return 4 }
 
 // BeginBlock returns the begin blocker for the ibc module.
-func (am AppModule) BeginBlock(ctx sdk.Context) error {
+func (am AppModule) BeginBlock(_ context.Context) error {
 	return nil
 }
 
 // EndBlock returns the end blocker for the ibc module. It returns no validator
 // updates.
-func (am AppModule) EndBlock(ctx sdk.Context) error {
+func (am AppModule) EndBlock(_ context.Context) error {
 	return nil
 }
 
