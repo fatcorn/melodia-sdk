@@ -1085,7 +1085,7 @@ func printSystemStats(desc string) {
 
 func printCpu() {
 
-	percent, err := cpu.Percent(time.Millisecond*50, false)
+	percent, err := cpu.Percent(time.Millisecond*10, false)
 	if err != nil {
 		log.Fatal(err)
 	}
