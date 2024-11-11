@@ -622,6 +622,8 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	//println("======================", "sub", t6.Sub(now).String())
 
 	toExecute := tasks
+	go printCpuCount()
+
 	for !allValidated(tasks) {
 		// if the max incarnation >= x, we should revert to synchronous
 		if iterations >= maximumIterations || s.synchronous {
@@ -1057,7 +1059,7 @@ func printCpuCount() {
 		//	return
 		//}
 		//fmt.Println("Heap profile saved to heap_profile.prof")
-		time.Sleep(300 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 	}
 
 }
@@ -1083,7 +1085,7 @@ func printSystemStats(desc string) {
 
 func printCpu() {
 
-	percent, err := cpu.Percent(time.Millisecond*10, false)
+	percent, err := cpu.Percent(time.Millisecond*50, false)
 	if err != nil {
 		log.Fatal(err)
 	}
