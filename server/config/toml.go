@@ -86,6 +86,9 @@ iavl-disable-fastnode = {{ .BaseConfig.IAVLDisableFastNode }}
 # The fallback is the db_backend value set in CometBFT's config.toml.
 app-db-backend = "{{ .BaseConfig.AppDBBackend }}"
 
+# concurrency-workers defines how many workers to run for concurrent transaction execution
+# concurrency-workers = {{ .BaseConfig.ConcurrencyWorkers }}
+
 ###############################################################################
 ###                         Telemetry Configuration                         ###
 ###############################################################################
