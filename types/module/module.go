@@ -53,6 +53,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/nsblockstore"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
+	"github.com/cosmos/gogoproto/proto"
 )
 
 // AppModuleBasic is the standard form for basic non-dependant elements of an application module.
@@ -277,16 +278,17 @@ func (gam GenesisOnlyAppModule) ConsensusVersion() uint64 { return 1 }
 // Manager defines a module manager that provides the high level utility for managing and executing
 // operations for a group of modules
 type Manager struct {
-	Modules                   map[string]interface{} // interface{} is used now to support the legacy AppModule as well as new core appmodule.AppModule.
-	OrderInitGenesis          []string
-	OrderExportGenesis        []string
-	OrderPreBlockers          []string
-	OrderBeginBlockers        []string
-	OrderNamespaceBlockMakers []string
-	OrderEndBlockers          []string
-	OrderPrepareCheckStaters  []string
-	OrderPrecommiters         []string
-	OrderMigrations           []string
+	Modules                     map[string]interface{} // interface{} is used now to support the legacy AppModule as well as new core appmodule.AppModule.
+	OrderInitGenesis            []string
+	OrderExportGenesis          []string
+	OrderPreBlockers            []string
+	OrderBeginBlockers          []string
+	OrderInternalEventDetectors []string
+	OrderNamespaceBlockMakers   []string
+	OrderEndBlockers            []string
+	OrderPrepareCheckStaters    []string
+	OrderPrecommiters           []string
+	OrderMigrations             []string
 }
 
 // NewManager creates a new Manager object.
@@ -403,6 +405,17 @@ func (m *Manager) SetOrderBeginBlockers(moduleNames ...string) {
 			return !hasBeginBlock
 		})
 	m.OrderBeginBlockers = moduleNames
+}
+
+// SetOrderInternalEventDetectors sets the order of set end-blocker calls
+func (m *Manager) SetOrderInternalEventDetectors(moduleNames ...string) {
+	m.assertNoForgottenModules("SetOrderInternalEventDetectors", moduleNames,
+		func(moduleName string) bool {
+			module := m.Modules[moduleName]
+			_, hasVMNamespaceBLockMaker := module.(appmodule.HasVMNamespaceBLockMaker)
+			return !hasVMNamespaceBLockMaker
+		})
+	m.OrderInternalEventDetectors = moduleNames
 }
 
 // SetOrderEndBlockers sets the order of set end-blocker calls
@@ -799,6 +812,32 @@ func (m *Manager) BeginBlock(ctx sdk.Context) (sdk.BeginBlock, error) {
 	}
 
 	return sdk.BeginBlock{
+		Events: ctx.EventManager().ABCIEvents(),
+	}, nil
+}
+
+// InternalEventDetector performs begin block functionality for all modules. It creates a
+// child context with an event manager to aggregate events emitted from all
+// modules.
+func (m *Manager) InternalEventDetector(ctx sdk.Context, txs []sdk.Tx) (sdk.InternalEvents, error) {
+	ctx = ctx.WithEventManager(sdk.NewEventManager())
+	if len(txs) == 0 {
+		return sdk.InternalEvents{}, nil
+	}
+
+	msgs := make([]proto.Message, 0)
+	for _, tx := range txs {
+		msgs = append(msgs, tx.GetMsgs()...)
+	}
+	for _, moduleName := range m.OrderBeginBlockers {
+		if module, ok := m.Modules[moduleName].(appmodule.HasInternalEventDetector); ok {
+			if err := module.DetectInternalEvent(ctx, msgs); err != nil {
+				return sdk.InternalEvents{}, err
+			}
+		}
+	}
+
+	return sdk.InternalEvents{
 		Events: ctx.EventManager().ABCIEvents(),
 	}, nil
 }

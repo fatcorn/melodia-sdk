@@ -2,6 +2,7 @@ package baseapp
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	consensustypes "github.com/cometbft/cometbft/types"
 	"github.com/cosmos/cosmos-sdk/tasks"
@@ -767,12 +768,53 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 		AppHash:            app.LastCommitID().Hash,
 	}
 
+	sdkTxs := make([]sdk.Tx, len(req.Txs))
+	entries := make([]*sdk.DeliverTxEntry, len(req.Txs))
+	wg := sync.WaitGroup{}
+	for txIndex, rawTx := range req.Txs {
+		wg.Add(1)
+		go func(txIndex int, rawTx []byte) {
+			defer wg.Done()
+			tx, _ := app.txDecoder(rawTx)
+			deliverTxEntry := &sdk.DeliverTxEntry{
+				Request:       rawTx,
+				SdkTx:         tx,
+				Checksum:      sha256.Sum256(rawTx),
+				AbsoluteIndex: txIndex,
+			}
+			entries[txIndex] = deliverTxEntry
+			sdkTxs[txIndex] = tx
+		}(txIndex, rawTx)
+	}
+
+	wg.Wait()
+
+	internalEvents, err := app.DetectInternalEvent(sdkTxs)
+	if err != nil {
+		return nil, err
+	}
+
+	app.HandleInternalEvent(sdk.SdkEventsFromABCIEvent(internalEvents.Events))
+
 	// finalizeBlockState should be set on InitChain or ProcessProposal. If it is
 	// nil, it means we are replaying this block and we need to set the state here
 	// given that during block replay ProcessProposal is not executed by CometBFT.
 	if app.finalizeBlockState == nil {
 		app.setState(execModeFinalize, header)
 	}
+
+	ms := app.cms.CacheMultiStore()
+	if len(ms.ListStores()) > len(app.finalizeBlockState.GetCache().ListStores()) {
+		newCache := app.finalizeBlockState.GetCache().ExpandStores(ms.ListStores())
+		app.finalizeBlockState.SetCache(newCache)
+		app.finalizeBlockState.SetContext(app.finalizeBlockState.Context().WithMultiStore(newCache))
+	}
+
+	//app.setState(execModeFinalize, header)
+
+	//ms := app.cms.CacheMultiStore()
+	//app.finalizeBlockState.SetContext(app.finalizeBlockState.Context().WithMultiStore(ms).WithConsensusParams(app.GetConsensusParams(app.finalizeBlockState.Context())))
+	//app.finalizeBlockState.SetCache(ms)
 
 	// Context is now updated with Header information.
 	app.finalizeBlockState.SetContext(app.finalizeBlockState.Context().
