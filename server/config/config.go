@@ -91,6 +91,10 @@ type BaseConfig struct {
 	// AppDBBackend defines the type of Database to use for the application and snapshots databases.
 	// An empty string indicates that the CometBFT config's DBBackend value should be used.
 	AppDBBackend string `mapstructure:"app-db-backend"`
+
+	// ConcurrencyWorkers defines the number of workers to use for concurrent
+	// transaction execution. A value of -1 means unlimited workers.  Default value is 10.
+	ConcurrencyWorkers int `mapstructure:"concurrency-workers"`
 }
 
 // APIConfig defines the API listener configuration.
@@ -230,6 +234,7 @@ func DefaultConfig() *Config {
 			IAVLCacheSize:       781250,
 			IAVLDisableFastNode: false,
 			AppDBBackend:        "",
+			ConcurrencyWorkers: 64,
 		},
 		Telemetry: telemetry.Config{
 			Enabled:      false,
