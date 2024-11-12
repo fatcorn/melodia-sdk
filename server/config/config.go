@@ -225,7 +225,7 @@ func DefaultConfig() *Config {
 		BaseConfig: BaseConfig{
 			MinGasPrices:        defaultMinGasPrices,
 			QueryGasLimit:       0,
-			InterBlockCache:     true,
+			InterBlockCache:     false,
 			Pruning:             pruningtypes.PruningOptionDefault,
 			PruningKeepRecent:   "0",
 			PruningInterval:     "0",
