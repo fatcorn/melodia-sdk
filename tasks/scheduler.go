@@ -499,7 +499,7 @@ func (s *scheduler) tryInitMultiVersionStore(ctx sdk.Context, totalTask int) {
 	keys := ctx.MultiStore().StoreKeys()
 	listStore := os.Getenv("listStore")
 	for _, sk := range keys {
-		if listStore != "" {
+		if listStore == "" {
 			mvs[sk] = multiversion.NewMultiVersionListStore(ctx.MultiStore().GetKVStore(sk), totalTask)
 		} else {
 			mvs[sk] = multiversion.NewMultiVersionStore(ctx.MultiStore().GetKVStore(sk))
@@ -657,7 +657,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 		listStore := os.Getenv("listStore")
 		totalExecuted := 0
 
-		if listStore != "" && !s.synchronous {
+		if listStore == "" && !s.synchronous {
 			t := time.Now()
 			var wg sync.WaitGroup
 			for _, task := range tasks {
@@ -680,7 +680,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 
 		t3 := time.Now()
 
-		if listStore != "" && !s.synchronous {
+		if listStore == "" && !s.synchronous {
 			wg := &sync.WaitGroup{}
 			wg.Add(totalExecuted)
 
@@ -889,7 +889,7 @@ func (s *scheduler) prepareAndRunTask(wg *sync.WaitGroup, ctx sdk.Context, task 
 	task.Ctx = ctx
 	s.executeTask(task)
 	listStore := os.Getenv("listStore")
-	if listStore != "" {
+	if listStore == "" {
 		if s.synchronous {
 			for _, v := range task.VersionStores {
 				writeset := v.GetWriteset()
@@ -1029,7 +1029,7 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 	//	v.WriteToMultiVersionStore()
 	//}
 	listStore := os.Getenv("listStore")
-	if listStore == "" {
+	if listStore != "" {
 		for _, v := range task.VersionStores {
 			v.WriteToMultiVersionStore()
 		}

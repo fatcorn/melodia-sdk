@@ -102,8 +102,8 @@ type TxDecoder func(txBytes []byte) (Tx, error)
 type TxEncoder func(tx Tx) ([]byte, error)
 
 type TxAccountInfoHandler func(tx Tx) (string, string)
-type NextAccountNumberHandler func(ctx Context, toAddress []string) map[string]uint64
-type TxToAccountAddressHandler func(ctx Context, tx Tx) []string
+type NextAccountNumberHandler func(ctx Context, toAddress map[string]uint64) map[string]uint64
+type TxToAccountAddressHandler func(ctx Context, tx Tx) map[string]uint64
 type CrossNamespaceTransactionIdentifierHandler func(ctx Context, tx Tx) ([]byte, bool, bool)
 
 type WriteDeferredBalancesHandler func(ctx Context) []abci.Event

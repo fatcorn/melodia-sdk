@@ -15,7 +15,7 @@ type DeliverTxEntry struct {
 	Checksum           [32]byte
 	AbsoluteIndex      int
 	EstimatedWritesets MappedWritesets
-	ToAddress          []string
+	ToAddress          map[string]uint64
 	//TxTracer           TxTracer
 }
 
