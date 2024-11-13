@@ -18,9 +18,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/docker"
-	"log"
 	"os"
-	"runtime"
 	"runtime/pprof"
 	"runtime/trace"
 	"sort"
@@ -1067,31 +1065,31 @@ func printCpuCount() {
 }
 
 func printSystemStats(desc string) {
-	fmt.Printf("Stage: %s\n", desc)
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	fmt.Printf("Goroutines: %d\n", runtime.NumGoroutine())
-	fmt.Printf("CPUs: %d\n", runtime.NumCPU())
-	fmt.Printf("GOMAXPROCS: %d\n", runtime.GOMAXPROCS(0))
-	fmt.Printf("Threads: %d\n", threadProfile.Count())
-	fmt.Printf("Memory Alloc = %v MiB\n", m.Alloc/1024/1024)
-	fmt.Printf("TotalAlloc = %v MiB\n", m.TotalAlloc/1024/1024)
-	fmt.Printf("Sys = %v MiB\n", m.Sys/1024/1024)
-	fmt.Printf("NumGC = %v\n", m.NumGC)
-	fmt.Printf("HeapAlloc: %v MB\n", m.HeapAlloc/1024/1024) // 堆上实际使用的内存
-	fmt.Printf("HeapSys: %v MB\n", m.HeapSys/1024/1024)     // 系统分配给堆的内存
-	fmt.Printf("HeapObjects: %v\n", m.HeapObjects)          // 堆上分配的对象数量
+	//fmt.Printf("Stage: %s\n", desc)
+	//var m runtime.MemStats
+	//runtime.ReadMemStats(&m)
+	//fmt.Printf("Goroutines: %d\n", runtime.NumGoroutine())
+	//fmt.Printf("CPUs: %d\n", runtime.NumCPU())
+	//fmt.Printf("GOMAXPROCS: %d\n", runtime.GOMAXPROCS(0))
+	//fmt.Printf("Threads: %d\n", threadProfile.Count())
+	//fmt.Printf("Memory Alloc = %v MiB\n", m.Alloc/1024/1024)
+	//fmt.Printf("TotalAlloc = %v MiB\n", m.TotalAlloc/1024/1024)
+	//fmt.Printf("Sys = %v MiB\n", m.Sys/1024/1024)
+	//fmt.Printf("NumGC = %v\n", m.NumGC)
+	//fmt.Printf("HeapAlloc: %v MB\n", m.HeapAlloc/1024/1024) // 堆上实际使用的内存
+	//fmt.Printf("HeapSys: %v MB\n", m.HeapSys/1024/1024)     // 系统分配给堆的内存
+	//fmt.Printf("HeapObjects: %v\n", m.HeapObjects)          // 堆上分配的对象数量
 
 	//printCpu()
 }
 
 func printCpu() {
 
-	percent, err := cpu.Percent(time.Millisecond*10, false)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("CPU percent: %.2f%%\n", percent[0])
+	//percent, err := cpu.Percent(time.Millisecond*10, false)
+	//if err != nil {
+	//	log.Fatal(err)
+	//}
+	//fmt.Printf("CPU percent: %.2f%%\n", percent[0])
 
 }
 
