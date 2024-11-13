@@ -770,6 +770,7 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 
 	sdkTxs := make([]sdk.Tx, len(req.Txs))
 	entries := make([]*sdk.DeliverTxEntry, len(req.Txs))
+	startTime1 := time.Now()
 	wg := sync.WaitGroup{}
 	for txIndex, rawTx := range req.Txs {
 		wg.Add(1)
@@ -788,6 +789,7 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	}
 
 	wg.Wait()
+	t1 := time.Now()
 
 	internalEvents, err := app.DetectInternalEvent(sdkTxs)
 	if err != nil {
@@ -888,24 +890,23 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	// Start use scheduler to deal Txs
 	startTime := time.Now()
 
-	entries := make([]*sdk.DeliverTxEntry, len(req.Txs))
-	wg := sync.WaitGroup{}
-	for txIndex, rawTx := range req.Txs {
-		wg.Add(1)
-		go func(txIndex int, rawTx []byte) {
-			defer wg.Done()
-			tx, _ := app.txDecoder(rawTx)
-			deliverTxEntry := &sdk.DeliverTxEntry{
-				Request:       rawTx,
-				SdkTx:         tx,
-				AbsoluteIndex: txIndex,
-			}
-			entries[txIndex] = deliverTxEntry
-		}(txIndex, rawTx)
-	}
+	//entries := make([]*sdk.DeliverTxEntry, len(req.Txs))
+	//wg := sync.WaitGroup{}
+	//for txIndex, rawTx := range req.Txs {
+	//	wg.Add(1)
+	//	go func(txIndex int, rawTx []byte) {
+	//		defer wg.Done()
+	//		tx, _ := app.txDecoder(rawTx)
+	//		deliverTxEntry := &sdk.DeliverTxEntry{
+	//			Request:       rawTx,
+	//			SdkTx:         tx,
+	//			AbsoluteIndex: txIndex,
+	//		}
+	//		entries[txIndex] = deliverTxEntry
+	//	}(txIndex, rawTx)
+	//}
 
-	wg.Wait()
-	t1 := time.Now()
+	//wg.Wait()
 
 	finalizeCtx := app.getContext(execModeFinalize)
 
@@ -940,7 +941,7 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	}
 
 	// calculate time used by scheduler
-	fmt.Printf("========= Scheduler Time used: %v,decode tx time %v,deliver tx %v,append time %v, make namespace block time %v,handler event time %v \n", time.Since(startTime).String(), t1.Sub(startTime).String(), t2.Sub(t1).String(), time.Since(t22).String(), t21.Sub(t2).String(), t22.Sub(t21).String())
+	fmt.Printf("========= Scheduler Time used: %v,decode tx time %v,deliver tx %v,append time %v, make namespace block time %v,handler event time %v \n", time.Since(startTime).String(), t1.Sub(startTime1).String(), t2.Sub(startTime).String(), time.Since(t22).String(), t21.Sub(t2).String(), t22.Sub(t21).String())
 	//app.logger.Info("FinalizeBlock", "schedulerTime", time.Since(startTime))
 
 	if app.finalizeBlockState.ms.TracingEnabled() {
