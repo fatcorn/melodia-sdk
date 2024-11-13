@@ -343,15 +343,17 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 	for idx, tx := range reqs {
 		go func(callTx *sdk.DeliverTxEntry) {
 			defer wg.Done()
-			toAddress := s.txToAccountAddressHandler(ctx.WithNamepace(s.namespaceList[idx]), callTx.SdkTx)
+			toAddress, namespaceIds := s.txToAccountAddressHandler(ctx.WithNamepace(s.namespaceList[idx]), callTx.SdkTx)
 			callTx.ToAddress = toAddress
+			callTx.NamespaceIds = namespaceIds
 		}(tx)
 	}
 	wg.Wait()
 
 	for idx, tx := range reqs {
 		namespaceId := s.namespaceList[idx]
-		nextAccountNumbers := s.nextAccountNumberHandler(ctx.WithNamepace(namespaceId).WithNextAccountNumber(allNextAccountNumbers), tx.ToAddress)
+
+		nextAccountNumbers := s.nextAccountNumberHandler(ctx.WithNamepace(namespaceId).WithNextAccountNumber(allNextAccountNumbers), tx.ToAddress, tx.NamespaceIds)
 
 		if nextAccountNumbers != nil && len(nextAccountNumbers) > 0 {
 			for addr, ac := range nextAccountNumbers {
@@ -622,7 +624,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	//println("======================", "sub", t6.Sub(now).String())
 
 	toExecute := tasks
-	go printCpuCount()
+	//go printCpuCount()
 
 	for !allValidated(tasks) {
 		// if the max incarnation >= x, we should revert to synchronous
