@@ -610,7 +610,7 @@ func (k BaseKeeper) WriteDeferredBalances(ctx sdk.Context) []abci.Event {
 	t4 := time.Now()
 
 	// clear deferred cache
-	go k.deferredCache.Clear(ctx)
+	k.deferredCache.Clear(ctx)
 	t5 := time.Now()
 	println("Write Deferred  Balances", "for cache", t2.Sub(t1).String(), "sort ", t3.Sub(t2).String(), "add coins", t4.Sub(t3).String(), "clear cache", t5.Sub(t4).String())
 
