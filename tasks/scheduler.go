@@ -16,6 +16,7 @@ import (
 	"fmt"
 	abci "github.com/cometbft/cometbft/abci/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/docker"
 	"os"
@@ -1017,6 +1018,13 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 		}
 		return
 	}
+
+	if resp.Code == errors.ErrOCCAbort.ABCICode() {
+		task.SetStatus(statusAborted)
+		s.synchronous = true
+		return
+	}
+
 	//estimateSleepDuration := cmttime.Now().Sub(estimateNow)
 	//println("EstimateSleepDuration task: ", task.AbsoluteIndex, " time: ", estimateSleepDuration, " from: ", estimateNow.String())
 
