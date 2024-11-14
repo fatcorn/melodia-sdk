@@ -234,7 +234,7 @@ type BaseApp struct {
 	isEVMTxHandler                             sdk.IsEVMTxHandler
 	txAccountInfoHandler                       sdk.TxAccountInfoHandler
 	nextAccountNumberHandler                   sdk.NextAccountNumberHandler
-	txToAccountAddressHandler                  sdk.TxToAccountAddressHandler
+	txNewAccountAddressesHandler               sdk.TxNewAccountAddressesHandler
 	crossNamespaceTransactionIdentifierHandler sdk.CrossNamespaceTransactionIdentifierHandler
 	deliverTxHooks                             []DeliverTxHook
 	concurrencyWorkers                         int

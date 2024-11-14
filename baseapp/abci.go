@@ -1577,7 +1577,7 @@ func (app *BaseApp) DeliverTxBatch(ctx sdk.Context, req sdk.DeliverTxBatchReques
 
 	// avoid overhead for empty batches
 	scheduler := tasks.NewScheduler(app.concurrencyWorkers, app.deliverTx, namespaceList)
-	scheduler.SetSchedulerHandlers(app.modifyLogIndexHandler, app.setBlockBloomTransientHandler, app.isEVMTxHandler, app.nextAccountNumberHandler, app.txAccountInfoHandler, app.addTransientGasWanted, app.txToAccountAddressHandler)
+	scheduler.SetSchedulerHandlers(app.modifyLogIndexHandler, app.setBlockBloomTransientHandler, app.isEVMTxHandler, app.nextAccountNumberHandler, app.txAccountInfoHandler, app.addTransientGasWanted, app.txNewAccountAddressesHandler)
 
 	txRes, err := scheduler.ProcessAll(ctx.WithNamespaceBlockManager(app.namespaceStoreManager), req)
 

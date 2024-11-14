@@ -117,7 +117,7 @@ func (dt *deliverTxTask) Increment() {
 // Scheduler processes tasks concurrently
 type Scheduler interface {
 	ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]abci.ExecTxResult, error)
-	SetSchedulerHandlers(modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, isEVMTxHandler sdk.IsEVMTxHandler, nextAccountNumberHandler sdk.NextAccountNumberHandler, txAccountInfoHandler sdk.TxAccountInfoHandler, addTransientGasWanted sdk.AddTransientGasWanted, txToAccountAddressHandler sdk.TxToAccountAddressHandler)
+	SetSchedulerHandlers(modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, isEVMTxHandler sdk.IsEVMTxHandler, nextAccountNumberHandler sdk.NextAccountNumberHandler, txAccountInfoHandler sdk.TxAccountInfoHandler, addTransientGasWanted sdk.AddTransientGasWanted, txNewAccountAddressesHandler sdk.TxNewAccountAddressesHandler)
 }
 
 // tx []byte
@@ -139,7 +139,7 @@ type scheduler struct {
 	setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler
 	isEVMTxHandler                sdk.IsEVMTxHandler
 	nextAccountNumberHandler      sdk.NextAccountNumberHandler
-	txToAccountAddressHandler     sdk.TxToAccountAddressHandler
+	txNewAccountAddressesHandler  sdk.TxNewAccountAddressesHandler
 	txAccountInfoHandler          sdk.TxAccountInfoHandler
 	addTransientGasWanted         sdk.AddTransientGasWanted
 	namespaceList                 []uint64
@@ -160,14 +160,14 @@ func NewScheduler(workers int, deliverTxFunc func(tx []byte, opts ...sdk.Context
 		namespaceList: namespaceList,
 	}
 }
-func (s *scheduler) SetSchedulerHandlers(modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, isEVMTxHandler sdk.IsEVMTxHandler, nextAccountNumberHandler sdk.NextAccountNumberHandler, txAccountInfoHandler sdk.TxAccountInfoHandler, addTransientGasWanted sdk.AddTransientGasWanted, txToAccountAddressHandler sdk.TxToAccountAddressHandler) {
+func (s *scheduler) SetSchedulerHandlers(modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, isEVMTxHandler sdk.IsEVMTxHandler, nextAccountNumberHandler sdk.NextAccountNumberHandler, txAccountInfoHandler sdk.TxAccountInfoHandler, addTransientGasWanted sdk.AddTransientGasWanted, txNewAccountAddressesHandler sdk.TxNewAccountAddressesHandler) {
 	s.modifyLogIndexHandler = modifyLogIndexHandler
 	s.setBlockBloomTransientHandler = setBlockBloomTransientHandler
 	s.isEVMTxHandler = isEVMTxHandler
 	s.nextAccountNumberHandler = nextAccountNumberHandler
 	s.txAccountInfoHandler = txAccountInfoHandler
 	s.addTransientGasWanted = addTransientGasWanted
-	s.txToAccountAddressHandler = txToAccountAddressHandler
+	s.txNewAccountAddressesHandler = txNewAccountAddressesHandler
 }
 
 func (s *scheduler) invalidateTask(task *deliverTxTask) {
@@ -342,9 +342,7 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 	for idx, tx := range reqs {
 		go func(callTx *sdk.DeliverTxEntry) {
 			defer wg.Done()
-			toAddress, namespaceIds := s.txToAccountAddressHandler(ctx.WithNamepace(s.namespaceList[idx]), callTx.SdkTx)
-			callTx.ToAddress = toAddress
-			callTx.NamespaceIds = namespaceIds
+			callTx.NewAccAddresses = s.txNewAccountAddressesHandler(ctx.WithNamepace(s.namespaceList[idx]), callTx.SdkTx)
 		}(tx)
 	}
 	wg.Wait()
@@ -352,7 +350,7 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 	for idx, tx := range reqs {
 		namespaceId := s.namespaceList[idx]
 
-		nextAccountNumbers := s.nextAccountNumberHandler(ctx.WithNamepace(namespaceId).WithNextAccountNumber(allNextAccountNumbers), tx.ToAddress, tx.NamespaceIds)
+		nextAccountNumbers := s.nextAccountNumberHandler(ctx.WithNamepace(namespaceId).WithNextAccountNumber(allNextAccountNumbers), tx.NewAccAddresses)
 
 		if nextAccountNumbers != nil && len(nextAccountNumbers) > 0 {
 			for addr, ac := range nextAccountNumbers {
