@@ -1057,19 +1057,25 @@ func (app *BaseApp) checkHalt(height int64, time time.Time) error {
 // against that height and gracefully halt if it matches the latest committed
 // height.
 func (app *BaseApp) Commit() (*abci.ResponseCommit, error) {
+	startTime := time.Now()
 	header := app.finalizeBlockState.Context().BlockHeader()
 	retainHeight := app.GetBlockRetentionHeight(header.Height)
 
 	if app.precommiter != nil {
 		app.precommiter(app.finalizeBlockState.Context())
 	}
+	t1 := time.Now()
 
 	rms, ok := app.cms.(*rootmulti.Store)
 	if ok {
 		rms.SetCommitHeader(header)
 	}
 
+	t2 := time.Now()
+
 	app.cms.Commit()
+
+	t3 := time.Now()
 
 	resp := &abci.ResponseCommit{
 		RetainHeight: retainHeight,
@@ -1088,6 +1094,8 @@ func (app *BaseApp) Commit() (*abci.ResponseCommit, error) {
 		}
 	}
 
+	t4 := time.Now()
+
 	// Reset the CheckTx state to the latest committed.
 	//
 	// NOTE: This is safe because CometBFT holds a lock on the mempool for
@@ -1102,8 +1110,13 @@ func (app *BaseApp) Commit() (*abci.ResponseCommit, error) {
 
 	app.namespaceStoreManager.Commit()
 
+	t5 := time.Now()
 	// The SnapshotIfApplicable method will create the snapshot by starting the goroutine
 	app.snapshotManager.SnapshotIfApplicable(header.Height)
+
+	t6 := time.Now()
+
+	println("base app Commit time", t5.Sub(startTime).String(), "precommiter ", t1.Sub(startTime).String(), "SetCommitHeader", t2.Sub(t1).String(), "commit", t3.Sub(t2).String(), "abciListeners", t4.Sub(t3).String(), "namespaceBlock", t5.Sub(t4).String(), "SnapshotIfApplicable", t6.Sub(t5).String())
 
 	return resp, nil
 }
