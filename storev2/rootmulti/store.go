@@ -989,7 +989,11 @@ func (rs *Store) RollbackToVersion(target int64) error {
 	if target > math.MaxUint32 {
 		return fmt.Errorf("rollback height target %d exceeds max uint32", target)
 	}
-	return rs.scStore.Rollback(target)
+	err := rs.scStore.Rollback(target)
+	if err != nil {
+		return err
+	}
+	return rs.LoadVersionAndUpgrade(0, nil)
 }
 
 // getStoreByName performs a lookup of a StoreKey given a store name typically

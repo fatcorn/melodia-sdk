@@ -31,7 +31,10 @@ import (
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
 
+	rootmultiv2 "github.com/cosmos/cosmos-sdk/storev2/rootmulti"
 	txsigning "github.com/cosmos/cosmos-sdk/types/tx/signing"
+
+	"encoding/hex"
 )
 
 // Supported ABCI Query prefixes and paths
@@ -503,8 +506,8 @@ func (app *BaseApp) ProcessProposal(req *abci.RequestProcessProposal) (resp *abc
 	}
 
 	if app.finalizeBlockHeight == req.Height && req.Height > app.initialHeight {
+		rms, ok := app.cms.(*rootmultiv2.Store)
 
-		rms, ok := app.cms.(*rootmulti.Store)
 		if ok {
 
 			err := rms.RollbackToVersion(req.Height - 1)
@@ -513,6 +516,7 @@ func (app *BaseApp) ProcessProposal(req *abci.RequestProcessProposal) (resp *abc
 				app.logger.Error("FinalizeBlock prune stores error.", "height", req.Height, "err", err)
 			}
 			app.qms = app.cms
+			app.logger.Info("roll back store", "hash", hex.EncodeToString(app.cms.WorkingHash()))
 		}
 	}
 
