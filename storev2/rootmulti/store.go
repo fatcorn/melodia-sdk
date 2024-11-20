@@ -784,6 +784,9 @@ func (rs *Store) MountStore(tree sctypes.Tree, version int64) ([]types.StoreKey,
 		if _, ok := rs.storesParams[key]; ok {
 			continue
 		}
+		if _, ok := rs.storeKeys[key.Name()]; ok {
+			continue
+		}
 		switch key.(type) {
 		case *storetypes.KVStoreKey:
 			rs.MountStoreWithDB(key, storetypes.StoreTypeIAVL, nil)
