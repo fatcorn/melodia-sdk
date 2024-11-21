@@ -519,6 +519,7 @@ func (app *BaseApp) ProcessProposal(req *abci.RequestProcessProposal) (resp *abc
 			app.logger.Info("roll back store", "hash", hex.EncodeToString(app.cms.WorkingHash()))
 		}
 	}
+	t0 := time.Now()
 
 	// Always reset state given that ProcessProposal can timeout and be called
 	// again in a subsequent round.
@@ -573,12 +574,14 @@ func (app *BaseApp) ProcessProposal(req *abci.RequestProcessProposal) (resp *abc
 			resp = &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}
 		}
 	}()
+	t1 := time.Now()
 
 	resp, err = app.processProposal(app.processProposalState.Context(), req)
 	if err != nil {
 		app.logger.Error("failed to process proposal", "height", req.Height, "time", req.Time, "hash", fmt.Sprintf("%X", req.Hash), "err", err)
 		return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
 	}
+	t2 := time.Now()
 
 	// Only execute optimistic execution if the proposal is accepted, OE is
 	// enabled and the block height is greater than the initial height. During
@@ -593,6 +596,7 @@ func (app *BaseApp) ProcessProposal(req *abci.RequestProcessProposal) (resp *abc
 		app.optimisticExec.Execute(req)
 	}
 
+	app.logger.Info("ABCI ProcessProposal ", "set state time", t1.Sub(t0).String(), "process proposal time", t2.Sub(t1).String(), "total time", time.Since(t0).String())
 	return resp, nil
 }
 
