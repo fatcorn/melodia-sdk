@@ -26,7 +26,7 @@ func NewNamespaceNoncer() *NamespaceNoncer {
 	return nsm
 }
 
-func (nsm *NamespaceNoncer) InsertWithFallback(ctx sdk.Context, tx sdk.Tx, fallback sdk.GetAccountNonceHandler) error {
+func (nsm *NamespaceNoncer) Refresh(ctx sdk.Context, tx sdk.Tx, fallback sdk.GetAccountNonceHandler) error {
 	pendingNoncer := nsm.getNoncer(ctx, fallback)
 	sigs, err := nsm.signerExtractor.GetSigners(tx)
 	if err != nil {
@@ -90,6 +90,16 @@ func (nsm *NamespaceNoncer) getNoncer(ctx sdk.Context, fallback sdk.GetAccountNo
 	}
 	return pendingNoncer
 }
+
+func (nsm *NamespaceNoncer) Reset() {
+	nsm.mtx.Lock()
+	defer nsm.mtx.Unlock()
+	for _, pn := range nsm.pendingNonces {
+		clean := make(map[string]uint64)
+		pn.setAll(clean)
+	}
+}
+
 func (nsm *NamespaceNoncer) Insert(context.Context, sdk.Tx) error {
 	panic("implement me")
 }

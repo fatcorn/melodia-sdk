@@ -6,6 +6,7 @@ import (
 	"fmt"
 	consensustypes "github.com/cometbft/cometbft/types"
 	"github.com/cosmos/cosmos-sdk/tasks"
+	"github.com/cosmos/cosmos-sdk/types/mempool"
 	"sort"
 	"strings"
 	"sync"
@@ -516,6 +517,10 @@ func (app *BaseApp) ProcessProposal(req *abci.RequestProcessProposal) (resp *abc
 				app.logger.Error("FinalizeBlock prune stores error.", "height", req.Height, "err", err)
 			}
 			app.qms = app.cms
+			switch m := app.mempool.(type) {
+			case *mempool.NamespaceNoncer:
+				m.Reset()
+			}
 			app.logger.Info("roll back store", "hash", hex.EncodeToString(app.cms.WorkingHash()))
 		}
 	}

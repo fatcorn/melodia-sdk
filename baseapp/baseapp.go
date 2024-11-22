@@ -1399,7 +1399,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	if mode == execModeCheck {
 		switch m := app.mempool.(type) {
 		case *mempool.NamespaceNoncer:
-			err = m.InsertWithFallback(ctx, tx, app.getAccountNonceHandler)
+			err = m.Refresh(ctx, tx, app.getAccountNonceHandler)
 		default:
 			err = app.mempool.Insert(ctx, tx)
 		}
@@ -1437,6 +1437,11 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 		if err != nil && !errors.Is(err, mempool.ErrTxNotFound) {
 			return gInfo, nil, anteEvents, nil,
 				fmt.Errorf("failed to remove tx from mempool: %w", err)
+		}
+	} else if mode == execModeReCheck {
+		switch m := app.mempool.(type) {
+		case *mempool.NamespaceNoncer:
+			err = m.Refresh(ctx, tx, app.getAccountNonceHandler)
 		}
 	}
 	//if mode == execModeFinalize {
