@@ -519,6 +519,7 @@ func (app *BaseApp) ProcessProposal(req *abci.RequestProcessProposal) (resp *abc
 			app.qms = app.cms
 			switch m := app.mempool.(type) {
 			case *mempool.NamespaceNoncer:
+				app.logger.Info("Rollback to reset noncer", "height", req.Height)
 				m.Reset()
 			}
 			app.logger.Info("roll back store", "hash", hex.EncodeToString(app.cms.WorkingHash()))
