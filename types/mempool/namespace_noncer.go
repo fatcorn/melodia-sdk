@@ -112,28 +112,23 @@ func (nsm *NamespaceNoncer) CountTx() int {
 func (nsm *NamespaceNoncer) Remove(tx sdk.Tx) error {
 	return nil
 }
-func (nsm *NamespaceNoncer) RemoveWithCtx(ctx context.Context, tx sdk.Tx) error {
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	namespaceId := sdkCtx.Namespace()
-	nsm.mtx.RLock()
-	pendingNoncer, init := nsm.pendingNonces[namespaceId]
-	if !init {
-		return nil
+func (nsm *NamespaceNoncer) RemoveWithCtx(ctx sdk.Context, tx sdk.Tx, fallback sdk.GetAccountNonceHandler) {
+	if tx == nil {
+		return
 	}
-	nsm.mtx.RUnlock()
+	pendingNoncer := nsm.getNoncer(ctx, fallback)
 
 	sigs, err := nsm.signerExtractor.GetSigners(tx)
 	if err != nil {
-		return err
+		panic(err)
 	}
 	if len(sigs) == 0 {
-		return fmt.Errorf("tx must have at least one signer")
+		panic(err)
 	}
 
 	sig := sigs[0]
 	sender := sig.Signer.String()
 	nonce := sig.Sequence
 
-	pendingNoncer.setIfLower(sdkCtx, sender, nonce)
-	return nil
+	pendingNoncer.setIfLower(ctx, sender, nonce)
 }

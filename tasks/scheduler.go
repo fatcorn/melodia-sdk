@@ -477,8 +477,11 @@ func (s *scheduler) consumeGas(ctx sdk.Context, task *deliverTxTask) {
 	if gasUsed > limit {
 		consumed = limit
 	} else {
-		consumed = gasUsed
+		if gasUsed > 0 {
+			consumed = gasUsed
+		}
 	}
+
 	ctx.BlockGasMeter().WithNamespaceId(task.NamespaceId).ConsumeGas(
 		consumed, "block gas meter",
 	)
@@ -486,6 +489,9 @@ func (s *scheduler) consumeGas(ctx sdk.Context, task *deliverTxTask) {
 
 func (s *scheduler) consumeGasWanted(ctx sdk.Context, consumeGasWanted map[uint64]int64) {
 	for namespaceId, gasWanted := range consumeGasWanted {
+		if gasWanted < 0 {
+			gasWanted = 0
+		}
 		s.addTransientGasWanted(ctx.WithNamepace(namespaceId), uint64(gasWanted))
 	}
 }

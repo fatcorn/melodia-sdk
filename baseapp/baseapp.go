@@ -1265,6 +1265,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	var gasWanted uint64
 
 	var ctx sdk.Context
+	var tx sdk.Tx
 
 	// Check if a context was provided
 	if len(opts) > 0 {
@@ -1288,6 +1289,12 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			err, result = processRecovery(r, recoveryMW), nil
 			ctx.Logger().Warn("panic recovered in runTx", "err", err, "height", ctx.BlockHeight(), "txIndex", ctx.TxIndex())
 
+		}
+		if err != nil {
+			switch m := app.mempool.(type) {
+			case *mempool.NamespaceNoncer:
+				m.RemoveWithCtx(ctx, tx, app.getAccountNonceHandler)
+			}
 		}
 		gInfo = sdk.GasInfo{GasWanted: gasWanted, GasUsed: ctx.GasMeter().GasConsumed()}
 	}()
@@ -1322,7 +1329,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	//	defer consumeBlockGas()
 	//}
 
-	tx, err := app.txDecoder(txBytes)
+	tx, err = app.txDecoder(txBytes)
 	if err != nil {
 		return sdk.GasInfo{}, nil, nil, nil, err
 	}
