@@ -190,7 +190,7 @@ func (ak AccountKeeper) NextAccountNumber(ctx context.Context) uint64 {
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	if sdkCtx.ExecMode() == sdk.ExecModeFinalize {
-		if !sdkCtx.Synchronous() {
+		if !sdkCtx.Synchronous() && !sdkCtx.IsCacheCtx() {
 			panic(scheduler.NewErrNextAccountNumber(sdkCtx.TxIndex()))
 		}
 	}

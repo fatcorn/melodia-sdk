@@ -59,21 +59,22 @@ type deliverTxTask struct {
 	Ctx     sdk.Context
 	AbortCh chan occ.Abort
 
-	mx             sync.RWMutex
-	Status         status
-	Dependencies   map[int]struct{}
-	Abort          *occ.Abort
-	Incarnation    int
-	Request        []byte
-	SdkTx          sdk.Tx
-	Checksum       [32]byte
-	AbsoluteIndex  int
-	Response       *abci.ExecTxResult
-	VersionStores  map[storetypes.StoreKey]*multiversion.VersionIndexedStore
-	IsEVMTx        bool
-	NamespaceId    uint64
-	TotalTask      int
-	AccountNumbers map[string]uint64
+	mx               sync.RWMutex
+	Status           status
+	Dependencies     map[int]struct{}
+	Abort            *occ.Abort
+	Incarnation      int
+	Request          []byte
+	SdkTx            sdk.Tx
+	Checksum         [32]byte
+	AbsoluteIndex    int
+	Response         *abci.ExecTxResult
+	VersionStores    map[storetypes.StoreKey]*multiversion.VersionIndexedStore
+	IsEVMTx          bool
+	NamespaceId      uint64
+	TotalTask        int
+	AccountNumbers   map[string]uint64
+	ExecutionCounter uint64
 	//TxTracer      sdk.TxTracer
 }
 
@@ -350,7 +351,7 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 	for idx, tx := range reqs {
 		namespaceId := s.namespaceList[idx]
 
-		nextAccountNumbers := s.nextAccountNumberHandler(ctx.WithNamepace(namespaceId).WithNextAccountNumber(allNextAccountNumbers), tx.NewAccAddresses)
+		nextAccountNumbers, executionCounter := s.nextAccountNumberHandler(ctx.WithNamepace(namespaceId).WithNextAccountNumber(allNextAccountNumbers), tx.NewAccAddresses)
 
 		if nextAccountNumbers != nil && len(nextAccountNumbers) > 0 {
 			for addr, ac := range nextAccountNumbers {
@@ -359,15 +360,15 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 		}
 
 		task := &deliverTxTask{
-			Request:        tx.Request,
-			SdkTx:          tx.SdkTx,
-			AbsoluteIndex:  tx.AbsoluteIndex,
-			Status:         statusPending,
-			Dependencies:   map[int]struct{}{},
-			TotalTask:      totalTask,
-			IsEVMTx:        false,
-			AccountNumbers: nextAccountNumbers,
-
+			Request:          tx.Request,
+			SdkTx:            tx.SdkTx,
+			AbsoluteIndex:    tx.AbsoluteIndex,
+			Status:           statusPending,
+			Dependencies:     map[int]struct{}{},
+			TotalTask:        totalTask,
+			IsEVMTx:          false,
+			AccountNumbers:   nextAccountNumbers,
+			ExecutionCounter: executionCounter,
 			//TxTracer:      r.TxTracer,
 		}
 
@@ -858,7 +859,7 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 		s.DoExecute(func() {
 			defer wg.Done()
 			//now := time.Now()
-			sdkCtx := ctx.WithNamepace(t.NamespaceId).WithNextAccountNumber(t.AccountNumbers).WithSynchronous(s.synchronous).WithTxIndex(task.AbsoluteIndex)
+			sdkCtx := ctx.WithNamepace(t.NamespaceId).WithNextAccountNumber(t.AccountNumbers).WithSynchronous(s.synchronous).WithTxIndex(task.AbsoluteIndex).WithExecutionCounter(task.ExecutionCounter)
 			s.prepareAndRunTask(wg, sdkCtx, t)
 			//println("run task time", "sub", time.Now().Sub(now).String())
 		})

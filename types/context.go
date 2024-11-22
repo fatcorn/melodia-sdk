@@ -74,6 +74,8 @@ type Context struct {
 	synchronous        bool
 
 	namespaceBlockManager *nsblockstore.NamespaceStoreManager
+	executionCounter      uint64
+	cacheCtx              bool
 }
 
 // Proposed rename, not done to avoid API breakage
@@ -142,6 +144,13 @@ func (c Context) NamespaceBlock(moduleName string) *nsblockstore.NamespaceBLock 
 }
 func (c Context) ConsensusParams() cmtproto.ConsensusParams {
 	return c.consParams
+}
+
+func (c Context) ExecutionCounter() uint64 {
+	return c.executionCounter
+}
+func (c Context) IsCacheCtx() bool {
+	return c.cacheCtx
 }
 
 func (c Context) Deadline() (deadline time.Time, ok bool) {
@@ -389,6 +398,16 @@ func (c Context) WithValue(key, value interface{}) Context {
 // WithTxIndex returns a Context with the current transaction index that's being processed
 func (c Context) WithTxIndex(txIndex int) Context {
 	c.txIndex = txIndex
+	return c
+}
+
+func (c Context) WithCacheCtx(cacheCtx bool) Context {
+	c.cacheCtx = cacheCtx
+	return c
+}
+
+func (c Context) WithExecutionCounter(executionCounter uint64) Context {
+	c.executionCounter = executionCounter
 	return c
 }
 
