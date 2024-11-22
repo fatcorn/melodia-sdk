@@ -373,9 +373,11 @@ func (isd IncrementSequenceDecorator) AnteHandle(ctx sdk.Context, tx sdk.Tx, sim
 	for _, signer := range signers {
 		acc := isd.ak.GetAccount(ctx, signer)
 		nonce := acc.GetSequence()
-		maxNonce := ctx.MaxNonce()
-		if nonce < maxNonce {
-			nonce = maxNonce
+		if ctx.IsCheckTx() || ctx.IsReCheckTx() {
+			maxNonce := ctx.MaxNonce()
+			if nonce < maxNonce {
+				nonce = maxNonce
+			}
 		}
 		if err := acc.SetSequence(nonce + 1); err != nil {
 			panic(err)
