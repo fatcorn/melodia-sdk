@@ -263,9 +263,17 @@ func (h *DefaultProposalHandler) PrepareProposalHandler() sdk.PrepareProposalHan
 		// requested from CometBFT, which, by default, should be in FIFO order.
 		//
 		// Note, we still need to ensure the transactions returned respect req.MaxTxBytes.
-		_, isNoOp := h.mempool.(mempool.NoOpMempool)
-		_, isNsOp := h.mempool.(*mempool.NamespaceMempool)
-		if h.mempool == nil || isNoOp || isNsOp {
+		isDef := false
+		switch h.mempool.(type) {
+		case *mempool.NamespaceMempool:
+			isDef = true
+		case *mempool.NamespaceNoncer:
+			isDef = true
+		case mempool.NoOpMempool:
+			isDef = true
+		}
+
+		if h.mempool == nil || isDef {
 			for _, txBz := range req.Txs {
 				tx, err := h.txVerifier.TxDecode(txBz)
 				if err != nil {
@@ -372,9 +380,17 @@ func (h *DefaultProposalHandler) PrepareProposalHandler() sdk.PrepareProposalHan
 func (h *DefaultProposalHandler) ProcessProposalHandler() sdk.ProcessProposalHandler {
 	// If the mempool is nil or NoOp we simply return ACCEPT,
 	// because PrepareProposal may have included txs that could fail verification.
-	_, isNoOp := h.mempool.(mempool.NoOpMempool)
-	_, isNsOp := h.mempool.(*mempool.NamespaceMempool)
-	if h.mempool == nil || isNoOp || isNsOp {
+	isDef := false
+	switch h.mempool.(type) {
+	case *mempool.NamespaceMempool:
+		isDef = true
+	case *mempool.NamespaceNoncer:
+		isDef = true
+	case mempool.NoOpMempool:
+		isDef = true
+	}
+
+	if h.mempool == nil || isDef {
 		return NoOpProcessProposal()
 	}
 	return func(ctx sdk.Context, req *abci.RequestProcessProposal) (*abci.ResponseProcessProposal, error) {

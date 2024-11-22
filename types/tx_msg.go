@@ -116,6 +116,8 @@ type SetBlockBloomTransientHandler func(ctx Context, logs []string)
 
 type ContractStaticAnalysisResultHandler func(ctx Context, contractAddress string) (bool, bool)
 
+type GetAccountNonceHandler func(ctx Context, address string) (uint64, error)
+
 // MsgTypeURL returns the TypeURL of a `sdk.Msg`.
 var MsgTypeURL = codectypes.MsgTypeURL
 

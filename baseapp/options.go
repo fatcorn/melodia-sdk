@@ -390,6 +390,9 @@ func (app *BaseApp) SetSetBlockBloomTransientHandler(setBlockBloomTransientHandl
 func (app *BaseApp) SetContractStaticAnalysisResultHandler(contractStaticAnalysisResultHandler sdk.ContractStaticAnalysisResultHandler) {
 	app.contractStaticAnalysisResultHandler = contractStaticAnalysisResultHandler
 }
+func (app *BaseApp) SetGetAccountNonceHandler(getAccountNonceHandler sdk.GetAccountNonceHandler) {
+	app.getAccountNonceHandler = getAccountNonceHandler
+}
 
 func (app *BaseApp) SetTxAccountInfoHandler(txAccountInfoHandler sdk.TxAccountInfoHandler) {
 	app.txAccountInfoHandler = txAccountInfoHandler
