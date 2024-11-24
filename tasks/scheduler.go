@@ -104,6 +104,7 @@ func (dt *deliverTxTask) Reset() {
 	dt.Abort = nil
 	dt.AbortCh = nil
 	dt.VersionStores = nil
+	dt.AccountNumbers = nil
 
 	//if dt.TxTracer != nil {
 	//	dt.TxTracer.Reset()
