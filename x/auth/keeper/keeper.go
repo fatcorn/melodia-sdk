@@ -11,6 +11,7 @@ import (
 	scheduler "cosmossdk.io/store/types/occ"
 	"errors"
 	"fmt"
+	"github.com/cometbft/cometbft/crypto/merkle"
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
@@ -192,7 +193,7 @@ func (ak AccountKeeper) NextAccountNumber(ctx context.Context) uint64 {
 			panic(scheduler.NewErrNextAccountNumber(sdkCtx.TxIndex()))
 		}
 	}
-	n, err := ak.AccountNumber.Next(sdkCtx)
+	n, err := ak.AccountNumber.Next(sdkCtx.WithNamepace(merkle.DefaultTxNamespaceID))
 	if err != nil {
 		panic(err)
 	}

@@ -104,11 +104,15 @@ func (dt *deliverTxTask) Reset() {
 	dt.Abort = nil
 	dt.AbortCh = nil
 	dt.VersionStores = nil
-	dt.AccountNumbers = nil
 
 	//if dt.TxTracer != nil {
 	//	dt.TxTracer.Reset()
 	//}
+}
+
+func (dt *deliverTxTask) ResetAccountNumbers() {
+	dt.AccountNumbers = nil
+
 }
 
 func (dt *deliverTxTask) Increment() {
@@ -1026,6 +1030,7 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 
 	if resp.Code == errors.ErrOCCAbort.ABCICode() {
 		task.SetStatus(statusAborted)
+		//task.ResetAccountNumbers()
 		s.synchronous = true
 		return
 	}
