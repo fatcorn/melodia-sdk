@@ -70,7 +70,7 @@ type Context struct {
 	namespaceBlockHeight int64
 
 	namespaceId        uint64 // The tx related namespaceId
-	nextAccountNumbers map[string]uint64
+	nextAccountNumbers map[string]map[uint64]uint64
 	synchronous        bool
 	maxNonce           uint64
 
@@ -107,11 +107,13 @@ func (c Context) TxIndex() int                                  { return c.txInd
 func (c Context) Namespace() uint64                             { return c.namespaceId }
 func (c Context) Synchronous() bool                             { return c.synchronous }
 func (c Context) MaxNonce() uint64                              { return c.maxNonce }
-func (c Context) NextAccountNumber(address string) uint64 {
-	if addr, ok := c.nextAccountNumbers[address]; ok {
-		return addr
+func (c Context) NextAccountNumber(address string) *uint64 {
+	if accNumbers, ok := c.nextAccountNumbers[address]; ok {
+		if accountNumber, numOk := accNumbers[c.namespaceId]; numOk {
+			return &accountNumber
+		}
 	}
-	return 0
+	return nil
 }
 func (c Context) NamespaceBlockManager() *nsblockstore.NamespaceStoreManager {
 	return c.namespaceBlockManager
@@ -174,7 +176,7 @@ func NewContext(ms storetypes.MultiStore, header cmtproto.Header, isCheckTx bool
 		eventManager:         NewEventManager(),
 		kvGasConfig:          storetypes.KVGasConfig(),
 		transientKVGasConfig: storetypes.TransientGasConfig(),
-		nextAccountNumbers:   make(map[string]uint64),
+		nextAccountNumbers:   make(map[string]map[uint64]uint64),
 	}
 }
 
@@ -221,7 +223,7 @@ func (c Context) WithMaxNonce(maxNonce uint64) Context {
 	return c
 }
 
-func (c Context) WithNextAccountNumber(nextAccountNumbers map[string]uint64) Context {
+func (c Context) WithNextAccountNumber(nextAccountNumbers map[string]map[uint64]uint64) Context {
 	c.nextAccountNumbers = nextAccountNumbers
 	return c
 }

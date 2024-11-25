@@ -17,3 +17,10 @@ type NamespaceGenesis struct {
 	ModuleName  string
 	TmWsPort    int
 }
+
+type NamespaceAccount struct {
+	NamespaceId   uint64
+	FromAddress   string
+	ToAddress     string
+	AccountNumber uint64
+}

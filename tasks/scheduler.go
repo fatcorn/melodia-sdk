@@ -73,7 +73,7 @@ type deliverTxTask struct {
 	IsEVMTx        bool
 	NamespaceId    uint64
 	TotalTask      int
-	AccountNumbers map[string]uint64
+	AccountNumbers map[string]map[uint64]uint64
 	//TxTracer      sdk.TxTracer
 }
 
@@ -104,15 +104,9 @@ func (dt *deliverTxTask) Reset() {
 	dt.Abort = nil
 	dt.AbortCh = nil
 	dt.VersionStores = nil
-
 	//if dt.TxTracer != nil {
 	//	dt.TxTracer.Reset()
 	//}
-}
-
-func (dt *deliverTxTask) ResetAccountNumbers() {
-	dt.AccountNumbers = nil
-
 }
 
 func (dt *deliverTxTask) Increment() {
@@ -150,7 +144,7 @@ type scheduler struct {
 	namespaceList                 []uint64
 	threadIds                     []int
 	//tracingInfo        *tracing.Info
-
+	allNextAccountNumbers map[string]map[uint64]uint64
 }
 
 // NewScheduler creates a new scheduler
@@ -159,10 +153,11 @@ func NewScheduler(workers int, deliverTxFunc func(tx []byte, opts ...sdk.Context
 	threadProfile = pprof.Lookup("threadcreate")
 
 	return &scheduler{
-		workers:       workers,
-		deliverTx:     deliverTxFunc,
-		metrics:       &schedulerMetrics{},
-		namespaceList: namespaceList,
+		workers:               workers,
+		deliverTx:             deliverTxFunc,
+		metrics:               &schedulerMetrics{},
+		namespaceList:         namespaceList,
+		allNextAccountNumbers: make(map[string]map[uint64]uint64),
 	}
 }
 func (s *scheduler) SetSchedulerHandlers(modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, isEVMTxHandler sdk.IsEVMTxHandler, nextAccountNumberHandler sdk.NextAccountNumberHandler, txAccountInfoHandler sdk.TxAccountInfoHandler, addTransientGasWanted sdk.AddTransientGasWanted, txNewAccountAddressesHandler sdk.TxNewAccountAddressesHandler) {
@@ -311,7 +306,6 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 	totalTask := len(reqs)
 	interChainIndexes := make(map[int32]int32)
 	txDepends := make([][]int, len(reqs), len(reqs))
-	allNextAccountNumbers := make(map[string]uint64)
 
 	if orders != nil {
 		if orders.NsInterChainTransactionOrders != nil {
@@ -353,16 +347,6 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 	wg.Wait()
 
 	for idx, tx := range reqs {
-		namespaceId := s.namespaceList[idx]
-
-		nextAccountNumbers := s.nextAccountNumberHandler(ctx.WithNamepace(namespaceId).WithNextAccountNumber(allNextAccountNumbers), tx.NewAccAddresses)
-
-		if nextAccountNumbers != nil && len(nextAccountNumbers) > 0 {
-			for addr, ac := range nextAccountNumbers {
-				allNextAccountNumbers[addr] = ac
-			}
-		}
-
 		task := &deliverTxTask{
 			Request:        tx.Request,
 			SdkTx:          tx.SdkTx,
@@ -371,8 +355,7 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 			Dependencies:   map[int]struct{}{},
 			TotalTask:      totalTask,
 			IsEVMTx:        false,
-			AccountNumbers: nextAccountNumbers,
-
+			AccountNumbers: s.nextAccountNumbers(ctx, s.namespaceList[idx], tx.NewAccAddresses),
 			//TxTracer:      r.TxTracer,
 		}
 
@@ -389,8 +372,21 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 		tasksMap[tx.AbsoluteIndex] = task
 		allTasks = append(allTasks, task)
 	}
-
 	return allTasks, tasksMap
+}
+func (s *scheduler) nextAccountNumbers(ctx sdk.Context, namespaceId uint64, newAccAddresses []sdk.NamespaceAccount) map[string]map[uint64]uint64 {
+	nextAccountNumbers := s.nextAccountNumberHandler(ctx.WithNamepace(namespaceId).WithNextAccountNumber(s.allNextAccountNumbers), newAccAddresses)
+	if nextAccountNumbers != nil && len(nextAccountNumbers) > 0 {
+		for addr, accNumbers := range nextAccountNumbers {
+			for nsId, accNumber := range accNumbers {
+				if _, ok := s.allNextAccountNumbers[addr]; !ok {
+					s.allNextAccountNumbers[addr] = make(map[uint64]uint64)
+				}
+				s.allNextAccountNumbers[addr][nsId] = accNumber
+			}
+		}
+	}
+	return nextAccountNumbers
 }
 
 func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) []abci.ExecTxResult {
@@ -1030,7 +1026,6 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 
 	if resp.Code == errors.ErrOCCAbort.ABCICode() {
 		task.SetStatus(statusAborted)
-		//task.ResetAccountNumbers()
 		s.synchronous = true
 		return
 	}
