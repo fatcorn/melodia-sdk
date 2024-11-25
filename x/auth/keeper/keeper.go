@@ -190,10 +190,22 @@ func (ak AccountKeeper) NextAccountNumber(ctx context.Context) uint64 {
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	if sdkCtx.ExecMode() == sdk.ExecModeFinalize {
-		if !sdkCtx.Synchronous() && !sdkCtx.IsCacheCtx() {
+		if !sdkCtx.Synchronous() {
 			panic(scheduler.NewErrNextAccountNumber(sdkCtx.TxIndex()))
 		}
 	}
+	n, err := ak.AccountNumber.Next(sdkCtx.WithNamepace(merkle.DefaultTxNamespaceID))
+	if err != nil {
+		panic(err)
+	}
+	return n
+}
+
+// NextAccountNumberForCacheContext returns and increments the global account number counter.
+// If the global account number is not set, it initializes it with value 0.
+func (ak AccountKeeper) NextAccountNumberForCacheContext(ctx context.Context) uint64 {
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	n, err := ak.AccountNumber.Next(sdkCtx.WithNamepace(merkle.DefaultTxNamespaceID))
 	if err != nil {
 		panic(err)

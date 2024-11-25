@@ -350,7 +350,6 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 
 	for idx, tx := range reqs {
 		namespaceId := s.namespaceList[idx]
-
 		nextAccountNumbers, executionCounter := s.nextAccountNumberHandler(ctx.WithNamepace(namespaceId).WithNextAccountNumber(allNextAccountNumbers), tx.NewAccAddresses)
 
 		if nextAccountNumbers != nil && len(nextAccountNumbers) > 0 {
