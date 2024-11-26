@@ -198,11 +198,13 @@ func (ak AccountKeeper) NextAccountNumber(ctx context.Context) uint64 {
 	return n
 }
 
-// NextAccountNumberForCacheContext returns and increments the global account number counter.
-// If the global account number is not set, it initializes it with value 0.
-func (ak AccountKeeper) NextAccountNumberForCacheContext(ctx context.Context) uint64 {
+// NextCacheAccountNumber NOTE: This is hack of store operation.
+// We do not want to increase account number, so make cache context
+// and drop write() to fetch next account number without update.
+func (ak AccountKeeper) NextCacheAccountNumber(ctx context.Context) uint64 {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	n, err := ak.AccountNumber.Next(sdkCtx)
+	tmpCtx, _ := sdkCtx.CacheContext()
+	n, err := ak.AccountNumber.Next(tmpCtx)
 	if err != nil {
 		panic(err)
 	}
