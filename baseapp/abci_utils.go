@@ -274,18 +274,37 @@ func (h *DefaultProposalHandler) PrepareProposalHandler() sdk.PrepareProposalHan
 		}
 
 		if h.mempool == nil || isDef {
-			for _, txBz := range req.Txs {
+
+			newOffset := len(req.Txs)
+			for idx, txBz := range req.Txs {
 				tx, err := h.txVerifier.TxDecode(txBz)
 				if err != nil {
 					return nil, err
 				}
 
-				stop := h.txSelector.SelectTxForProposal(ctx, uint64(req.MaxTxBytes), maxBlockGas, tx, txBz)
+				stop := h.txSelector.SelectTxForProposal(ctx, uint64(req.MaxTxBytes), maxBlockGas/4, tx, txBz)
 				if stop {
+					newOffset = idx + 1
 					break
 				}
 			}
-			return &abci.ResponsePrepareProposal{Txs: h.txSelector.SelectedTxs(ctx)}, nil
+			txs := h.txSelector.SelectedTxs(ctx)
+			nsTable := req.NsTable
+			if newOffset != len(req.Txs) {
+				nsTable = make([]*cmtproto.NamespaceTableEntries, 0)
+				for _, nsEntry := range req.NsTable {
+					if int(nsEntry.Offset) >= newOffset {
+						nsEntry.Offset = int32(newOffset)
+						nsTable = append(nsTable, nsEntry)
+						break
+					}
+					nsTable = append(nsTable, nsEntry)
+				}
+			}
+			if len(txs) != newOffset {
+				panic("prepare proposal offset error")
+			}
+			return &abci.ResponsePrepareProposal{Txs: txs, NsTable: nsTable}, nil
 		}
 
 		iterator := h.mempool.Select(ctx, req.Txs)
