@@ -236,8 +236,10 @@ type BaseApp struct {
 	nextAccountNumberHandler                   sdk.NextAccountNumberHandler
 	txNewAccountAddressesHandler               sdk.TxNewAccountAddressesHandler
 	crossNamespaceTransactionIdentifierHandler sdk.CrossNamespaceTransactionIdentifierHandler
-	deliverTxHooks                             []DeliverTxHook
-	concurrencyWorkers                         int
+	getAccountNonceHandler                     sdk.GetAccountNonceHandler
+
+	deliverTxHooks     []DeliverTxHook
+	concurrencyWorkers int
 }
 
 //type NamespaceStoreManager struct {
@@ -1263,6 +1265,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	var gasWanted uint64
 
 	var ctx sdk.Context
+	var tx sdk.Tx
 
 	// Check if a context was provided
 	if len(opts) > 0 {
@@ -1270,7 +1273,6 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	} else {
 		ctx = app.getContextForTx(mode, txBytes)
 	}
-
 	ctx = ctx.WithNamespaceBlockManager(app.namespaceStoreManager)
 
 	ms := ctx.MultiStore()
@@ -1287,6 +1289,12 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			err, result = processRecovery(r, recoveryMW), nil
 			ctx.Logger().Warn("panic recovered in runTx", "err", err, "height", ctx.BlockHeight(), "txIndex", ctx.TxIndex())
 
+		}
+		if err != nil {
+			switch m := app.mempool.(type) {
+			case *mempool.NamespaceNoncer:
+				m.RemoveWithCtx(ctx, tx, app.getAccountNonceHandler)
+			}
 		}
 		gInfo = sdk.GasInfo{GasWanted: gasWanted, GasUsed: ctx.GasMeter().GasConsumed()}
 	}()
@@ -1321,7 +1329,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	//	defer consumeBlockGas()
 	//}
 
-	tx, err := app.txDecoder(txBytes)
+	tx, err = app.txDecoder(txBytes)
 	if err != nil {
 		return sdk.GasInfo{}, nil, nil, nil, err
 	}
@@ -1343,6 +1351,14 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			anteCtx sdk.Context
 			msCache storetypes.CacheMultiStore
 		)
+
+		if m, ok := app.mempool.(*mempool.NamespaceNoncer); ok {
+			maxNonce, err := m.GetNonce(ctx, tx, app.getAccountNonceHandler)
+			if err != nil {
+				return sdk.GasInfo{}, nil, nil, nil, err
+			}
+			ctx = ctx.WithMaxNonce(maxNonce)
+		}
 		//now := cmttime.Now()
 		// Branch context before AnteHandler call in case it aborts.
 		// This is required for both CheckTx and DeliverTx.
@@ -1388,8 +1404,17 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 
 	//now := cmttime.Now()
 	if mode == execModeCheck {
-		err = app.mempool.Insert(ctx, tx)
+		switch m := app.mempool.(type) {
+		case *mempool.NamespaceNoncer:
+			err = m.Refresh(ctx, tx, app.getAccountNonceHandler)
+		default:
+			err = app.mempool.Insert(ctx, tx)
+		}
+
 		if err != nil {
+			if errors.Is(err, sdkerrors.ErrInvalidSequence) {
+				return gInfo, nil, nil, nil, err
+			}
 			return gInfo, nil, anteEvents, nil, err
 		}
 		if app.pibcPacketGeneratorHadler != nil && app.signerName != "" {
@@ -1408,15 +1433,22 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			packetMsg = msg
 		}
 	} else if mode == execModeFinalize {
-		nsMempool, isNsOp := app.mempool.(*mempool.NamespaceMempool)
-		if isNsOp {
-			err = nsMempool.RemoveByNamespaceId(ctx.Namespace(), tx)
-		} else {
+
+		switch m := app.mempool.(type) {
+		case *mempool.NamespaceMempool:
+			err = m.RemoveWithCtx(ctx, tx)
+		default:
 			err = app.mempool.Remove(tx)
 		}
+
 		if err != nil && !errors.Is(err, mempool.ErrTxNotFound) {
 			return gInfo, nil, anteEvents, nil,
 				fmt.Errorf("failed to remove tx from mempool: %w", err)
+		}
+	} else if mode == execModeReCheck {
+		switch m := app.mempool.(type) {
+		case *mempool.NamespaceNoncer:
+			err = m.Refresh(ctx, tx, app.getAccountNonceHandler)
 		}
 	}
 	//if mode == execModeFinalize {

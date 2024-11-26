@@ -22,14 +22,15 @@ func (ak AccountKeeper) NewAccountWithAddress(ctx context.Context, addr sdk.AccA
 // NewAccount sets the next account number to a given account interface
 func (ak AccountKeeper) NewAccount(ctx context.Context, acc sdk.AccountI) sdk.AccountI {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	nextAccountNumber := sdkCtx.NextAccountNumber(acc.GetAddress().String())
-	if nextAccountNumber <= 0 {
-		nextAccountNumber = ak.NextAccountNumber(ctx)
+	accountNumber := sdkCtx.NextAccountNumber(acc.GetAddress().String())
+	if accountNumber == nil {
+		nextAccountNumber := ak.NextAccountNumber(ctx)
+		accountNumber = &nextAccountNumber
 		if sdkCtx.ExecMode() == sdk.ExecModeFinalize {
 			sdkCtx.Logger().Warn("new account without context account number, new next account number", "accountNumber", nextAccountNumber, "execMode=", sdkCtx.ExecMode(), "address", acc.GetAddress().String(), "namespace", sdkCtx.Namespace(), "height", sdkCtx.BlockHeight())
 		}
 	}
-	if err := acc.SetAccountNumber(nextAccountNumber); err != nil {
+	if err := acc.SetAccountNumber(*accountNumber); err != nil {
 		panic(err)
 	}
 	if sdkCtx.ExecMode() == sdk.ExecModeFinalize {
@@ -69,10 +70,13 @@ func (ak AccountKeeper) SetAccount(ctx context.Context, acc sdk.AccountI) {
 	if err != nil {
 		if errors.Is(err, collections.ErrConflict) {
 			sdkCtx := sdk.UnwrapSDKContext(ctx)
-			if !sdkCtx.Synchronous() {
-				sdkCtx.Logger().Error("Set account panic with next account number", "accountNumber", acc.GetAccountNumber(), "address", acc.GetAddress().String(), "height", sdkCtx.BlockHeight())
-				panic(scheduler.NewErrNextAccountNumber(sdkCtx.TxIndex()))
+			if sdkCtx.ExecMode() == sdk.ExecModeFinalize {
+				if !sdkCtx.Synchronous() {
+					sdkCtx.Logger().Error("Set account panic with next account number", "accountNumber", acc.GetAccountNumber(), "address", acc.GetAddress().String(), "height", sdkCtx.BlockHeight())
+					panic(scheduler.NewErrNextAccountNumber(sdkCtx.TxIndex()))
+				}
 			}
+
 		}
 		panic(err)
 	}

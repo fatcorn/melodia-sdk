@@ -73,7 +73,7 @@ type deliverTxTask struct {
 	IsEVMTx          bool
 	NamespaceId      uint64
 	TotalTask        int
-	AccountNumbers   map[string]uint64
+	AccountNumbers   map[string]map[uint64]uint64
 	ExecutionCounter uint64
 	//TxTracer      sdk.TxTracer
 }
@@ -105,7 +105,6 @@ func (dt *deliverTxTask) Reset() {
 	dt.Abort = nil
 	dt.AbortCh = nil
 	dt.VersionStores = nil
-
 	//if dt.TxTracer != nil {
 	//	dt.TxTracer.Reset()
 	//}
@@ -146,7 +145,7 @@ type scheduler struct {
 	namespaceList                 []uint64
 	threadIds                     []int
 	//tracingInfo        *tracing.Info
-
+	allNextAccountNumbers map[string]map[uint64]uint64
 }
 
 // NewScheduler creates a new scheduler
@@ -155,10 +154,11 @@ func NewScheduler(workers int, deliverTxFunc func(tx []byte, opts ...sdk.Context
 	threadProfile = pprof.Lookup("threadcreate")
 
 	return &scheduler{
-		workers:       workers,
-		deliverTx:     deliverTxFunc,
-		metrics:       &schedulerMetrics{},
-		namespaceList: namespaceList,
+		workers:               workers,
+		deliverTx:             deliverTxFunc,
+		metrics:               &schedulerMetrics{},
+		namespaceList:         namespaceList,
+		allNextAccountNumbers: make(map[string]map[uint64]uint64),
 	}
 }
 func (s *scheduler) SetSchedulerHandlers(modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, isEVMTxHandler sdk.IsEVMTxHandler, nextAccountNumberHandler sdk.NextAccountNumberHandler, txAccountInfoHandler sdk.TxAccountInfoHandler, addTransientGasWanted sdk.AddTransientGasWanted, txNewAccountAddressesHandler sdk.TxNewAccountAddressesHandler) {
@@ -307,7 +307,6 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 	totalTask := len(reqs)
 	interChainIndexes := make(map[int32]int32)
 	txDepends := make([][]int, len(reqs), len(reqs))
-	allNextAccountNumbers := make(map[string]uint64)
 
 	if orders != nil {
 		if orders.NsInterChainTransactionOrders != nil {
@@ -349,15 +348,7 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 	wg.Wait()
 
 	for idx, tx := range reqs {
-		namespaceId := s.namespaceList[idx]
-		nextAccountNumbers, executionCounter := s.nextAccountNumberHandler(ctx.WithNamepace(namespaceId).WithNextAccountNumber(allNextAccountNumbers), tx.NewAccAddresses)
-
-		if nextAccountNumbers != nil && len(nextAccountNumbers) > 0 {
-			for addr, ac := range nextAccountNumbers {
-				allNextAccountNumbers[addr] = ac
-			}
-		}
-
+		accountNumbers, executionCounter := s.nextAccountNumbers(ctx, s.namespaceList[idx], tx.NewAccAddresses)
 		task := &deliverTxTask{
 			Request:          tx.Request,
 			SdkTx:            tx.SdkTx,
@@ -366,7 +357,7 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 			Dependencies:     map[int]struct{}{},
 			TotalTask:        totalTask,
 			IsEVMTx:          false,
-			AccountNumbers:   nextAccountNumbers,
+			AccountNumbers:   accountNumbers,
 			ExecutionCounter: executionCounter,
 			//TxTracer:      r.TxTracer,
 		}
@@ -384,8 +375,21 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 		tasksMap[tx.AbsoluteIndex] = task
 		allTasks = append(allTasks, task)
 	}
-
 	return allTasks, tasksMap
+}
+func (s *scheduler) nextAccountNumbers(ctx sdk.Context, namespaceId uint64, newAccAddresses []sdk.NamespaceAccount) (map[string]map[uint64]uint64, uint64) {
+	nextAccountNumbers, executionCounter := s.nextAccountNumberHandler(ctx.WithNamepace(namespaceId).WithNextAccountNumber(s.allNextAccountNumbers), newAccAddresses)
+	if nextAccountNumbers != nil && len(nextAccountNumbers) > 0 {
+		for addr, accNumbers := range nextAccountNumbers {
+			for nsId, accNumber := range accNumbers {
+				if _, ok := s.allNextAccountNumbers[addr]; !ok {
+					s.allNextAccountNumbers[addr] = make(map[uint64]uint64)
+				}
+				s.allNextAccountNumbers[addr][nsId] = accNumber
+			}
+		}
+	}
+	return nextAccountNumbers, executionCounter
 }
 
 func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) []abci.ExecTxResult {
@@ -477,8 +481,11 @@ func (s *scheduler) consumeGas(ctx sdk.Context, task *deliverTxTask) {
 	if gasUsed > limit {
 		consumed = limit
 	} else {
-		consumed = gasUsed
+		if gasUsed > 0 {
+			consumed = gasUsed
+		}
 	}
+
 	ctx.BlockGasMeter().WithNamespaceId(task.NamespaceId).ConsumeGas(
 		consumed, "block gas meter",
 	)
@@ -486,6 +493,9 @@ func (s *scheduler) consumeGas(ctx sdk.Context, task *deliverTxTask) {
 
 func (s *scheduler) consumeGasWanted(ctx sdk.Context, consumeGasWanted map[uint64]int64) {
 	for namespaceId, gasWanted := range consumeGasWanted {
+		if gasWanted < 0 {
+			gasWanted = 0
+		}
 		s.addTransientGasWanted(ctx.WithNamepace(namespaceId), uint64(gasWanted))
 	}
 }

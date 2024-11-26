@@ -2,18 +2,15 @@ package keeper
 
 import (
 	"context"
-	scheduler "cosmossdk.io/store/types/occ"
-	"errors"
-	"fmt"
-	"github.com/cometbft/cometbft/crypto/merkle"
-
 	"cosmossdk.io/collections"
 	"cosmossdk.io/collections/indexes"
 	"cosmossdk.io/core/address"
 	"cosmossdk.io/core/store"
 	errorsmod "cosmossdk.io/errors"
 	"cosmossdk.io/log"
-
+	scheduler "cosmossdk.io/store/types/occ"
+	"errors"
+	"fmt"
 	"github.com/cosmos/cosmos-sdk/codec"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -194,7 +191,7 @@ func (ak AccountKeeper) NextAccountNumber(ctx context.Context) uint64 {
 			panic(scheduler.NewErrNextAccountNumber(sdkCtx.TxIndex()))
 		}
 	}
-	n, err := ak.AccountNumber.Next(sdkCtx.WithNamepace(merkle.DefaultTxNamespaceID))
+	n, err := ak.AccountNumber.Next(sdkCtx)
 	if err != nil {
 		panic(err)
 	}
@@ -204,9 +201,8 @@ func (ak AccountKeeper) NextAccountNumber(ctx context.Context) uint64 {
 // NextAccountNumberForCacheContext returns and increments the global account number counter.
 // If the global account number is not set, it initializes it with value 0.
 func (ak AccountKeeper) NextAccountNumberForCacheContext(ctx context.Context) uint64 {
-
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	n, err := ak.AccountNumber.Next(sdkCtx.WithNamepace(merkle.DefaultTxNamespaceID))
+	n, err := ak.AccountNumber.Next(sdkCtx)
 	if err != nil {
 		panic(err)
 	}

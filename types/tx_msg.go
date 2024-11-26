@@ -102,8 +102,8 @@ type TxDecoder func(txBytes []byte) (Tx, error)
 type TxEncoder func(tx Tx) ([]byte, error)
 
 type TxAccountInfoHandler func(tx Tx) (string, string)
-type NextAccountNumberHandler func(ctx Context, toAddress []string) (map[string]uint64, uint64)
-type TxNewAccountAddressesHandler func(ctx Context, tx Tx) []string
+type NextAccountNumberHandler func(ctx Context, nsAccounts []NamespaceAccount) (map[string]map[uint64]uint64, uint64)
+type TxNewAccountAddressesHandler func(ctx Context, tx Tx) []NamespaceAccount
 type CrossNamespaceTransactionIdentifierHandler func(ctx Context, tx Tx) ([]byte, bool, bool)
 
 type WriteDeferredBalancesHandler func(ctx Context) []abci.Event
@@ -115,6 +115,8 @@ type ModifyLogIndexHandler func(ctx Context, input string, logIndex uint64) stri
 type SetBlockBloomTransientHandler func(ctx Context, logs []string)
 
 type ContractStaticAnalysisResultHandler func(ctx Context, contractAddress string) (bool, bool)
+
+type GetAccountNonceHandler func(ctx Context, address string) (uint64, error)
 
 // MsgTypeURL returns the TypeURL of a `sdk.Msg`.
 var MsgTypeURL = codectypes.MsgTypeURL
