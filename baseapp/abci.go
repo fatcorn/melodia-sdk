@@ -758,6 +758,7 @@ func (app *BaseApp) VerifyVoteExtension(req *abci.RequestVerifyVoteExtension) (r
 // must be used.
 func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.RequestFinalizeBlock) (*abci.ResponseFinalizeBlock, error) {
 	var events []abci.Event
+	timeStart := time.Now()
 
 	if err := app.checkHalt(req.Height, req.Time); err != nil {
 		return nil, err
@@ -957,6 +958,7 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	// calculate time used by scheduler
 	fmt.Printf("========= Scheduler Time used: %v,decode tx time %v,deliver tx %v,append time %v, make namespace block time %v,handler event time %v \n", time.Since(startTime).String(), t1.Sub(startTime1).String(), t2.Sub(startTime).String(), time.Since(t22).String(), t21.Sub(t2).String(), t22.Sub(t21).String())
 	//app.logger.Info("FinalizeBlock", "schedulerTime", time.Since(startTime))
+	time1 := time.Now()
 
 	if app.finalizeBlockState.ms.TracingEnabled() {
 		app.finalizeBlockState.ms = app.finalizeBlockState.ms.SetTracingContext(nil).(storetypes.CacheMultiStore)
@@ -966,6 +968,7 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	if err != nil {
 		return nil, err
 	}
+	time2 := time.Now()
 
 	// check after endBlock if we should abort, to avoid propagating the result
 	select {
@@ -977,6 +980,8 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 
 	events = append(events, endBlock.Events...)
 	cp := app.GetConsensusParams(app.finalizeBlockState.Context())
+	time3 := time.Now()
+	println("finalize block ","end block time",time2.Sub(time1).String(),"get consendus parames",time3.Sub(time2).String(),"Total time",time.Since(timeStart).String())
 
 	return &abci.ResponseFinalizeBlock{
 		Events:                events,
@@ -1027,9 +1032,12 @@ func (app *BaseApp) FinalizeBlock(req *abci.RequestFinalizeBlock) (res *abci.Res
 		app.optimisticExec.Reset()
 	}
 
+	now := time.Now()
 	// if no OE is running, just run the block (this is either a block replay or a OE that got aborted)
 	res, err = app.internalFinalizeBlock(context.Background(), req)
 	if res != nil {
+		println("internal finalize block","",time.Since(now).String())
+
 		// calculate workingHash execute time
 		startTime := time.Now().UnixNano()
 		res.AppHash = app.workingHash()
