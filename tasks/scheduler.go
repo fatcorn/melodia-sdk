@@ -602,6 +602,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	// set trace store file
 	tracePathEnv := os.Getenv("tracePath")
 	if tracePathEnv != "" {
+
 		nowTime := strconv.Itoa(int(now.UnixMilli()))
 		tracePath := "trace/trace" + nowTime + ".out"
 		tracePath = tracePathEnv + tracePath
@@ -614,9 +615,10 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 		if err := trace.Start(f); err != nil {
 			panic(err)
 		}
+		go printCpuCount()
 	}
 
-	//go printCpuCount()
+
 
 	t6 := time.Now()
 	// execution tasks are limited by workers
