@@ -275,21 +275,20 @@ func (h *DefaultProposalHandler) PrepareProposalHandler() sdk.PrepareProposalHan
 
 		if h.mempool == nil || isDef {
 
-			newOffset := len(req.Txs)
-			for idx, txBz := range req.Txs {
+			for _, txBz := range req.Txs {
 				tx, err := h.txVerifier.TxDecode(txBz)
 				if err != nil {
 					return nil, err
 				}
 
-				stop := h.txSelector.SelectTxForProposal(ctx, uint64(req.MaxTxBytes), maxBlockGas, tx, txBz)
+				stop := h.txSelector.SelectTxForProposal(ctx, uint64(req.MaxTxBytes), 50000, tx, txBz)
 				if stop {
-					newOffset = idx + 1
 					break
 				}
 			}
 			txs := h.txSelector.SelectedTxs(ctx)
 			nsTable := req.NsTable
+			newOffset := len(txs)
 			if newOffset != len(req.Txs) {
 				nsTable = make([]*cmtproto.NamespaceTableEntries, 0)
 				for _, nsEntry := range req.NsTable {
