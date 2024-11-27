@@ -102,7 +102,7 @@ func (txn *noncer) setIfLower(ctx sdk.Context, addr string, nonce uint64) {
 	txn.nonces.Set(addr, nonce)
 }
 
-// setAll sets the nonces for all accounts to the given map.
-func (txn *noncer) setAll(all map[string]uint64) {
+// Reset reset the nonces
+func (txn *noncer) Reset() {
 	txn.nonces = multiversion.NewShardedMap(1024)
 }

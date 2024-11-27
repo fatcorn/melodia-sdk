@@ -95,8 +95,7 @@ func (nsm *NamespaceNoncer) Reset() {
 	nsm.mtx.Lock()
 	defer nsm.mtx.Unlock()
 	for _, pn := range nsm.pendingNonces {
-		clean := make(map[string]uint64)
-		pn.setAll(clean)
+		pn.Reset()
 	}
 }
 
