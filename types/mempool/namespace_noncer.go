@@ -42,7 +42,6 @@ func (nsm *NamespaceNoncer) Refresh(ctx sdk.Context, tx sdk.Tx, fallback sdk.Get
 	sig := sigs[0]
 	sender := sig.Signer.String()
 	nonce := ctx.MaxNonce()
-	println("3333----nonce=", nonce, "index=", ctx.TxIndex())
 	pendingNoncer.setIfHigher(ctx, sender, nonce)
 
 	//nonce := pendingNoncer.get(ctx, sender)
