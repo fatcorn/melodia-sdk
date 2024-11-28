@@ -384,6 +384,10 @@ func (isd IncrementSequenceDecorator) AnteHandle(ctx sdk.Context, tx sdk.Tx, sim
 		}
 
 		isd.ak.SetAccount(ctx, acc)
+
+		if ctx.IsCheckTx() || ctx.IsReCheckTx() {
+			ctx = ctx.WithMaxNonce(nonce)
+		}
 	}
 
 	return next(ctx, tx, simulate)

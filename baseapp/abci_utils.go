@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	tmbytes "github.com/cometbft/cometbft/libs/bytes"
 	"slices"
+	"sync"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -275,8 +278,7 @@ func (h *DefaultProposalHandler) PrepareProposalHandler() sdk.PrepareProposalHan
 
 		if h.mempool == nil || isDef {
 
-			newOffset := len(req.Txs)
-			for idx, txBz := range req.Txs {
+			for _, txBz := range req.Txs {
 				tx, err := h.txVerifier.TxDecode(txBz)
 				if err != nil {
 					return nil, err
@@ -284,27 +286,24 @@ func (h *DefaultProposalHandler) PrepareProposalHandler() sdk.PrepareProposalHan
 
 				stop := h.txSelector.SelectTxForProposal(ctx, uint64(req.MaxTxBytes), maxBlockGas, tx, txBz)
 				if stop {
-					newOffset = idx + 1
 					break
 				}
 			}
-			txs := h.txSelector.SelectedTxs(ctx)
-			nsTable := req.NsTable
+			newTxs := h.txSelector.SelectedTxs(ctx)
+			newNsTable := req.NsTable
+			newOffset := len(newTxs)
 			if newOffset != len(req.Txs) {
-				nsTable = make([]*cmtproto.NamespaceTableEntries, 0)
+				newNsTable = make([]*cmtproto.NamespaceTableEntries, 0)
 				for _, nsEntry := range req.NsTable {
 					if int(nsEntry.Offset) >= newOffset {
 						nsEntry.Offset = int32(newOffset)
-						nsTable = append(nsTable, nsEntry)
+						newNsTable = append(newNsTable, nsEntry)
 						break
 					}
-					nsTable = append(nsTable, nsEntry)
+					newNsTable = append(newNsTable, nsEntry)
 				}
 			}
-			if len(txs) != newOffset {
-				panic("prepare proposal offset error")
-			}
-			return &abci.ResponsePrepareProposal{Txs: txs, NsTable: nsTable}, nil
+			return &abci.ResponsePrepareProposal{Txs: newTxs, NsTable: newNsTable}, nil
 		}
 
 		iterator := h.mempool.Select(ctx, req.Txs)
@@ -566,4 +565,650 @@ func (ts *defaultTxSelector) SelectFullTxForProposal(_ context.Context, memTx sd
 	ts.totalTxBytes += txSize
 	ts.selectedTxs = append(ts.selectedTxs, txBz)
 	return true
+}
+
+// SortTxsOrders return sort orders
+func (app *BaseApp) SortTxsOrders(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.ResponseSortTxs, error) {
+	startTime := time.Now()
+	reqByteTxs := make([]sdk.ByteTx, len(req.Txs))
+	switch m := app.mempool.(type) {
+	case *mempool.NamespaceNoncer:
+		for i, txByte := range req.Txs {
+			byteTx := m.GetTx(txByte)
+			if byteTx == nil {
+				tx, err := app.TxDecode(txByte)
+				if err != nil {
+					continue
+				}
+				byteTx = &sdk.ByteTx{Tx: tx, TxBytes: txByte}
+			}
+			reqByteTxs[i] = *byteTx
+		}
+	default:
+		reqByteTxs, _ = app.TxDecodeBatch(req.Txs)
+	}
+	ctx.Logger().Info("1->sortTxsOrders TxDecodeBatch time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(req.Txs), "height", ctx.BlockHeight())
+	var (
+		beforeInterChainPairTxs = make(map[string][]*cmtproto.NsInterChainTransactionIndex)
+		afterInterChainPairTxs  = make(map[string][]*cmtproto.NsInterChainTransactionIndex)
+
+		listNamespaceByteTxs = func(byteTxs []sdk.ByteTx, nsTable []*cmtproto.NamespaceTableEntries) map[uint64][]sdk.ByteTx {
+			nsByteTxs := make(map[uint64][]sdk.ByteTx)
+			lastOffset := int32(0)
+			for _, entry := range nsTable {
+				namespaceTxs := byteTxs[lastOffset:entry.Offset]
+				namespaceId := entry.Namespace
+				lastOffset = entry.Offset
+				nsByteTxs[namespaceId] = namespaceTxs
+			}
+			return nsByteTxs
+		}
+	)
+
+	var (
+		orders = &cmtproto.Orders{
+			NsTransactionOrders: &cmtproto.NsTransactionOrders{
+				Entries: make([]*cmtproto.NsTransactionOrderEntry, 0)},
+			NsInterChainTransactionOrders: &cmtproto.NsInterChainTransactionOrders{
+				Entries: make([]*cmtproto.NsInterChainTransactionOrderEntry, 0),
+			},
+		}
+		txIndex                             = 0
+		handleNsInterChainTransactionOrders = func(byteTx sdk.ByteTx, txIdx int, namespaceId uint64) bool {
+			tx := byteTx.Tx
+			txBz := byteTx.TxBytes
+			txIdBz, isCross, isFirst := app.crossNamespaceTransactionIdentifierHandler(ctx.WithTxBytes(txBz), tx)
+			if isCross {
+				txId := tmbytes.HexBytes(txIdBz).String()
+				if pairTxs, inPair := beforeInterChainPairTxs[txId]; inPair {
+					if len(pairTxs) != 2 {
+						return false
+					}
+				}
+
+				if interTxs, ok := afterInterChainPairTxs[txId]; ok {
+					interTxs = append(interTxs, &cmtproto.NsInterChainTransactionIndex{
+						Namespace: namespaceId,
+						Index:     int32(txIdx),
+					})
+
+					idxes := make([]*cmtproto.NsInterChainTransactionIndex, 2)
+
+					if isFirst {
+						idxes[0] = interTxs[1]
+						idxes[1] = interTxs[0]
+					} else {
+						idxes[0] = interTxs[0]
+						idxes[1] = interTxs[1]
+					}
+
+					entry := &cmtproto.NsInterChainTransactionOrderEntry{
+						Indexes: idxes,
+					}
+					orders.NsInterChainTransactionOrders.Entries = append(orders.NsInterChainTransactionOrders.Entries, entry)
+				} else {
+					afterInterChainPairTxs[txId] = []*cmtproto.NsInterChainTransactionIndex{
+						{
+							Namespace: namespaceId,
+							Index:     int32(txIdx),
+						},
+					}
+				}
+			}
+			return true
+		}
+	)
+	staticTime := time.Now()
+	nsByteTxs := listNamespaceByteTxs(reqByteTxs, req.NsTable)
+	for namespaceId, byteTxs := range nsByteTxs {
+
+		var (
+			addressIndexMap                 = make(map[string]int)
+			lastTxIndexMap                  = make(map[string]int)
+			nsTransactionIndexes            = make([]*cmtproto.NsTransactionIndexes, 0, len(byteTxs))
+			handleNsTransactionDependOrders = func(txIdx int, namespaceId uint64, from string, to string) {
+				if lastToIdx, toExists := lastTxIndexMap[to]; toExists {
+					if lastFromIdx, fromExists := lastTxIndexMap[from]; !fromExists || lastFromIdx != lastToIdx {
+						entry := &cmtproto.NsInterChainTransactionOrderEntry{
+							Indexes: []*cmtproto.NsInterChainTransactionIndex{
+								{
+									Namespace: namespaceId,
+									Index:     int32(lastToIdx),
+								},
+								{
+									Namespace: namespaceId,
+									Index:     int32(txIdx),
+								},
+							},
+						}
+						orders.NsInterChainTransactionOrders.Entries = append(orders.NsInterChainTransactionOrders.Entries, entry)
+					}
+				}
+				lastTxIndexMap[from] = txIdx
+				lastTxIndexMap[to] = txIdx
+			}
+
+			handleNsTransactionOrders = func(tx sdk.Tx, txIdx int, namespaceId uint64) {
+				var (
+					fromIdx    int
+					toIdx      int
+					fromExists bool
+					toExists   bool
+					from       string
+					to         string
+					curIdx     int
+					isToSerial bool
+					toIsSerial = func(namespaceId uint64, to string) bool {
+						isContract, isContractSerial := app.contractStaticAnalysisResultHandler(ctx.WithNamepace(namespaceId), to)
+						if isContract {
+							return isContractSerial
+						}
+						return true
+					}
+				)
+
+				defer func() {
+					if isToSerial {
+						handleNsTransactionDependOrders(txIdx, namespaceId, from, to)
+					}
+				}()
+
+				from, to = app.txAccountInfoHandler(tx)
+
+				fromIdx, fromExists = addressIndexMap[from]
+				toIdx, toExists = addressIndexMap[to]
+
+				if fromExists && toExists {
+					//Both exist,add from index
+					curIdx = fromIdx
+					nsTransactionIndexes[curIdx].Indexes = append(nsTransactionIndexes[curIdx].Indexes, int32(txIdx))
+
+					//Check if they should be depends
+					if toIsSerial(namespaceId, to) {
+						isToSerial = true
+					}
+				} else if fromExists {
+					// Only from exists, add to index
+					curIdx = fromIdx
+					nsTransactionIndexes[curIdx].Indexes = append(nsTransactionIndexes[curIdx].Indexes, int32(txIdx))
+					addressIndexMap[to] = curIdx
+				} else if toExists {
+					// Only to exists, add from index
+					if toIsSerial(namespaceId, to) {
+						isToSerial = true
+						//append to index
+						curIdx = toIdx
+						nsTransactionIndexes[curIdx].Indexes = append(nsTransactionIndexes[curIdx].Indexes, int32(txIdx))
+						addressIndexMap[from] = curIdx
+					} else {
+						//create new from index
+						nsTransactionIndexes = append(nsTransactionIndexes, &cmtproto.NsTransactionIndexes{Indexes: []int32{int32(txIdx)}})
+						curIdx = len(nsTransactionIndexes) - 1
+						addressIndexMap[from] = curIdx
+					}
+				} else {
+					// Neither exists, create both indices
+					//create new from & to index
+					nsTransactionIndexes = append(nsTransactionIndexes, &cmtproto.NsTransactionIndexes{Indexes: []int32{int32(txIdx)}})
+					curIdx = len(nsTransactionIndexes) - 1
+					addressIndexMap[from] = curIdx
+					addressIndexMap[to] = curIdx
+				}
+			}
+		)
+
+		orderTime := time.Now()
+		for _, byteTx := range byteTxs {
+			txBz := byteTx.TxBytes
+			tx := byteTx.Tx
+			if tx == nil || txBz == nil {
+				continue
+			}
+			ok := handleNsInterChainTransactionOrders(byteTx, txIndex, namespaceId)
+			if !ok {
+				continue
+			}
+			handleNsTransactionOrders(tx, txIndex, namespaceId)
+			txIndex++
+		}
+		ctx.Logger().Info("2.1->sortTxsOrders orders time", "used", fmt.Sprintf("%v ms", time.Since(orderTime).Milliseconds()), "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "reqSortType", req.SortType, "height", ctx.BlockHeight())
+
+		if len(nsTransactionIndexes) > 0 {
+			orders.NsTransactionOrders.Entries = append(orders.NsTransactionOrders.Entries, &cmtproto.NsTransactionOrderEntry{
+				Namespace: namespaceId,
+				Indexes:   nsTransactionIndexes,
+			})
+		}
+
+	}
+	ctx.Logger().Info("2->sortTxsOrders total orders time", "used", fmt.Sprintf("%v ms", time.Since(staticTime).Milliseconds()), "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "reqSortType", req.SortType, "height", ctx.BlockHeight())
+	ctx.Logger().Info("3->sortTxsOrders total time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "reqSortType", req.SortType, "height", ctx.BlockHeight())
+
+	return &abci.ResponseSortTxs{Txs: req.Txs, NsTable: req.NsTable, Orders: orders}, nil
+}
+
+// SortTxsNsTable return sort txs and nsTable
+func (app *BaseApp) SortTxsNsTable(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.ResponseSortTxs, error) {
+	startTime := time.Now()
+	reqByteTxs := make([]sdk.ByteTx, len(req.Txs))
+	switch m := app.mempool.(type) {
+	case *mempool.NamespaceNoncer:
+		for i, txByte := range req.Txs {
+			byteTx := m.GetTx(txByte)
+			if byteTx == nil {
+				tx, err := app.TxDecode(txByte)
+				if err != nil {
+					continue
+				}
+				byteTx = &sdk.ByteTx{Tx: tx, TxBytes: txByte}
+			}
+			reqByteTxs[i] = *byteTx
+		}
+	default:
+		reqByteTxs, _ = app.TxDecodeBatch(req.Txs)
+	}
+
+	ctx.Logger().Info("1->sortTxsNsTable TxDecodeBatch time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(req.Txs), "height", ctx.BlockHeight())
+	insertTime := time.Now()
+	var (
+		sortTxs   = make([][]byte, 0)
+		wg        sync.WaitGroup
+		nsMempool = mempool.NewNamespaceMempool()
+
+		listNamespaceByteTxs = func(byteTxs []sdk.ByteTx, nsTable []*cmtproto.NamespaceTableEntries) map[uint64][]sdk.ByteTx {
+			nsByteTxs := make(map[uint64][]sdk.ByteTx)
+			lastOffset := int32(0)
+			for _, entry := range nsTable {
+				namespaceTxs := byteTxs[lastOffset:entry.Offset]
+				namespaceId := entry.Namespace
+				lastOffset = entry.Offset
+				nsByteTxs[namespaceId] = namespaceTxs
+			}
+			return nsByteTxs
+		}
+
+		nsMempoolInsertTxs = func(ctx sdk.Context, namespaceTxs []sdk.ByteTx, namespaceId uint64) {
+			defer wg.Done()
+			singleStartTime := time.Now()
+			for _, byteTx := range namespaceTxs {
+				tx := byteTx.Tx
+				txBz := byteTx.TxBytes
+				if tx == nil || txBz == nil {
+					continue
+				}
+				ctx = ctx.WithNamepace(namespaceId)
+				_ = nsMempool.Insert(ctx, tx)
+
+			}
+			ctx.Logger().Info("2.1->sortTxsNsTable single namespace insert time", "used", fmt.Sprintf("%v ms", time.Since(singleStartTime).Milliseconds()), "size", len(namespaceTxs), "namespaceId", namespaceId, "height", ctx.BlockHeight())
+		}
+	)
+	nsByteTxs := listNamespaceByteTxs(reqByteTxs, req.NsTable)
+
+	for namespaceId, byteTxs := range nsByteTxs {
+		wg.Add(1)
+		go nsMempoolInsertTxs(ctx, byteTxs, namespaceId)
+	}
+	wg.Wait()
+	ctx.Logger().Info("2->sortTxsNsTable total insert time", "used", fmt.Sprintf("%v ms", time.Since(insertTime).Milliseconds()), "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
+
+	sortTime := time.Now()
+	nsIterators := nsMempool.SelectWithNsTable(ctx, req.Txs, req.NsTable)
+
+	ctx.Logger().Info("3->sortTxsNsTable sort time", "used", fmt.Sprintf("%v ms", time.Since(sortTime).Milliseconds()), "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
+
+	var (
+		offset  = 0
+		nsTable = make([]*cmtproto.NamespaceTableEntries, 0)
+		txIndex = 0
+	)
+	staticTime := time.Now()
+	for _, nsIterator := range nsIterators {
+		iterator := nsIterator.Iterator
+		namespaceId := nsIterator.NamespaceId
+
+		txSize := nsMempool.CountTxByNamespaceId(namespaceId)
+		// Static analysis
+		var (
+			txs     = make([]sdk.Tx, 0, txSize)
+			byteTxs = make([]sdk.ByteTx, 0, txSize)
+		)
+
+		// If the iterator is nil use the NoOpMempool, get all namespace txs
+		if iterator == nil {
+			byteTxs = nsByteTxs[namespaceId]
+		} else {
+			for iterator != nil {
+				tx := iterator.Tx()
+				txs = append(txs, tx)
+				iterator = iterator.Next()
+			}
+			batchTime := time.Now()
+			byteTxs, _ = app.TxEncodeBatch(txs)
+			ctx.Logger().Info("4.1->sortTxsNsTable iterator TxEncodeBatch  time", "used", fmt.Sprintf("%v ms", time.Since(batchTime).Milliseconds()), "namespaceId", namespaceId, "height", ctx.BlockHeight())
+		}
+		for _, byteTx := range byteTxs {
+			txBz := byteTx.TxBytes
+			tx := byteTx.Tx
+			if tx == nil || txBz == nil {
+				continue
+			}
+			sortTxs = append(sortTxs, txBz)
+			offset++
+			txIndex++
+		}
+		nsTable = append(nsTable, &cmtproto.NamespaceTableEntries{
+			Namespace: namespaceId,
+			Offset:    int32(offset),
+		})
+
+	}
+	ctx.Logger().Info("4->sortTxsNsTable total nsTable time", "used", fmt.Sprintf("%v ms", time.Since(staticTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "reqSortType", req.SortType, "height", ctx.BlockHeight())
+	ctx.Logger().Info("5->sortTxsNsTable total time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "reqSortType", req.SortType, "height", ctx.BlockHeight())
+
+	return &abci.ResponseSortTxs{Txs: sortTxs, NsTable: nsTable, Orders: nil}, nil
+}
+
+// SortTxsAll return sort txs and nsTable & orders
+func (app *BaseApp) SortTxsAll(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.ResponseSortTxs, error) {
+	startTime := time.Now()
+	reqByteTxs := make([]sdk.ByteTx, len(req.Txs))
+	switch m := app.mempool.(type) {
+	case *mempool.NamespaceNoncer:
+		for i, txByte := range req.Txs {
+			byteTx := m.GetTx(txByte)
+			if byteTx == nil {
+				tx, err := app.TxDecode(txByte)
+				if err != nil {
+					continue
+				}
+				byteTx = &sdk.ByteTx{Tx: tx, TxBytes: txByte}
+			}
+			reqByteTxs[i] = *byteTx
+		}
+	default:
+		reqByteTxs, _ = app.TxDecodeBatch(req.Txs)
+	}
+	ctx.Logger().Info("1->sortTxs TxDecodeBatch time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(req.Txs), "height", ctx.BlockHeight())
+	insertTime := time.Now()
+	var (
+		sortTxs                 = make([][]byte, 0)
+		wg                      sync.WaitGroup
+		nsMempool               = mempool.NewNamespaceMempool()
+		beforeInterChainPairTxs = make(map[string][]*cmtproto.NsInterChainTransactionIndex)
+		afterInterChainPairTxs  = make(map[string][]*cmtproto.NsInterChainTransactionIndex)
+
+		listNamespaceByteTxs = func(byteTxs []sdk.ByteTx, nsTable []*cmtproto.NamespaceTableEntries) map[uint64][]sdk.ByteTx {
+			nsByteTxs := make(map[uint64][]sdk.ByteTx)
+			lastOffset := int32(0)
+			for _, entry := range nsTable {
+				namespaceTxs := byteTxs[lastOffset:entry.Offset]
+				namespaceId := entry.Namespace
+				lastOffset = entry.Offset
+				nsByteTxs[namespaceId] = namespaceTxs
+			}
+			return nsByteTxs
+		}
+
+		nsMempoolInsertTxs = func(ctx sdk.Context, namespaceTxs []sdk.ByteTx, namespaceId uint64) {
+			defer wg.Done()
+			singleStartTime := time.Now()
+			for idx, byteTx := range namespaceTxs {
+				tx := byteTx.Tx
+				txBz := byteTx.TxBytes
+				if tx == nil || txBz == nil {
+					continue
+				}
+
+				txIdBz, isCross, _ := app.crossNamespaceTransactionIdentifierHandler(ctx.WithTxBytes(txBz), tx)
+				if isCross {
+					txId := tmbytes.HexBytes(txIdBz).String()
+					if _, ok := beforeInterChainPairTxs[txId]; ok {
+						beforeInterChainPairTxs[txId] = append(beforeInterChainPairTxs[txId], &cmtproto.NsInterChainTransactionIndex{
+							Namespace: namespaceId,
+							Index:     int32(idx),
+						})
+					} else {
+						beforeInterChainPairTxs[txId] = []*cmtproto.NsInterChainTransactionIndex{
+							{
+								Namespace: namespaceId,
+								Index:     int32(idx),
+							},
+						}
+					}
+				}
+
+				ctx = ctx.WithNamepace(namespaceId)
+				_ = nsMempool.Insert(ctx, tx)
+
+			}
+			ctx.Logger().Info("2.1->sortTxs single namespace insert time", "used", fmt.Sprintf("%v ms", time.Since(singleStartTime).Milliseconds()), "size", len(namespaceTxs), "namespaceId", namespaceId, "height", ctx.BlockHeight())
+		}
+	)
+	nsByteTxs := listNamespaceByteTxs(reqByteTxs, req.NsTable)
+
+	for namespaceId, byteTxs := range nsByteTxs {
+		wg.Add(1)
+		go nsMempoolInsertTxs(ctx, byteTxs, namespaceId)
+	}
+	wg.Wait()
+	ctx.Logger().Info("2->sortTxs total insert time", "used", fmt.Sprintf("%v ms", time.Since(insertTime).Milliseconds()), "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
+
+	sortTime := time.Now()
+	nsIterators := nsMempool.SelectWithNsTable(ctx, req.Txs, req.NsTable)
+
+	ctx.Logger().Info("3->sortTxs sort time", "used", fmt.Sprintf("%v ms", time.Since(sortTime).Milliseconds()), "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
+
+	var (
+		offset  = 0
+		nsTable = make([]*cmtproto.NamespaceTableEntries, 0)
+		orders  = &cmtproto.Orders{
+			NsTransactionOrders: &cmtproto.NsTransactionOrders{
+				Entries: make([]*cmtproto.NsTransactionOrderEntry, 0)},
+			NsInterChainTransactionOrders: &cmtproto.NsInterChainTransactionOrders{
+				Entries: make([]*cmtproto.NsInterChainTransactionOrderEntry, 0),
+			},
+		}
+		txIndex = 0
+	)
+	staticTime := time.Now()
+	handleNsInterChainTransactionOrders := func(byteTx sdk.ByteTx, txIdx int, namespaceId uint64) bool {
+		tx := byteTx.Tx
+		txBz := byteTx.TxBytes
+		txIdBz, isCross, isFirst := app.crossNamespaceTransactionIdentifierHandler(ctx.WithTxBytes(txBz), tx)
+		if isCross {
+			txId := tmbytes.HexBytes(txIdBz).String()
+			if pairTxs, inPair := beforeInterChainPairTxs[txId]; inPair {
+				if len(pairTxs) != 2 {
+					return false
+				}
+			}
+
+			if interTxs, ok := afterInterChainPairTxs[txId]; ok {
+				interTxs = append(interTxs, &cmtproto.NsInterChainTransactionIndex{
+					Namespace: namespaceId,
+					Index:     int32(txIdx),
+				})
+
+				idxes := make([]*cmtproto.NsInterChainTransactionIndex, 2)
+
+				if isFirst {
+					idxes[0] = interTxs[1]
+					idxes[1] = interTxs[0]
+				} else {
+					idxes[0] = interTxs[0]
+					idxes[1] = interTxs[1]
+				}
+
+				entry := &cmtproto.NsInterChainTransactionOrderEntry{
+					Indexes: idxes,
+				}
+				orders.NsInterChainTransactionOrders.Entries = append(orders.NsInterChainTransactionOrders.Entries, entry)
+			} else {
+				afterInterChainPairTxs[txId] = []*cmtproto.NsInterChainTransactionIndex{
+					{
+						Namespace: namespaceId,
+						Index:     int32(txIdx),
+					},
+				}
+			}
+		}
+		return true
+	}
+
+	for _, nsIterator := range nsIterators {
+		iterator := nsIterator.Iterator
+		namespaceId := nsIterator.NamespaceId
+
+		txSize := nsMempool.CountTxByNamespaceId(namespaceId)
+		// Static analysis
+		var (
+			txs                  = make([]sdk.Tx, 0, txSize)
+			byteTxs              = make([]sdk.ByteTx, 0, txSize)
+			addressIndexMap      = make(map[string]int)
+			lastTxIndexMap       = make(map[string]int)
+			nsTransactionIndexes = make([]*cmtproto.NsTransactionIndexes, 0, txSize)
+		)
+
+		// If the iterator is nil use the NoOpMempool, get all namespace txs
+		if iterator == nil {
+			byteTxs = nsByteTxs[namespaceId]
+		} else {
+			for iterator != nil {
+				tx := iterator.Tx()
+				txs = append(txs, tx)
+				iterator = iterator.Next()
+			}
+			batchTime := time.Now()
+			byteTxs, _ = app.TxEncodeBatch(txs)
+			ctx.Logger().Info("4.1->sortTxs iterator TxEncodeBatch  time", "used", fmt.Sprintf("%v ms", time.Since(batchTime).Milliseconds()), "namespaceId", namespaceId, "height", ctx.BlockHeight())
+		}
+
+		handleNsTransactionDependOrders := func(txIdx int, namespaceId uint64, from string, to string) {
+			if lastToIdx, toExists := lastTxIndexMap[to]; toExists {
+				if lastFromIdx, fromExists := lastTxIndexMap[from]; !fromExists || lastFromIdx != lastToIdx {
+					entry := &cmtproto.NsInterChainTransactionOrderEntry{
+						Indexes: []*cmtproto.NsInterChainTransactionIndex{
+							{
+								Namespace: namespaceId,
+								Index:     int32(lastToIdx),
+							},
+							{
+								Namespace: namespaceId,
+								Index:     int32(txIdx),
+							},
+						},
+					}
+					orders.NsInterChainTransactionOrders.Entries = append(orders.NsInterChainTransactionOrders.Entries, entry)
+				}
+			}
+			lastTxIndexMap[from] = txIdx
+			lastTxIndexMap[to] = txIdx
+		}
+
+		handleNsTransactionOrders := func(tx sdk.Tx, txIdx int, namespaceId uint64) {
+
+			var (
+				fromIdx    int
+				toIdx      int
+				fromExists bool
+				toExists   bool
+				from       string
+				to         string
+				curIdx     int
+				isToSerial bool
+				toIsSerial = func(namespaceId uint64, to string) bool {
+					isContract, isContractSerial := app.contractStaticAnalysisResultHandler(ctx.WithNamepace(namespaceId), to)
+					if isContract {
+						return isContractSerial
+					}
+					return true
+				}
+			)
+
+			defer func() {
+				if isToSerial {
+					handleNsTransactionDependOrders(txIdx, namespaceId, from, to)
+				}
+			}()
+
+			from, to = app.txAccountInfoHandler(tx)
+
+			fromIdx, fromExists = addressIndexMap[from]
+			toIdx, toExists = addressIndexMap[to]
+
+			if fromExists && toExists {
+				//Both exist,add from index
+				curIdx = fromIdx
+				nsTransactionIndexes[curIdx].Indexes = append(nsTransactionIndexes[curIdx].Indexes, int32(txIdx))
+
+				//Check if they should be depends
+				if toIsSerial(namespaceId, to) {
+					isToSerial = true
+				}
+			} else if fromExists {
+				// Only from exists, add to index
+				curIdx = fromIdx
+				nsTransactionIndexes[curIdx].Indexes = append(nsTransactionIndexes[curIdx].Indexes, int32(txIdx))
+				addressIndexMap[to] = curIdx
+			} else if toExists {
+				// Only to exists, add from index
+				if toIsSerial(namespaceId, to) {
+					isToSerial = true
+					//append to index
+					curIdx = toIdx
+					nsTransactionIndexes[curIdx].Indexes = append(nsTransactionIndexes[curIdx].Indexes, int32(txIdx))
+					addressIndexMap[from] = curIdx
+				} else {
+					//create new from index
+					nsTransactionIndexes = append(nsTransactionIndexes, &cmtproto.NsTransactionIndexes{Indexes: []int32{int32(txIdx)}})
+					curIdx = len(nsTransactionIndexes) - 1
+					addressIndexMap[from] = curIdx
+				}
+			} else {
+				// Neither exists, create both indices
+				//create new from & to index
+				nsTransactionIndexes = append(nsTransactionIndexes, &cmtproto.NsTransactionIndexes{Indexes: []int32{int32(txIdx)}})
+				curIdx = len(nsTransactionIndexes) - 1
+				addressIndexMap[from] = curIdx
+				addressIndexMap[to] = curIdx
+			}
+		}
+
+		orderTime := time.Now()
+		for _, byteTx := range byteTxs {
+			txBz := byteTx.TxBytes
+			tx := byteTx.Tx
+			if tx == nil || txBz == nil {
+				continue
+			}
+			ok := handleNsInterChainTransactionOrders(byteTx, txIndex, namespaceId)
+			if !ok {
+				continue
+			}
+
+			sortTxs = append(sortTxs, txBz)
+			offset++
+
+			handleNsTransactionOrders(tx, txIndex, namespaceId)
+			txIndex++
+		}
+		ctx.Logger().Info("4.2->sortTxs orders time", "used", fmt.Sprintf("%v ms", time.Since(orderTime).Milliseconds()), "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "reqSortType", req.SortType, "height", ctx.BlockHeight())
+
+		if len(nsTransactionIndexes) > 0 {
+			nsTable = append(nsTable, &cmtproto.NamespaceTableEntries{
+				Namespace: namespaceId,
+				Offset:    int32(offset),
+			})
+			orders.NsTransactionOrders.Entries = append(orders.NsTransactionOrders.Entries, &cmtproto.NsTransactionOrderEntry{
+				Namespace: namespaceId,
+				Indexes:   nsTransactionIndexes,
+			})
+		}
+
+	}
+	ctx.Logger().Info("4->sortTxs total orders time", "used", fmt.Sprintf("%v ms", time.Since(staticTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "reqSortType", req.SortType, "height", ctx.BlockHeight())
+	ctx.Logger().Info("5->sortTxs total time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "reqSortType", req.SortType, "height", ctx.BlockHeight())
+
+	return &abci.ResponseSortTxs{Txs: sortTxs, NsTable: nsTable, Orders: orders}, nil
 }
