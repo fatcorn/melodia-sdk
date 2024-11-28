@@ -1348,7 +1348,6 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			if err != nil {
 				return sdk.GasInfo{}, nil, nil, nil, err
 			}
-			println("1111----nonce=", maxNonce, "index=", ctx.TxIndex())
 			ctx = ctx.WithMaxNonce(maxNonce)
 		}
 		//now := cmttime.Now()
