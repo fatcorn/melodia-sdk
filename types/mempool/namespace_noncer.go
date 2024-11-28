@@ -3,6 +3,8 @@ package mempool
 import (
 	"context"
 	"fmt"
+	tmbytes "github.com/cometbft/cometbft/libs/bytes"
+	tmtypes "github.com/cometbft/cometbft/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"sync"
 )
@@ -14,6 +16,7 @@ type NamespaceNoncer struct {
 	mtx             sync.RWMutex
 	pendingNonces   map[uint64]*noncer // Pending state tracking virtual nonces
 	signerExtractor SignerExtractionAdapter
+	txs             sync.Map
 }
 
 // NewNamespaceNoncer creates a new mempool that prioritizes transactions by
@@ -99,8 +102,14 @@ func (nsm *NamespaceNoncer) Reset() {
 	}
 }
 
-func (nsm *NamespaceNoncer) Insert(context.Context, sdk.Tx) error {
-	panic("implement me")
+func (nsm *NamespaceNoncer) Insert(ctx context.Context, tx sdk.Tx) error {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	txHash := tmbytes.HexBytes(tmtypes.Tx(sdkCtx.TxBytes()).Hash()).String()
+	nsm.txs.Store(txHash, sdk.ByteTx{
+		Tx:      tx,
+		TxBytes: sdkCtx.TxBytes(),
+	})
+	return nil
 }
 func (nsm *NamespaceNoncer) Select(context.Context, [][]byte) Iterator {
 	panic("implement me")
@@ -111,10 +120,22 @@ func (nsm *NamespaceNoncer) CountTx() int {
 func (nsm *NamespaceNoncer) Remove(tx sdk.Tx) error {
 	return nil
 }
-func (nsm *NamespaceNoncer) RemoveWithCtx(ctx sdk.Context, tx sdk.Tx, fallback sdk.GetAccountNonceHandler) {
-	if tx == nil {
-		return
+func (nsm *NamespaceNoncer) GetTx(txByte []byte) *sdk.ByteTx {
+	txHash := tmbytes.HexBytes(tmtypes.Tx(txByte).Hash()).String()
+	tx, ok := nsm.txs.Load(txHash)
+	if ok {
+		result := tx.(sdk.ByteTx)
+		return &result
 	}
+	return nil
+}
+func (nsm *NamespaceNoncer) RemoveWithCtx(ctx context.Context, tx sdk.Tx) error {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	txHash := tmbytes.HexBytes(tmtypes.Tx(sdkCtx.TxBytes()).Hash()).String()
+	nsm.txs.Delete(txHash)
+	return nil
+}
+func (nsm *NamespaceNoncer) Rollback(ctx sdk.Context, tx sdk.Tx, fallback sdk.GetAccountNonceHandler) {
 	pendingNoncer := nsm.getNoncer(ctx, fallback)
 
 	sigs, err := nsm.signerExtractor.GetSigners(tx)
