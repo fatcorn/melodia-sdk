@@ -38,8 +38,8 @@ func (nsm *NamespaceNoncer) Refresh(ctx sdk.Context, tx sdk.Tx, fallback sdk.Get
 
 	sig := sigs[0]
 	sender := sig.Signer.String()
-
-	pendingNoncer.refresh(ctx, sender)
+	nonce := ctx.MaxNonce()
+	pendingNoncer.setIfHigher(ctx, sender, nonce)
 
 	//nonce := pendingNoncer.get(ctx, sender)
 
@@ -95,8 +95,7 @@ func (nsm *NamespaceNoncer) Reset() {
 	nsm.mtx.Lock()
 	defer nsm.mtx.Unlock()
 	for _, pn := range nsm.pendingNonces {
-		clean := make(map[string]uint64)
-		pn.setAll(clean)
+		pn.Reset()
 	}
 }
 
