@@ -660,8 +660,9 @@ func (app *BaseApp) SortTxsOrders(ctx sdk.Context, req *abci.RequestSortTxs) (*a
 	)
 	staticTime := time.Now()
 	nsByteTxs := listNamespaceByteTxs(reqByteTxs, req.NsTable)
-	for namespaceId, byteTxs := range nsByteTxs {
-
+	for _, nsEntry := range req.NsTable {
+		namespaceId := nsEntry.Namespace
+		byteTxs := nsByteTxs[namespaceId]
 		var (
 			addressIndexMap                 = make(map[string]int)
 			lastTxIndexMap                  = make(map[string]int)
