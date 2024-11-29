@@ -811,9 +811,10 @@ func (app *BaseApp) SortTxsNsTable(ctx sdk.Context, req *abci.RequestSortTxs) (*
 	ctx.Logger().Info("1->sortTxsNsTable TxDecodeBatch time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(req.Txs), "height", ctx.BlockHeight())
 	insertTime := time.Now()
 	var (
-		sortTxs   = make([][]byte, 0)
-		wg        sync.WaitGroup
-		nsMempool = mempool.NewNamespaceMempool()
+		sortTxs                 = make([][]byte, 0)
+		wg                      sync.WaitGroup
+		nsMempool               = mempool.NewNamespaceMempool()
+		beforeInterChainPairTxs = make(map[string][]*cmtproto.NsInterChainTransactionIndex)
 
 		listNamespaceByteTxs = func(byteTxs []sdk.ByteTx, nsTable []*cmtproto.NamespaceTableEntries) map[uint64][]sdk.ByteTx {
 			nsByteTxs := make(map[uint64][]sdk.ByteTx)
@@ -830,12 +831,31 @@ func (app *BaseApp) SortTxsNsTable(ctx sdk.Context, req *abci.RequestSortTxs) (*
 		nsMempoolInsertTxs = func(ctx sdk.Context, namespaceTxs []sdk.ByteTx, namespaceId uint64) {
 			defer wg.Done()
 			singleStartTime := time.Now()
-			for _, byteTx := range namespaceTxs {
+			for idx, byteTx := range namespaceTxs {
 				tx := byteTx.Tx
 				txBz := byteTx.TxBytes
 				if tx == nil || txBz == nil {
 					continue
 				}
+
+				txIdBz, isCross, _ := app.crossNamespaceTransactionIdentifierHandler(ctx.WithTxBytes(txBz), tx)
+				if isCross {
+					txId := tmbytes.HexBytes(txIdBz).String()
+					if _, ok := beforeInterChainPairTxs[txId]; ok {
+						beforeInterChainPairTxs[txId] = append(beforeInterChainPairTxs[txId], &cmtproto.NsInterChainTransactionIndex{
+							Namespace: namespaceId,
+							Index:     int32(idx),
+						})
+					} else {
+						beforeInterChainPairTxs[txId] = []*cmtproto.NsInterChainTransactionIndex{
+							{
+								Namespace: namespaceId,
+								Index:     int32(idx),
+							},
+						}
+					}
+				}
+
 				ctx = ctx.WithNamepace(namespaceId)
 				_ = nsMempool.Insert(ctx, tx)
 
@@ -870,8 +890,22 @@ func (app *BaseApp) SortTxsNsTable(ctx sdk.Context, req *abci.RequestSortTxs) (*
 		txSize := nsMempool.CountTxByNamespaceId(namespaceId)
 		// Static analysis
 		var (
-			txs     = make([]sdk.Tx, 0, txSize)
-			byteTxs = make([]sdk.ByteTx, 0, txSize)
+			txs                                 = make([]sdk.Tx, 0, txSize)
+			byteTxs                             = make([]sdk.ByteTx, 0, txSize)
+			handleNsInterChainTransactionOrders = func(byteTx sdk.ByteTx, txIdx int, namespaceId uint64) bool {
+				tx := byteTx.Tx
+				txBz := byteTx.TxBytes
+				txIdBz, isCross, _ := app.crossNamespaceTransactionIdentifierHandler(ctx.WithTxBytes(txBz), tx)
+				if isCross {
+					txId := tmbytes.HexBytes(txIdBz).String()
+					if pairTxs, inPair := beforeInterChainPairTxs[txId]; inPair {
+						if len(pairTxs) != 2 {
+							return false
+						}
+					}
+				}
+				return true
+			}
 		)
 
 		// If the iterator is nil use the NoOpMempool, get all namespace txs
@@ -891,6 +925,10 @@ func (app *BaseApp) SortTxsNsTable(ctx sdk.Context, req *abci.RequestSortTxs) (*
 			txBz := byteTx.TxBytes
 			tx := byteTx.Tx
 			if tx == nil || txBz == nil {
+				continue
+			}
+			ok := handleNsInterChainTransactionOrders(byteTx, txIndex, namespaceId)
+			if !ok {
 				continue
 			}
 			sortTxs = append(sortTxs, txBz)
