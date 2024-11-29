@@ -103,12 +103,12 @@ func (nsm *NamespaceNoncer) Reset() {
 }
 
 func (nsm *NamespaceNoncer) Insert(ctx context.Context, tx sdk.Tx) error {
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	txHash := tmbytes.HexBytes(tmtypes.Tx(sdkCtx.TxBytes()).Hash()).String()
-	nsm.txs.Store(txHash, sdk.ByteTx{
-		Tx:      tx,
-		TxBytes: sdkCtx.TxBytes(),
-	})
+	//sdkCtx := sdk.UnwrapSDKContext(ctx)
+	//txHash := tmbytes.HexBytes(tmtypes.Tx(sdkCtx.TxBytes()).Hash()).String()
+	//nsm.txs.Store(txHash, sdk.ByteTx{
+	//	Tx:      tx,
+	//	TxBytes: sdkCtx.TxBytes(),
+	//})
 	return nil
 }
 func (nsm *NamespaceNoncer) Select(context.Context, [][]byte) Iterator {
@@ -130,9 +130,9 @@ func (nsm *NamespaceNoncer) GetTx(txByte []byte) *sdk.ByteTx {
 	return nil
 }
 func (nsm *NamespaceNoncer) RemoveWithCtx(ctx context.Context, tx sdk.Tx) error {
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	txHash := tmbytes.HexBytes(tmtypes.Tx(sdkCtx.TxBytes()).Hash()).String()
-	nsm.txs.Delete(txHash)
+	//sdkCtx := sdk.UnwrapSDKContext(ctx)
+	//txHash := tmbytes.HexBytes(tmtypes.Tx(sdkCtx.TxBytes()).Hash()).String()
+	//nsm.txs.Delete(txHash)
 	return nil
 }
 func (nsm *NamespaceNoncer) Rollback(ctx sdk.Context, tx sdk.Tx, fallback sdk.GetAccountNonceHandler) {
