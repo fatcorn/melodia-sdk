@@ -1105,6 +1105,7 @@ func (app *BaseApp) DetectInternalEvent(txs []sdk.Tx) (sdk.InternalEvents, error
 }
 
 func (app *BaseApp) deliverTx(tx []byte, opts ...sdk.Context) *abci.ExecTxResult {
+	t1 := time.Now()
 	var ctx sdk.Context
 
 	// Check if a context was provided
@@ -1125,6 +1126,7 @@ func (app *BaseApp) deliverTx(tx []byte, opts ...sdk.Context) *abci.ExecTxResult
 		telemetry.SetGauge(float32(gInfo.GasUsed), "tx", "gas", "used")
 		telemetry.SetGauge(float32(gInfo.GasWanted), "tx", "gas", "wanted")
 	}()
+	t2 := time.Now()
 
 	gInfo, result, anteEvents, _, err := app.runTx(execModeFinalize, tx, ctx)
 	if err != nil {
@@ -1137,7 +1139,9 @@ func (app *BaseApp) deliverTx(tx []byte, opts ...sdk.Context) *abci.ExecTxResult
 			app.trace,
 		)
 		return resp
+
 	}
+	t3 := time.Now()
 
 	resp = &abci.ExecTxResult{
 		GasWanted: int64(gInfo.GasWanted),
@@ -1147,11 +1151,17 @@ func (app *BaseApp) deliverTx(tx []byte, opts ...sdk.Context) *abci.ExecTxResult
 		Events:    sdk.MarkEventsToIndex(result.Events, app.indexEvents),
 	}
 
+	t4 := time.Now()
+
 	sdkTx, err := app.txDecoder(tx)
+
+	t5 := time.Now()
 
 	for _, hook := range app.deliverTxHooks {
 		hook(ctx, sdkTx, sha256.Sum256(tx), resp)
 	}
+
+	fmt.Sprintf("deliverTx:", "pre runTx", t2.Sub(t1).String(), "runTx", t3.Sub(t2).String(), "build resp", t4.Sub(t3).String(), "decode", t5.Sub(t4).String(), "hook", time.Since(t5).String())
 
 	return resp
 }
@@ -1262,6 +1272,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	// NOTE: GasWanted should be returned by the AnteHandler. GasUsed is
 	// determined by the GasMeter. We need access to the context to get the gas
 	// meter, so we initialize upfront.
+	t1 := time.Now()
 	var gasWanted uint64
 
 	var ctx sdk.Context
@@ -1329,11 +1340,12 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	//	defer consumeBlockGas()
 	//}
 
+	t2 := time.Now()
 	tx, err = app.txDecoder(txBytes)
 	if err != nil {
 		return sdk.GasInfo{}, nil, nil, nil, err
 	}
-
+	t3 := time.Now()
 	msgs := tx.GetMsgs()
 	if err := validateBasicTxMsgs(msgs); err != nil {
 		return sdk.GasInfo{}, nil, nil, nil, err
@@ -1345,8 +1357,10 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			return sdk.GasInfo{}, nil, nil, nil, errorsmod.Wrapf(sdkerrors.ErrUnknownRequest, "no message handler found for %T", msg)
 		}
 	}
+	t4 := time.Now()
 
 	if app.anteHandler != nil {
+		a1 := time.Now()
 		var (
 			anteCtx sdk.Context
 			msCache storetypes.CacheMultiStore
@@ -1359,6 +1373,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			}
 			ctx = ctx.WithMaxNonce(maxNonce)
 		}
+		a2 := time.Now()
 		//now := cmttime.Now()
 		// Branch context before AnteHandler call in case it aborts.
 		// This is required for both CheckTx and DeliverTx.
@@ -1374,6 +1389,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 		//	sleepDuration := cmttime.Now().Sub(now)
 		//	println("stage1 task: ", ctx.TxIndex(), " time: ", sleepDuration, " from: ", now.String())
 		//}
+		a3 := time.Now()
 		if !newCtx.IsZero() {
 			// At this point, newCtx.MultiStore() is a store branch, or something else
 			// replaced by the AnteHandler. We want the original multistore.
@@ -1392,7 +1408,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 		if err != nil {
 			return gInfo, nil, nil, nil, err
 		}
-
+		a4 := time.Now()
 		//now = cmttime.Now()
 		msCache.Write()
 		anteEvents = events.ToABCIEvents()
@@ -1400,7 +1416,18 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 		//	sleepDuration := cmttime.Now().Sub(now)
 		//	println("stage2 task: ", ctx.TxIndex(), " time: ", sleepDuration, " from: ", now.String())
 		//}
+		a5 := time.Now()
+		if mode == execModeFinalize {
+			fmt.Sprintf("AnteHandler",
+				"getnonce", a2.Sub(a1).String(),
+				"ante", a3.Sub(a2).String(),
+				"gas wanted", a4.Sub(a3).String(),
+				"abci event", a5.Sub(a4).String(),
+			)
+		}
 	}
+
+	t5 := time.Now()
 
 	//now := cmttime.Now()
 	if mode == execModeCheck {
@@ -1451,6 +1478,8 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			err = m.Refresh(ctx, tx, app.getAccountNonceHandler)
 		}
 	}
+
+	t6 := time.Now()
 	//if mode == execModeFinalize {
 	//	sleepDuration := cmttime.Now().Sub(now)
 	//	println("stage3 task: ", ctx.TxIndex(), " time: ", sleepDuration, " from: ", now.String())
@@ -1468,6 +1497,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	if err == nil {
 		result, err = app.runMsgs(runMsgCtx, msgs, msgsV2, mode)
 	}
+	t7 := time.Now()
 	//if mode == execModeFinalize {
 	//	sleepDuration := cmttime.Now().Sub(now)
 	//	println("stage4 task: ", ctx.TxIndex(), " time: ", sleepDuration, " from: ", now.String())
@@ -1492,6 +1522,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 		}
 		result.Events = append(result.Events, newCtx.EventManager().ABCIEvents()...)
 	}
+	t8 := time.Now()
 	//now = cmttime.Now()
 	if err == nil {
 		if mode == execModeFinalize {
@@ -1506,10 +1537,21 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			result.Events = append(anteEvents, result.Events...)
 		}
 	}
-	//if mode == execModeFinalize {
-	//	sleepDuration := cmttime.Now().Sub(now)
-	//	println("stage5 task: ", ctx.TxIndex(), " time: ", sleepDuration, " from: ", now.String())
-	//}
+	t9 := time.Now()
+	if mode == execModeFinalize {
+		//sleepDuration := cmttime.Now().Sub(now)
+		//println("stage5 task: ", ctx.TxIndex(), " time: ", sleepDuration, " from: ", now.String())
+		fmt.Sprintf("runMsg",
+			"Prepare Ctx", t2.Sub(t1).String(),
+			"decode Tx", t3.Sub(t2).String(),
+			"msg touter", t4.Sub(t3).String(),
+			"ante handler", t5.Sub(t4).String(),
+			"mempool rm tx", t6.Sub(t5).String(),
+			"run msg", t7.Sub(t6).String(),
+			"post handler", t8.Sub(t7).String(),
+			"cache write", t9.Sub(t8).String(),
+		)
+	}
 	return gInfo, result, anteEvents, packetMsg, err
 }
 
@@ -2035,6 +2077,7 @@ func LoadNamespaceStoreInfo(db dbm.DB, home string) (*nsblockstore.NamespaceStor
 			NamespaceId: uint64(namespace.NamespaceId),
 			ModuleName:  namespace.Module,
 		}
+		moduleRelatedModules[namespace.Module] = namespace.ListAllDependentMoudlesName()
 	}
 
 	namespaceDBInfo := nsblockstore.NamespaceStoreDBInfo{

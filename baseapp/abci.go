@@ -2,7 +2,6 @@ package baseapp
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	consensustypes "github.com/cometbft/cometbft/types"
 	"github.com/cosmos/cosmos-sdk/tasks"
@@ -793,9 +792,9 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 			defer wg.Done()
 			tx, _ := app.txDecoder(rawTx)
 			deliverTxEntry := &sdk.DeliverTxEntry{
-				Request:       rawTx,
-				SdkTx:         tx,
-				Checksum:      sha256.Sum256(rawTx),
+				Request: rawTx,
+				SdkTx:   tx,
+				//Checksum:      sha256.Sum256(rawTx),
 				AbsoluteIndex: txIndex,
 			}
 			entries[txIndex] = deliverTxEntry
@@ -981,7 +980,7 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	events = append(events, endBlock.Events...)
 	cp := app.GetConsensusParams(app.finalizeBlockState.Context())
 	time3 := time.Now()
-	println("finalize block ","end block time",time2.Sub(time1).String(),"get consendus parames",time3.Sub(time2).String(),"Total time",time.Since(timeStart).String())
+	println("finalize block ", "end block time", time2.Sub(time1).String(), "get consendus parames", time3.Sub(time2).String(), "Total time", time.Since(timeStart).String())
 
 	return &abci.ResponseFinalizeBlock{
 		Events:                events,
@@ -1036,7 +1035,7 @@ func (app *BaseApp) FinalizeBlock(req *abci.RequestFinalizeBlock) (res *abci.Res
 	// if no OE is running, just run the block (this is either a block replay or a OE that got aborted)
 	res, err = app.internalFinalizeBlock(context.Background(), req)
 	if res != nil {
-		println("internal finalize block","",time.Since(now).String())
+		println("internal finalize block", "", time.Since(now).String())
 
 		// calculate workingHash execute time
 		startTime := time.Now().UnixNano()

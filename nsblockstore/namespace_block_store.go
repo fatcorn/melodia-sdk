@@ -165,7 +165,12 @@ func (n *NamespaceBLockStore) SaveBlock(height int64, hash []byte, block *Namesp
 		panic(err)
 	}
 	if height != n.height+1 && n.height != n.base {
-		panic(fmt.Errorf("BlockStore can only save contiguous blocks. Wanted %v, got %v", n.height+1, height))
+		oldBlock := n.LoadBlock(height)
+		// cosmos block Rollback or replay
+		if oldBlock.RelatedCometBFTBlockHeight != block.RelatedCometBFTBlockHeight {
+			panic(fmt.Errorf("BlockStore can only save contiguous blocks. Wanted %v, got %v", n.height+1, height))
+		}
+		n.height = height - 1
 	}
 	batch := n.db.NewBatch()
 	defer batch.Close()
@@ -204,6 +209,7 @@ func (n *NamespaceBLockStore) SaveBlock(height int64, hash []byte, block *Namesp
 		panic(err)
 	}
 	err = batch.WriteSync()
+	fmt.Printf("====================> save namespace Block, height %v, rc height %v\n", block.Height, block.RelatedCometBFTBlockHeight)
 	if err != nil {
 		panic(err)
 	}

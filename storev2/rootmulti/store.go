@@ -490,6 +490,7 @@ func (rs *Store) LoadNamespaceStoreInfo(home string) (*nsblockstore.NamespaceSto
 			NamespaceId: uint64(namespace.NamespaceId),
 			ModuleName:  namespace.Module,
 		}
+		moduleRelatedModules[namespace.Module] = namespace.ListAllDependentMoudlesName()
 	}
 
 	namespaceDBInfo := nsblockstore.NamespaceStoreDBInfo{

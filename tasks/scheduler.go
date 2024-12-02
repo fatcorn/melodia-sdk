@@ -621,7 +621,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	t6 := time.Now()
 	// execution tasks are limited by workers
 	s.start(workerCtx, s.executeCh, workers)
-	println("start worker ctx", "", time.Since(t6).String())
+	println("start worker ctx", "spent time", time.Since(t6).String(), "workers num", workers)
 
 	s.start1(workerCtx, s.collectCh, workers)
 	//t6 := time.Now()
@@ -807,8 +807,7 @@ func (s *scheduler) validateAll(ctx sdk.Context, tasks []*deliverTxTask) ([]*del
 	//ctx, span := s.traceSpan(ctx, "SchedulerValidateAll", nil)
 	//defer span.End()
 
-	var mx sync.Mutex
-	var res []*deliverTxTask
+	//var mx sync.Mutex
 
 	startIdx, anyLeft := s.findFirstNonValidated()
 
@@ -816,30 +815,39 @@ func (s *scheduler) validateAll(ctx sdk.Context, tasks []*deliverTxTask) ([]*del
 		return nil, nil
 	}
 
+	res := make([]*deliverTxTask, len(tasks))
 	wg := &sync.WaitGroup{}
+
 	for i := startIdx; i < len(tasks); i++ {
 		wg.Add(1)
 		t := tasks[i]
 		s.DoValidate(func() {
 			defer wg.Done()
 			if !s.validateTask(ctx, t) {
-				mx.Lock()
-				defer mx.Unlock()
+				//mx.Lock()
+				//defer mx.Unlock()
 				t.Reset()
 				t.Increment()
 				// update max incarnation for scheduler
 				if t.Incarnation > s.maxIncarnation {
 					s.maxIncarnation = t.Incarnation
 				}
-				res = append(res, t)
+				res[i] = t
 			}
 		})
 	}
 	//printSystemStats("validating")
 
 	wg.Wait()
+	ret := make([]*deliverTxTask, 0, len(res))
+	for i := 0; i < len(res); i++ {
+		if res[i] != nil {
+			ret = append(ret, res[i])
+		}
 
-	return res, nil
+	}
+
+	return ret, nil
 }
 
 // ExecuteAll executes all tasks concurrently
@@ -864,10 +872,10 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 		wg.Add(1)
 		s.DoExecute(func() {
 			defer wg.Done()
-			//now := time.Now()
+			now := time.Now()
 			sdkCtx := ctx.WithNamepace(t.NamespaceId).WithNextAccountNumber(t.AccountNumbers).WithSynchronous(s.synchronous).WithTxIndex(task.AbsoluteIndex)
 			s.prepareAndRunTask(wg, sdkCtx, t)
-			//println("run task time", "sub", time.Now().Sub(now).String())
+			fmt.Sprintf("run task time", "sub", time.Now().Sub(now).String())
 		})
 	}
 	//printSystemStats("executing")
@@ -934,6 +942,7 @@ func (s *scheduler) prepareAndRunTask(wg *sync.WaitGroup, ctx sdk.Context, task 
 
 // prepareTask initializes the context and version stores for a task
 func (s *scheduler) prepareTask(task *deliverTxTask) {
+	t1 := time.Now()
 	ctx := task.Ctx.WithTxIndex(task.AbsoluteIndex)
 
 	//_, span := s.traceSpan(ctx, "SchedulerPrepare", task)
@@ -941,9 +950,10 @@ func (s *scheduler) prepareTask(task *deliverTxTask) {
 
 	// initialize the context
 	abortCh := make(chan occ.Abort, len(s.multiVersionStores))
-
+	t2 := time.Now()
 	// print len(s.multiVersionStores)
 
+	var t3, t4 time.Time
 	// if there are no stores, don't try to wrap, because there's nothing to wrap
 	if len(s.multiVersionStores) > 0 {
 		// non-blocking
@@ -954,12 +964,15 @@ func (s *scheduler) prepareTask(task *deliverTxTask) {
 		for storeKey, mvs := range s.multiVersionStores {
 			vs[storeKey] = mvs.VersionedIndexedStore(task.AbsoluteIndex, task.Incarnation, abortCh, task.TotalTask)
 		}
+		t3 = time.Now()
 
 		// save off version store so we can ask it things later
 		task.VersionStores = vs
 		ms := cms.SetKVStores(func(k storetypes.StoreKey, kvs storetypes.KVStore) store.CacheWrap {
 			return vs[k]
 		})
+
+		t4 = time.Now()
 
 		ctx = ctx.WithMultiStore(ms)
 		namespaceId := s.namespaceList[task.AbsoluteIndex]
@@ -969,13 +982,15 @@ func (s *scheduler) prepareTask(task *deliverTxTask) {
 
 	task.AbortCh = abortCh
 	task.Ctx = ctx
+	t5 := time.Now()
+	fmt.Sprintf("prepareTask", "make chan", t2.Sub(t1).String(), "range mvs", t3.Sub(t2).String(), "set kvstores", t4.Sub(t3).String(), "namespaceId", t5.Sub(t4).String(), "mvs len", len(s.multiVersionStores))
 }
 
 func (s *scheduler) executeTask(task *deliverTxTask) {
 	//dCtx, dSpan := s.traceSpan(task.Ctx, "SchedulerExecuteTask", task)
 	//defer dSpan.End()
 	//task.Ctx = dCtx
-
+	startTime := time.Now()
 	// in the synchronous case, we only want to re-execute tasks that need re-executing
 	if s.synchronous {
 		// if already validated, then this does another validation
@@ -993,24 +1008,25 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 			task.Increment()
 		}
 	}
-	//prepareTaskNow := cmttime.Now()
+	t1 := time.Now()
 
 	s.prepareTask(task)
 	//prepareTaskSleepDuration := cmttime.Now().Sub(prepareTaskNow)
-	//println("prepareTaskNow task: ", task.AbsoluteIndex, " time: ", prepareTaskSleepDuration, " from: ", prepareTaskNow.String())
+	//println("prepareTaskNow task: ", task.AbsoluteIndex, " time: ", time.Now().Sub(prepareTaskNow).String())
+	t2 := time.Now()
 
 	//now := cmttime.Now()
 	//t0 := time.Now()
 	//now := cmttime.Now()
 	resp := s.deliverTx(task.Request, task.Ctx)
 	//t1 := time.Now()
-	//println("deliver tx=============", "start time", t0.String(), "end time", t1.String(), "sub", t1.Sub(t0).String()) //sleepDuration := cmttime.Now().Sub(now)
+	//println("deliver tx=============", "sppend", t1.Sub(t0).String()) //sleepDuration := cmttime.Now().Sub(now)
 	//println("deliverTx task: ", task.AbsoluteIndex, " time: ", sleepDuration, " from: ", now.String())
-
+	t3 := time.Now()
 	// close the abort channel
 	close(task.AbortCh)
 	abort, ok := <-task.AbortCh
-
+	t4 := time.Now()
 	//estimateNow := cmttime.Now()
 	if ok {
 		// if there is an abort item that means we need to wait on the dependent tx
@@ -1023,6 +1039,7 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 		}
 		return
 	}
+	t5 := time.Now()
 
 	if resp.Code == errors.ErrOCCAbort.ABCICode() {
 		task.SetStatus(statusAborted)
@@ -1036,6 +1053,7 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 	task.SetStatus(statusExecuted)
 	task.Response = resp
 
+	t6 := time.Now()
 	//writeNow := cmttime.Now()
 	//// write from version store to multiversion stores
 	//for _, v := range task.VersionStores {
@@ -1047,7 +1065,17 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 			v.WriteToMultiVersionStore()
 		}
 	}
+	t7 := time.Now()
 
+	fmt.Sprintf("============executeTask",
+		"synchronous", t1.Sub(startTime).String(),
+		"prepare", t2.Sub(t1).String(),
+		"deliverTx", t3.Sub(t2).String(),
+		"abortChClose", t4.Sub(t3).String(),
+		"abortOk", t5.Sub(t4).String(),
+		"setStatus", t6.Sub(t5).String(),
+		"writeStore", t7.Sub(t6).String(),
+	)
 	//if task.AbsoluteIndex%50 == 0 {
 	//	printSystemStats("task==")
 	//}

@@ -872,6 +872,11 @@ func (m *Manager) PrepareNamespaceBlock(
 		args := appmodule.NamespaceBlockPrepareCommonArgs{}
 		// todo, add genesis block logic
 		lastBlock := store.LoadBlock(store.Height())
+
+		if lastBlock != nil && lastBlock.RelatedCometBFTBlockHeight >= ctx.BlockHeight() {
+			lastBlock = store.LoadBlock(store.Height() - 1 - (lastBlock.RelatedCometBFTBlockHeight - ctx.BlockHeight()))
+		}
+
 		if lastBlock != nil {
 			args.ParentBlockData = lastBlock.Data
 		}
