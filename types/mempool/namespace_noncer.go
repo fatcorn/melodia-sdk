@@ -31,10 +31,6 @@ func NewNamespaceNoncer() *NamespaceNoncer {
 
 func (nsm *NamespaceNoncer) UpdateNonce(ctx sdk.Context, tx sdk.Tx, fallback sdk.GetAccountNonceHandler) error {
 
-	if !(ctx.IsCheckTx() || ctx.IsReCheckTx()) {
-		return nil
-	}
-
 	pendingNoncer := nsm.getNoncer(ctx, fallback)
 	sigs, err := nsm.signerExtractor.GetSigners(tx)
 	if err != nil {
@@ -143,9 +139,6 @@ func (nsm *NamespaceNoncer) RemoveWithCtx(ctx context.Context, tx sdk.Tx) error 
 }
 func (nsm *NamespaceNoncer) Rollback(ctx sdk.Context, tx sdk.Tx, fallback sdk.GetAccountNonceHandler) {
 
-	if !(ctx.IsCheckTx() || ctx.IsReCheckTx()) {
-		return
-	}
 	pendingNoncer := nsm.getNoncer(ctx, fallback)
 
 	sigs, err := nsm.signerExtractor.GetSigners(tx)
