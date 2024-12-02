@@ -136,7 +136,7 @@ func (nsm *NamespaceNoncer) RemoveWithCtx(ctx context.Context, tx sdk.Tx) error 
 	//nsm.txs.Delete(txHash)
 	return nil
 }
-func (nsm *NamespaceNoncer) Refresh(ctx sdk.Context, tx sdk.Tx, fallback sdk.GetAccountNonceHandler) {
+func (nsm *NamespaceNoncer) Rollback(ctx sdk.Context, tx sdk.Tx, fallback sdk.GetAccountNonceHandler) {
 	pendingNoncer := nsm.getNoncer(ctx, fallback)
 
 	sigs, err := nsm.signerExtractor.GetSigners(tx)
@@ -149,8 +149,8 @@ func (nsm *NamespaceNoncer) Refresh(ctx sdk.Context, tx sdk.Tx, fallback sdk.Get
 
 	sig := sigs[0]
 	sender := sig.Signer.String()
-	txNonce := sig.Sequence
-	nonce := pendingNoncer.refresh(ctx, sender)
-	ctx.Logger().Warn("noncer refresh", "address", sender, "txNonce", txNonce, "newNonce", nonce, "maxNonce", ctx.MaxNonce(), "height", ctx.BlockHeight())
+	nonce := sig.Sequence
+	ctx.Logger().Warn("noncer rollback", "address", sender, "nonce", pendingNoncer.get(ctx, sender), "newNonce", nonce, "height", ctx.BlockHeight())
 
+	pendingNoncer.setIfLower(ctx, sender, nonce)
 }
