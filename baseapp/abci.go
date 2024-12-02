@@ -358,9 +358,17 @@ func (app *BaseApp) CheckTx(req *abci.RequestCheckTx) (*abci.ResponseCheckTx, er
 	default:
 		return nil, fmt.Errorf("unknown RequestCheckTx type: %s", req.Type)
 	}
-	app.checkState.SetContext(app.checkState.Context().WithNamepace(req.NamespaceId))
+	checkContext := app.checkState.Context()
+	checkContext = checkContext.WithConsensusParams(app.GetConsensusParams(checkContext))
+	checkContext = checkContext.WithNamepace(req.NamespaceId)
 
-	gInfo, result, anteEvents, packet, err := app.runTx(mode, req.Tx)
+	gInfo, result, anteEvents, packet, err := app.runTx(mode, req.Tx, checkContext)
+
+	//app.checkState.SetContext(app.checkState.Context().WithNamepace(req.NamespaceId))
+
+	//gInfo, result, anteEvents, packet, err := app.runTx(mode, req.Tx)
+
+	//gInfo, result, anteEvents, packet, err := app.runTx(mode, req.Tx)
 	if err != nil {
 		return sdkerrors.ResponseCheckTxWithEvents(err, gInfo.GasWanted, gInfo.GasUsed, anteEvents, app.trace), nil
 	}

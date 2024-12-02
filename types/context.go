@@ -75,6 +75,7 @@ type Context struct {
 	maxNonce           uint64
 
 	namespaceBlockManager *nsblockstore.NamespaceStoreManager
+	executionCounter      uint64
 }
 
 // Proposed rename, not done to avoid API breakage
@@ -105,8 +106,9 @@ func (c Context) CometInfo() comet.BlockInfo                    { return c.comet
 func (c Context) HeaderInfo() header.Info                       { return c.headerInfo }
 func (c Context) TxIndex() int                                  { return c.txIndex }
 func (c Context) Namespace() uint64                             { return c.namespaceId }
-func (c Context) Synchronous() bool                             { return c.synchronous }
-func (c Context) MaxNonce() uint64                              { return c.maxNonce }
+
+func (c Context) Synchronous() bool { return c.synchronous }
+func (c Context) MaxNonce() uint64  { return c.maxNonce }
 func (c Context) NextAccountNumber(address string) *uint64 {
 	if accNumbers, ok := c.nextAccountNumbers[address]; ok {
 		if accountNumber, numOk := accNumbers[c.namespaceId]; numOk {
@@ -146,6 +148,10 @@ func (c Context) NamespaceBlock(moduleName string) *nsblockstore.NamespaceBLock 
 }
 func (c Context) ConsensusParams() cmtproto.ConsensusParams {
 	return c.consParams
+}
+
+func (c Context) ExecutionCounter() uint64 {
+	return c.executionCounter
 }
 
 func (c Context) Deadline() (deadline time.Time, ok bool) {
@@ -397,6 +403,11 @@ func (c Context) WithValue(key, value interface{}) Context {
 // WithTxIndex returns a Context with the current transaction index that's being processed
 func (c Context) WithTxIndex(txIndex int) Context {
 	c.txIndex = txIndex
+	return c
+}
+
+func (c Context) WithExecutionCounter(executionCounter uint64) Context {
+	c.executionCounter = executionCounter
 	return c
 }
 

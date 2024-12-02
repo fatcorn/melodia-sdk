@@ -4,16 +4,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"math"
-	"sort"
-	"strconv"
-	"sync"
-	"time"
-
 	"github.com/cockroachdb/errors"
 	cmtdbm "github.com/cometbft/cometbft-db"
 	abci "github.com/cometbft/cometbft/abci/types"
-
 	cmtcfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/crypto/tmhash"
 	tmbytes "github.com/cometbft/cometbft/libs/bytes"
@@ -22,6 +15,11 @@ import (
 	"github.com/cosmos/gogoproto/proto"
 	"golang.org/x/exp/maps"
 	protov2 "google.golang.org/protobuf/proto"
+	"math"
+	"sort"
+	"strconv"
+	"sync"
+	"time"
 
 	"cosmossdk.io/core/header"
 	errorsmod "cosmossdk.io/errors"
@@ -724,11 +722,6 @@ func (app *BaseApp) AnteHandler() sdk.AnteHandler {
 	return app.anteHandler
 }
 
-// Mempool returns the Mempool of the app.
-func (app *BaseApp) Mempool() mempool.Mempool {
-	return app.mempool
-}
-
 // ConcurrencyWorkers return concurrencyWorkers of the app
 func (app *BaseApp) ConcurrencyWorkers() int {
 	return app.concurrencyWorkers
@@ -1302,9 +1295,11 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 
 		}
 		if err != nil {
-			switch m := app.mempool.(type) {
-			case *mempool.NamespaceNoncer:
-				m.RemoveWithCtx(ctx, tx, app.getAccountNonceHandler)
+			if !errors.Is(err, sdkerrors.ErrInvalidSequence) {
+				switch m := app.mempool.(type) {
+				case *mempool.NamespaceNoncer:
+					m.Rollback(ctx, tx, app.getAccountNonceHandler)
+				}
 			}
 		}
 		gInfo = sdk.GasInfo{GasWanted: gasWanted, GasUsed: ctx.GasMeter().GasConsumed()}
@@ -1397,7 +1392,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			// Also, in the case of the tx aborting, we need to track gas consumed via
 			// the instantiated gas meter in the AnteHandler, so we update the context
 			// prior to returning.
-			ctx = newCtx.WithMultiStore(ms)
+			ctx = newCtx.WithMultiStore(ms).WithMaxNonce(newCtx.MaxNonce())
 		}
 
 		events := ctx.EventManager().Events()
@@ -1431,18 +1426,12 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 
 	//now := cmttime.Now()
 	if mode == execModeCheck {
+		err = app.mempool.Insert(ctx, tx)
 		switch m := app.mempool.(type) {
 		case *mempool.NamespaceNoncer:
-			err = m.Refresh(ctx, tx, app.getAccountNonceHandler)
-		default:
-			err = app.mempool.Insert(ctx, tx)
-		}
-
-		if err != nil {
-			if errors.Is(err, sdkerrors.ErrInvalidSequence) {
-				return gInfo, nil, nil, nil, err
+			if err == nil {
+				err = m.UpdateNonce(ctx, tx, app.getAccountNonceHandler)
 			}
-			return gInfo, nil, anteEvents, nil, err
 		}
 		if app.pibcPacketGeneratorHadler != nil && app.signerName != "" {
 			record, err := app.signerKeyring.Key(app.signerName)
@@ -1464,6 +1453,8 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 		switch m := app.mempool.(type) {
 		case *mempool.NamespaceMempool:
 			err = m.RemoveWithCtx(ctx, tx)
+		case *mempool.NamespaceNoncer:
+			err = m.RemoveWithCtx(ctx, tx)
 		default:
 			err = app.mempool.Remove(tx)
 		}
@@ -1475,7 +1466,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	} else if mode == execModeReCheck {
 		switch m := app.mempool.(type) {
 		case *mempool.NamespaceNoncer:
-			err = m.Refresh(ctx, tx, app.getAccountNonceHandler)
+			err = m.UpdateNonce(ctx, tx, app.getAccountNonceHandler)
 		}
 	}
 
@@ -1657,6 +1648,7 @@ func createEvents(cdc codec.Codec, events sdk.Events, msg sdk.Msg, msgV2 protov2
 	return sdk.Events{msgEvent}.AppendEvents(events), nil
 }
 
+// sortTxs return sort txs and nsTable & orders
 func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.ResponseSortTxs, error) {
 	startTime := time.Now()
 	reqByteTxs, _ := app.TxDecodeBatch(req.Txs)

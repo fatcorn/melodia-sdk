@@ -198,6 +198,19 @@ func (ak AccountKeeper) NextAccountNumber(ctx context.Context) uint64 {
 	return n
 }
 
+// NextCacheAccountNumber NOTE: This is hack of store operation.
+// We do not want to increase account number, so make cache context
+// and drop write() to fetch next account number without update.
+func (ak AccountKeeper) NextCacheAccountNumber(ctx context.Context) uint64 {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	tmpCtx, _ := sdkCtx.CacheContext()
+	n, err := ak.AccountNumber.Next(tmpCtx)
+	if err != nil {
+		panic(err)
+	}
+	return n
+}
+
 // GetModulePermissions fetches per-module account permissions.
 func (ak AccountKeeper) GetModulePermissions() map[string]types.PermissionsForAddress {
 	return ak.permAddrs

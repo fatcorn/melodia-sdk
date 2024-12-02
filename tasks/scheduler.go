@@ -59,21 +59,22 @@ type deliverTxTask struct {
 	Ctx     sdk.Context
 	AbortCh chan occ.Abort
 
-	mx             sync.RWMutex
-	Status         status
-	Dependencies   map[int]struct{}
-	Abort          *occ.Abort
-	Incarnation    int
-	Request        []byte
-	SdkTx          sdk.Tx
-	Checksum       [32]byte
-	AbsoluteIndex  int
-	Response       *abci.ExecTxResult
-	VersionStores  map[storetypes.StoreKey]*multiversion.VersionIndexedStore
-	IsEVMTx        bool
-	NamespaceId    uint64
-	TotalTask      int
-	AccountNumbers map[string]map[uint64]uint64
+	mx               sync.RWMutex
+	Status           status
+	Dependencies     map[int]struct{}
+	Abort            *occ.Abort
+	Incarnation      int
+	Request          []byte
+	SdkTx            sdk.Tx
+	Checksum         [32]byte
+	AbsoluteIndex    int
+	Response         *abci.ExecTxResult
+	VersionStores    map[storetypes.StoreKey]*multiversion.VersionIndexedStore
+	IsEVMTx          bool
+	NamespaceId      uint64
+	TotalTask        int
+	AccountNumbers   map[string]map[uint64]uint64
+	ExecutionCounter uint64
 	//TxTracer      sdk.TxTracer
 }
 
@@ -347,15 +348,17 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 	wg.Wait()
 
 	for idx, tx := range reqs {
+		accountNumbers, executionCounter := s.nextAccountNumbers(ctx, s.namespaceList[idx], tx.NewAccAddresses)
 		task := &deliverTxTask{
-			Request:        tx.Request,
-			SdkTx:          tx.SdkTx,
-			AbsoluteIndex:  tx.AbsoluteIndex,
-			Status:         statusPending,
-			Dependencies:   map[int]struct{}{},
-			TotalTask:      totalTask,
-			IsEVMTx:        false,
-			AccountNumbers: s.nextAccountNumbers(ctx, s.namespaceList[idx], tx.NewAccAddresses),
+			Request:          tx.Request,
+			SdkTx:            tx.SdkTx,
+			AbsoluteIndex:    tx.AbsoluteIndex,
+			Status:           statusPending,
+			Dependencies:     map[int]struct{}{},
+			TotalTask:        totalTask,
+			IsEVMTx:          false,
+			AccountNumbers:   accountNumbers,
+			ExecutionCounter: executionCounter,
 			//TxTracer:      r.TxTracer,
 		}
 
@@ -374,8 +377,8 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 	}
 	return allTasks, tasksMap
 }
-func (s *scheduler) nextAccountNumbers(ctx sdk.Context, namespaceId uint64, newAccAddresses []sdk.NamespaceAccount) map[string]map[uint64]uint64 {
-	nextAccountNumbers := s.nextAccountNumberHandler(ctx.WithNamepace(namespaceId).WithNextAccountNumber(s.allNextAccountNumbers), newAccAddresses)
+func (s *scheduler) nextAccountNumbers(ctx sdk.Context, namespaceId uint64, newAccAddresses []sdk.NamespaceAccount) (map[string]map[uint64]uint64, uint64) {
+	nextAccountNumbers, executionCounter := s.nextAccountNumberHandler(ctx.WithNamepace(namespaceId).WithNextAccountNumber(s.allNextAccountNumbers), newAccAddresses)
 	if nextAccountNumbers != nil && len(nextAccountNumbers) > 0 {
 		for addr, accNumbers := range nextAccountNumbers {
 			for nsId, accNumber := range accNumbers {
@@ -386,7 +389,7 @@ func (s *scheduler) nextAccountNumbers(ctx sdk.Context, namespaceId uint64, newA
 			}
 		}
 	}
-	return nextAccountNumbers
+	return nextAccountNumbers, executionCounter
 }
 
 func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) []abci.ExecTxResult {
@@ -614,14 +617,15 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 		if err := trace.Start(f); err != nil {
 			panic(err)
 		}
+		go printCpuCount()
 	}
 
-	//go printCpuCount()
+
 
 	t6 := time.Now()
 	// execution tasks are limited by workers
 	s.start(workerCtx, s.executeCh, workers)
-	println("start worker ctx", "spent time", time.Since(t6).String(), "workers num", workers)
+	println("start worker ctx", "", time.Since(t6).String())
 
 	s.start1(workerCtx, s.collectCh, workers)
 	//t6 := time.Now()
@@ -872,10 +876,10 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 		wg.Add(1)
 		s.DoExecute(func() {
 			defer wg.Done()
-			now := time.Now()
-			sdkCtx := ctx.WithNamepace(t.NamespaceId).WithNextAccountNumber(t.AccountNumbers).WithSynchronous(s.synchronous).WithTxIndex(task.AbsoluteIndex)
+			//now := time.Now()
+			sdkCtx := ctx.WithNamepace(t.NamespaceId).WithNextAccountNumber(t.AccountNumbers).WithSynchronous(s.synchronous).WithTxIndex(task.AbsoluteIndex).WithExecutionCounter(task.ExecutionCounter)
 			s.prepareAndRunTask(wg, sdkCtx, t)
-			fmt.Sprintf("run task time", "sub", time.Now().Sub(now).String())
+			//println("run task time", "sub", time.Now().Sub(now).String())
 		})
 	}
 	//printSystemStats("executing")
@@ -1126,11 +1130,11 @@ func printSystemStats(desc string) {
 
 func printCpu() {
 
-	//percent, err := cpu.Percent(time.Millisecond*10, false)
-	//if err != nil {
-	//	log.Fatal(err)
-	//}
-	//fmt.Printf("CPU percent: %.2f%%\n", percent[0])
+	percent, err := cpu.Percent(time.Millisecond*10, false)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Printf("CPU percent: %.2f%%\n", percent[0])
 
 }
 

@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"slices"
-
 	"github.com/cockroachdb/errors"
 	abci "github.com/cometbft/cometbft/abci/types"
 	cryptoenc "github.com/cometbft/cometbft/crypto/encoding"
@@ -14,6 +12,7 @@ import (
 	consensustypes "github.com/cometbft/cometbft/types"
 	protoio "github.com/cosmos/gogoproto/io"
 	"github.com/cosmos/gogoproto/proto"
+	"slices"
 
 	"cosmossdk.io/core/comet"
 
@@ -274,6 +273,7 @@ func (h *DefaultProposalHandler) PrepareProposalHandler() sdk.PrepareProposalHan
 		}
 
 		if h.mempool == nil || isDef {
+
 			for _, txBz := range req.Txs {
 				tx, err := h.txVerifier.TxDecode(txBz)
 				if err != nil {
@@ -285,7 +285,21 @@ func (h *DefaultProposalHandler) PrepareProposalHandler() sdk.PrepareProposalHan
 					break
 				}
 			}
-			return &abci.ResponsePrepareProposal{Txs: h.txSelector.SelectedTxs(ctx)}, nil
+			newTxs := h.txSelector.SelectedTxs(ctx)
+			newNsTable := req.NsTable
+			newOffset := len(newTxs)
+			if newOffset != len(req.Txs) {
+				newNsTable = make([]*cmtproto.NamespaceTableEntries, 0)
+				for _, nsEntry := range req.NsTable {
+					if int(nsEntry.Offset) >= newOffset {
+						nsEntry.Offset = int32(newOffset)
+						newNsTable = append(newNsTable, nsEntry)
+						break
+					}
+					newNsTable = append(newNsTable, nsEntry)
+				}
+			}
+			return &abci.ResponsePrepareProposal{Txs: newTxs, NsTable: newNsTable}, nil
 		}
 
 		iterator := h.mempool.Select(ctx, req.Txs)

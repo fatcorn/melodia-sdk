@@ -17,8 +17,8 @@
 package mempool
 
 import (
+	"cosmossdk.io/store/multiversion"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"sync"
 )
 
 // noncer is a tiny virtual state database to manage the executable nonces of
@@ -26,15 +26,14 @@ import (
 // an account is unknown.
 type noncer struct {
 	fallback sdk.GetAccountNonceHandler
-	nonces   map[string]uint64
-	lock     sync.Mutex
+	nonces   *multiversion.ShardedMap
 }
 
 // newNoncer creates a new virtual state database to track the pool nonces.
 func newNoncer(fallback sdk.GetAccountNonceHandler) *noncer {
 	return &noncer{
 		fallback: fallback,
-		nonces:   make(map[string]uint64),
+		nonces:   multiversion.NewShardedMap(1024),
 	}
 }
 
@@ -43,69 +42,81 @@ func newNoncer(fallback sdk.GetAccountNonceHandler) *noncer {
 func (txn *noncer) get(ctx sdk.Context, addr string) uint64 {
 	// We use mutex for get operation is the underlying
 	// state will mutate db even for read access.
-	txn.lock.Lock()
-	defer txn.lock.Unlock()
-
-	if _, ok := txn.nonces[addr]; !ok {
+	if _, ok := txn.nonces.Get(addr); !ok {
 		nonce, err := txn.fallback(ctx, addr)
 		if err != nil {
 			panic(err)
 		}
 		if nonce != 0 {
-			txn.nonces[addr] = nonce
+			txn.nonces.Set(addr, nonce)
 		}
 	}
-	return txn.nonces[addr]
+	nonce, ok := txn.nonces.Get(addr)
+	if ok {
+		return nonce.(uint64)
+	}
+	return 0
 }
 
 func (txn *noncer) refresh(ctx sdk.Context, addr string) uint64 {
 	// We use mutex for get operation is the underlying
 	// state will mutate db even for read access.
-	txn.lock.Lock()
-	defer txn.lock.Unlock()
 	nonce, err := txn.fallback(ctx, addr)
 	if err != nil {
 		panic(err)
 	}
 	if nonce != 0 {
-		txn.nonces[addr] = nonce
+		txn.nonces.Set(addr, nonce)
 	}
-	return txn.nonces[addr]
+	return nonce
 }
 
 // set inserts a new virtual nonce into the virtual state database to be returned
 // whenever the pool requests it instead of reaching into the real state database.
 func (txn *noncer) set(_ sdk.Context, addr string, nonce uint64) {
-	txn.lock.Lock()
-	defer txn.lock.Unlock()
-
-	txn.nonces[addr] = nonce
+	txn.nonces.Set(addr, nonce)
 }
 
 // setIfLower updates a new virtual nonce into the virtual state database if the
 // new one is lower.
 func (txn *noncer) setIfLower(ctx sdk.Context, addr string, nonce uint64) {
-	txn.lock.Lock()
-	defer txn.lock.Unlock()
-	if _, ok := txn.nonces[addr]; !ok {
+	if _, ok := txn.nonces.Get(addr); !ok {
 		nonce, err := txn.fallback(ctx, addr)
 		if err != nil {
 			panic(err)
 		}
 		if nonce != 0 {
-			txn.nonces[addr] = nonce
+			txn.nonces.Set(addr, nonce)
 		}
 	}
-	if txn.nonces[addr] <= nonce {
-		return
+	nonce2, ex := txn.nonces.Get(addr)
+	if ex {
+		if nonce2.(uint64) <= nonce {
+			return
+		}
 	}
-	txn.nonces[addr] = nonce
+	txn.nonces.Set(addr, nonce)
+}
+func (txn *noncer) setIfHigher(ctx sdk.Context, addr string, nonce uint64) {
+	if _, ok := txn.nonces.Get(addr); !ok {
+		nonce, err := txn.fallback(ctx, addr)
+		if err != nil {
+			panic(err)
+		}
+		if nonce != 0 {
+			txn.nonces.Set(addr, nonce)
+		}
+	}
+	nonce2, ex := txn.nonces.Get(addr)
+	if ex {
+		if nonce2.(uint64) > nonce {
+			return
+		}
+	}
+	txn.nonces.Set(addr, nonce)
 }
 
-// setAll sets the nonces for all accounts to the given map.
-func (txn *noncer) setAll(all map[string]uint64) {
-	txn.lock.Lock()
-	defer txn.lock.Unlock()
-
-	txn.nonces = all
+// Reset reset the nonces
+func (txn *noncer) Reset() {
+	txn.nonces = multiversion.NewShardedMap(1024)
 }
