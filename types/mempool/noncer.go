@@ -109,9 +109,11 @@ func (txn *noncer) setIfHigher(ctx sdk.Context, addr string, nonce uint64) {
 	nonce2, ex := txn.nonces.Get(addr)
 	if ex {
 		if nonce2.(uint64) > nonce {
+			ctx.Logger().Warn("noncer refresh return", "address", addr, "nonce", nonce2, "maxNonce", nonce, "newNonce", nonce2, "height", ctx.BlockHeight())
 			return
 		}
 	}
+	ctx.Logger().Info("noncer refresh higher", "address", addr, "nonce", nonce2, "maxNonce", nonce, "newNonce", nonce, "height", ctx.BlockHeight())
 	txn.nonces.Set(addr, nonce)
 }
 

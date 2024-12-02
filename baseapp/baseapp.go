@@ -1283,12 +1283,6 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			ctx.Logger().Warn("panic recovered in runTx", "err", err, "height", ctx.BlockHeight(), "txIndex", ctx.TxIndex())
 
 		}
-		if err != nil {
-			switch m := app.mempool.(type) {
-			case *mempool.NamespaceNoncer:
-				m.Rollback(ctx, tx, app.getAccountNonceHandler)
-			}
-		}
 		gInfo = sdk.GasInfo{GasWanted: gasWanted, GasUsed: ctx.GasMeter().GasConsumed()}
 	}()
 
