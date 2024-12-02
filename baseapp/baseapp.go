@@ -1287,7 +1287,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			if !errors.Is(err, sdkerrors.ErrInvalidSequence) {
 				switch m := app.mempool.(type) {
 				case *mempool.NamespaceNoncer:
-					m.Rollback(ctx, tx, app.getAccountNonceHandler)
+					m.Refresh(ctx, tx, app.getAccountNonceHandler)
 				}
 			}
 		}
@@ -1403,7 +1403,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 		switch m := app.mempool.(type) {
 		case *mempool.NamespaceNoncer:
 			if err == nil {
-				err = m.Refresh(ctx, tx, app.getAccountNonceHandler)
+				err = m.UpdateNonce(ctx, tx, app.getAccountNonceHandler)
 			}
 		}
 		if app.pibcPacketGeneratorHadler != nil && app.signerName != "" {
@@ -1439,7 +1439,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	} else if mode == execModeReCheck {
 		switch m := app.mempool.(type) {
 		case *mempool.NamespaceNoncer:
-			err = m.Refresh(ctx, tx, app.getAccountNonceHandler)
+			err = m.UpdateNonce(ctx, tx, app.getAccountNonceHandler)
 		}
 	}
 	//if mode == execModeFinalize {

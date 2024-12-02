@@ -58,7 +58,7 @@ func (txn *noncer) get(ctx sdk.Context, addr string) uint64 {
 	return 0
 }
 
-func (txn *noncer) refresh(ctx sdk.Context, addr string) {
+func (txn *noncer) refresh(ctx sdk.Context, addr string) uint64 {
 	// We use mutex for get operation is the underlying
 	// state will mutate db even for read access.
 	nonce, err := txn.fallback(ctx, addr)
@@ -68,6 +68,7 @@ func (txn *noncer) refresh(ctx sdk.Context, addr string) {
 	if nonce != 0 {
 		txn.nonces.Set(addr, nonce)
 	}
+	return nonce
 }
 
 // set inserts a new virtual nonce into the virtual state database to be returned
@@ -109,11 +110,9 @@ func (txn *noncer) setIfHigher(ctx sdk.Context, addr string, nonce uint64) {
 	nonce2, ex := txn.nonces.Get(addr)
 	if ex {
 		if nonce2.(uint64) > nonce {
-			ctx.Logger().Warn("noncer refresh return", "address", addr, "nonce", nonce2, "maxNonce", nonce, "newNonce", nonce2, "height", ctx.BlockHeight())
 			return
 		}
 	}
-	ctx.Logger().Info("noncer refresh higher", "address", addr, "nonce", nonce2, "maxNonce", nonce, "newNonce", nonce, "height", ctx.BlockHeight())
 	txn.nonces.Set(addr, nonce)
 }
 
