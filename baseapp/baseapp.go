@@ -1298,7 +1298,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			if !errors.Is(err, sdkerrors.ErrInvalidSequence) {
 				switch m := app.mempool.(type) {
 				case *mempool.NamespaceNoncer:
-					m.Rollback(ctx, tx, app.getAccountNonceHandler)
+					m.Rollback(ctx, tx, app.getAccountNonceHandler, err)
 				}
 			}
 		}
