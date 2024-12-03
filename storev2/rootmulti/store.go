@@ -6,6 +6,9 @@ import (
 	"cosmossdk.io/store/cachemulti"
 	"cosmossdk.io/store/iavl"
 	"cosmossdk.io/store/mem"
+	cosmosIavl "github.com/cosmos/iavl"
+	iavlProto "github.com/cosmos/iavl/proto"
+
 	storemetrics "cosmossdk.io/store/metrics"
 	pruningtypes "cosmossdk.io/store/pruning/types"
 	"cosmossdk.io/store/rootmulti"
@@ -424,9 +427,28 @@ func (rs *Store) flush() error {
 			return changeSets[i].Name < changeSets[j].Name
 		})
 		if rs.ssStore != nil {
+			var copiedChangeSets []*proto.NamedChangeSet
+			for _, cs := range changeSets {
+				var pairs []*iavlProto.KVPair
+				for _, ss := range cs.Changeset.Pairs {
+					pair := iavlProto.KVPair{
+						Key:    ss.Key,
+						Value:  ss.Value,
+						Delete: ss.Delete,
+					}
+					pairs = append(pairs, &pair)
+				}
+				set := proto.NamedChangeSet{
+					Name: cs.Name,
+					Changeset: cosmosIavl.ChangeSet{
+						Pairs: pairs,
+					},
+				}
+				copiedChangeSets = append(copiedChangeSets, &set)
+			}
 			rs.pendingChanges <- VersionedChangesets{
 				Version:    currentVersion,
-				Changesets: changeSets,
+				Changesets: copiedChangeSets,
 			}
 		}
 	}
@@ -434,7 +456,7 @@ func (rs *Store) flush() error {
 
 	err := rs.scStore.ApplyChangeSets(changeSets)
 	t4 := time.Now()
-	println("flush time=======", "set changs set ", t2.Sub(t1).String(), "sort set ", t3.Sub(t2).String(), "apply change set", t4.Sub(t3).String())
+	println("flush time=======", "set changs set ", t2.Sub(t1).String(), "sort set ", t3.Sub(t2).String(), "apply change set", t4.Sub(t3).String(), "version ", currentVersion, "size", len(changeSets))
 	return err
 }
 
