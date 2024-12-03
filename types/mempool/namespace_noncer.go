@@ -155,7 +155,7 @@ func (nsm *NamespaceNoncer) Rollback(ctx sdk.Context, tx sdk.Tx, fallback sdk.Ge
 	if nonce > 0 {
 		nonce = nonce - 1
 	}
-	ctx.Logger().Info("noncer rollback", "address", sender, "nonce", pendingNoncer.get(ctx, sender), "newNonce", nonce, "txNonce", sig.Sequence, "height", ctx.BlockHeight(), "err", failReason)
+	ctx.Logger().Debug("noncer rollback", "address", sender, "nonce", pendingNoncer.get(ctx, sender), "newNonce", nonce, "txNonce", sig.Sequence, "mode", ctx.ExecMode(), "height", ctx.BlockHeight(), "err", failReason)
 
 	pendingNoncer.setIfLower(ctx, sender, nonce)
 }
