@@ -43,7 +43,7 @@ func (nsm *NamespaceNoncer) UpdateNonce(ctx sdk.Context, tx sdk.Tx, fallback sdk
 	sig := sigs[0]
 	sender := sig.Signer.String()
 	nonce := ctx.MaxNonce()
-	ctx.Logger().Info("noncer update", "address", sender, "nonce", pendingNoncer.get(ctx, sender), "newNonce", nonce, "height", ctx.BlockHeight())
+	ctx.Logger().Debug("noncer update", "address", sender, "nonce", pendingNoncer.get(ctx, sender), "newNonce", nonce, "height", ctx.BlockHeight())
 	pendingNoncer.setIfHigher(ctx, sender, nonce)
 
 	//nonce := pendingNoncer.get(ctx, sender)
@@ -152,7 +152,10 @@ func (nsm *NamespaceNoncer) Rollback(ctx sdk.Context, tx sdk.Tx, fallback sdk.Ge
 	sig := sigs[0]
 	sender := sig.Signer.String()
 	nonce := sig.Sequence
-	ctx.Logger().Warn("noncer rollback", "address", sender, "nonce", pendingNoncer.get(ctx, sender), "newNonce", nonce, "height", ctx.BlockHeight())
+	if nonce > 0 {
+		nonce = nonce - 1
+	}
+	ctx.Logger().Warn("noncer rollback", "address", sender, "nonce", pendingNoncer.get(ctx, sender), "newNonce", nonce, "txNonce", sig.Sequence, "height", ctx.BlockHeight())
 
 	pendingNoncer.setIfLower(ctx, sender, nonce)
 }
