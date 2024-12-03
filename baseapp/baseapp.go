@@ -504,7 +504,7 @@ func (app *BaseApp) addNewNamespaceBLockStore(namespaceID uint64, moduleName str
 	if err != nil {
 		panic(fmt.Sprintf("Create namespace-%v DB failed, causev%v", namespaceID, err))
 	}
-	nsBLockStore := nsblockstore.NewNamespaceBlockStore(newNamespaceDB, namespaceID)
+	nsBLockStore := nsblockstore.NewNamespaceBlockStore(newNamespaceDB, namespaceID, app.logger)
 	app.namespaceStoreManager.AddNamespaceStore(namespaceID, moduleName, nsBLockStore)
 	app.namespaceStoreManager.AddNamespaceIdsModule(namespaceID, moduleName)
 	app.namespaceStoreManager.AddModuleRelatedModules(moduleName, moduleRelatedModules)
@@ -512,7 +512,7 @@ func (app *BaseApp) addNewNamespaceBLockStore(namespaceID uint64, moduleName str
 
 // loadNamespaceBLockStore Load a namespace blockdb to namespace store manager
 func (app *BaseApp) loadNamespaceBLockStore(namespaceID uint64, db cmtdbm.DB, moduleName string, moduleRelatedModules []string) {
-	nsBLockStore := nsblockstore.NewNamespaceBlockStore(db, namespaceID)
+	nsBLockStore := nsblockstore.NewNamespaceBlockStore(db, namespaceID, app.logger)
 	app.namespaceStoreManager.AddNamespaceStore(namespaceID, moduleName, nsBLockStore)
 	app.namespaceStoreManager.AddNamespaceIdsModule(namespaceID, moduleName)
 	app.namespaceStoreManager.AddModuleRelatedModules(moduleName, moduleRelatedModules)

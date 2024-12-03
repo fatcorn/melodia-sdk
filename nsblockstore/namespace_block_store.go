@@ -1,6 +1,7 @@
 package nsblockstore
 
 import (
+	"cosmossdk.io/log"
 	"fmt"
 	dbm "github.com/cometbft/cometbft-db"
 	"github.com/cometbft/cometbft/types"
@@ -52,6 +53,7 @@ type BlockStoreState struct {
 type NamespaceBLockStore struct {
 	db dbm.DB
 
+	logger log.Logger
 	// mtx guards access to the struct fields listed below it. Although we rely on the database
 	// to enforce fine-grained concurrency control for its data, we need to make sure that
 	// no external observer can get data from the database that is not in sync with the fields below,
@@ -95,13 +97,14 @@ func calcBFTHeightKey(height int64) []byte {
 	return []byte(fmt.Sprintf("BFTH:%v", height))
 }
 
-func NewNamespaceBlockStore(db dbm.DB, namespaceId uint64) *NamespaceBLockStore {
+func NewNamespaceBlockStore(db dbm.DB, namespaceId uint64, logger log.Logger) *NamespaceBLockStore {
 	storeState := loadStoreBaseState(db)
 	return &NamespaceBLockStore{
 		db:          db,
 		base:        storeState.Base,
 		height:      storeState.Height,
 		namespaceId: namespaceId,
+		logger:      logger.With("module", "nsblockstore"),
 	}
 }
 
@@ -209,7 +212,7 @@ func (n *NamespaceBLockStore) SaveBlock(height int64, hash []byte, block *Namesp
 		panic(err)
 	}
 	err = batch.WriteSync()
-	fmt.Printf("====================> save namespace Block, height %v, rc height %v\n", block.Height, block.RelatedCometBFTBlockHeight)
+	n.logger.Info("save namespace Block", "height", block.Height, "cosmos height", block.RelatedCometBFTBlockHeight)
 	if err != nil {
 		panic(err)
 	}
