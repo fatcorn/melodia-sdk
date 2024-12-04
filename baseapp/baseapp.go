@@ -16,6 +16,7 @@ import (
 	"golang.org/x/exp/maps"
 	protov2 "google.golang.org/protobuf/proto"
 	"math"
+	"math/big"
 	"sort"
 	"strconv"
 	"sync"
@@ -235,6 +236,8 @@ type BaseApp struct {
 	txNewAccountAddressesHandler               sdk.TxNewAccountAddressesHandler
 	crossNamespaceTransactionIdentifierHandler sdk.CrossNamespaceTransactionIdentifierHandler
 	getAccountNonceHandler                     sdk.GetAccountNonceHandler
+	baseFeeHandler                             sdk.BaseFeeHandler
+	checkTxFeeHandler                          sdk.CheckTxFeeHandler
 
 	deliverTxHooks     []DeliverTxHook
 	concurrencyWorkers int
@@ -1652,7 +1655,7 @@ func createEvents(cdc codec.Codec, events sdk.Events, msg sdk.Msg, msgV2 protov2
 func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.ResponseSortTxs, error) {
 	startTime := time.Now()
 	reqByteTxs, _ := app.TxDecodeBatch(req.Txs)
-	app.logger.Info("1->sortTxs TxDecodeBatch time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(req.Txs), "height", ctx.BlockHeight())
+	app.logger.Info("1->sortTxs TxDecodeBatch time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(req.Txs), "sortType", req.SortType, "height", ctx.BlockHeight())
 	insertTime := time.Now()
 	var (
 		sortTxs                 = make([][]byte, 0)
@@ -1660,18 +1663,6 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 		nsMempool               = mempool.NewNamespaceMempool()
 		beforeInterChainPairTxs = make(map[string][]*cmtproto.NsInterChainTransactionIndex)
 		afterInterChainPairTxs  = make(map[string][]*cmtproto.NsInterChainTransactionIndex)
-
-		listNamespaceByteTxs = func(byteTxs []sdk.ByteTx, nsTable []*cmtproto.NamespaceTableEntries) map[uint64][]sdk.ByteTx {
-			nsByteTxs := make(map[uint64][]sdk.ByteTx)
-			lastOffset := int32(0)
-			for _, entry := range nsTable {
-				namespaceTxs := byteTxs[lastOffset:entry.Offset]
-				namespaceId := entry.Namespace
-				lastOffset = entry.Offset
-				nsByteTxs[namespaceId] = namespaceTxs
-			}
-			return nsByteTxs
-		}
 
 		nsMempoolInsertTxs = func(ctx sdk.Context, namespaceTxs []sdk.ByteTx, namespaceId uint64) {
 			defer wg.Done()
@@ -1705,22 +1696,22 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 				_ = nsMempool.Insert(ctx, tx)
 
 			}
-			app.logger.Info("2.1->sortTxs single namespace insert time", "used", fmt.Sprintf("%v ms", time.Since(singleStartTime).Milliseconds()), "size", len(namespaceTxs), "namespaceId", namespaceId, "height", ctx.BlockHeight())
+			app.logger.Info("2.1->sortTxs single namespace insert time", "used", fmt.Sprintf("%v ms", time.Since(singleStartTime).Milliseconds()), "size", len(namespaceTxs), "namespaceId", namespaceId, "sortType", req.SortType, "height", ctx.BlockHeight())
 		}
 	)
-	nsByteTxs := listNamespaceByteTxs(reqByteTxs, req.NsTable)
+	nsByteTxs := sdk.ListNamespaceByteTxs(reqByteTxs, req.NsTable)
 
 	for namespaceId, byteTxs := range nsByteTxs {
 		wg.Add(1)
 		go nsMempoolInsertTxs(ctx, byteTxs, namespaceId)
 	}
 	wg.Wait()
-	app.logger.Info("2->sortTxs total insert time", "used", fmt.Sprintf("%v ms", time.Since(insertTime).Milliseconds()), "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
+	app.logger.Info("2->sortTxs total insert time", "used", fmt.Sprintf("%v ms", time.Since(insertTime).Milliseconds()), "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "sortType", req.SortType, "height", ctx.BlockHeight())
 
 	sortTime := time.Now()
 	nsIterators := nsMempool.SelectWithNsTable(ctx, req.Txs, req.NsTable)
 
-	app.logger.Info("3->sortTxs sort time", "used", fmt.Sprintf("%v ms", time.Since(sortTime).Milliseconds()), "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
+	app.logger.Info("3->sortTxs sort time", "used", fmt.Sprintf("%v ms", time.Since(sortTime).Milliseconds()), "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "sortType", req.SortType, "height", ctx.BlockHeight())
 
 	var (
 		offset  = 0
@@ -1779,6 +1770,11 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 		return true
 	}
 
+	var selectedTxsNums int
+	selectedTxsSignersSeqs := make(map[string]uint64)
+
+	isNeedCheck := req.SortType == uint32(bfttypes.SortAndCheck)
+
 	for _, nsIterator := range nsIterators {
 		iterator := nsIterator.Iterator
 		namespaceId := nsIterator.NamespaceId
@@ -1786,17 +1782,18 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 		txSize := nsMempool.CountTxByNamespaceId(namespaceId)
 		// Static analysis
 		var (
-			txs                  = make([]sdk.Tx, 0, txSize)
 			byteTxs              = make([]sdk.ByteTx, 0, txSize)
 			addressIndexMap      = make(map[string]int)
 			lastTxIndexMap       = make(map[string]int)
 			nsTransactionIndexes = make([]*cmtproto.NsTransactionIndexes, 0, txSize)
+			baseFee              = big.NewInt(0)
 		)
 
 		// If the iterator is nil use the NoOpMempool, get all namespace txs
 		if iterator == nil {
 			byteTxs = nsByteTxs[namespaceId]
 		} else {
+			txs := make([]sdk.Tx, 0, txSize)
 			for iterator != nil {
 				tx := iterator.Tx()
 				txs = append(txs, tx)
@@ -1804,7 +1801,7 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 			}
 			batchTime := time.Now()
 			byteTxs, _ = app.TxEncodeBatch(txs)
-			app.logger.Info("4.1->sortTxs iterator TxEncodeBatch  time", "used", fmt.Sprintf("%v ms", time.Since(batchTime).Milliseconds()), "namespaceId", namespaceId, "height", ctx.BlockHeight())
+			app.logger.Info("4.1->sortTxs iterator TxEncodeBatch  time", "used", fmt.Sprintf("%v ms", time.Since(batchTime).Milliseconds()), "namespaceId", namespaceId, "sortType", req.SortType, "height", ctx.BlockHeight())
 		}
 
 		handleNsTransactionDependOrders := func(txIdx int, namespaceId uint64, from string, to string) {
@@ -1829,15 +1826,13 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 			lastTxIndexMap[to] = txIdx
 		}
 
-		handleNsTransactionOrders := func(tx sdk.Tx, txIdx int, namespaceId uint64) {
+		handleNsTransactionOrders := func(from string, to string, txIdx int, namespaceId uint64) {
 
 			var (
 				fromIdx    int
 				toIdx      int
 				fromExists bool
 				toExists   bool
-				from       string
-				to         string
 				curIdx     int
 				isToSerial bool
 				toIsSerial = func(namespaceId uint64, to string) bool {
@@ -1854,8 +1849,6 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 					handleNsTransactionDependOrders(txIdx, namespaceId, from, to)
 				}
 			}()
-
-			from, to = app.txAccountInfoHandler(tx)
 
 			fromIdx, fromExists = addressIndexMap[from]
 			toIdx, toExists = addressIndexMap[to]
@@ -1899,24 +1892,69 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 		}
 
 		orderTime := time.Now()
+		if isNeedCheck {
+			baseFee = app.baseFeeHandler(ctx.WithNamepace(namespaceId))
+		}
+
 		for _, byteTx := range byteTxs {
 			txBz := byteTx.TxBytes
 			tx := byteTx.Tx
 			if tx == nil || txBz == nil {
 				continue
 			}
-			ok := handleNsInterChainTransactionOrders(byteTx, txIndex, namespaceId)
-			if !ok {
+			from, to, nonce := app.txAccountInfoHandler(tx)
+
+			txSignersSeqs := make(map[string]uint64)
+			if isNeedCheck {
+				seq, ok := selectedTxsSignersSeqs[from]
+				if !ok {
+					txSignersSeqs[from] = nonce
+				} else {
+					// If we have seen this signer before in this block, we must make
+					// sure that the current sequence is seq+1; otherwise is invalid
+					// and we skip it.
+					if seq+1 != nonce {
+						continue
+					}
+					txSignersSeqs[from] = nonce
+				}
+
+				isFeeVerified := app.checkTxFeeHandler(ctx, baseFee, tx)
+				if !isFeeVerified {
+					continue
+				}
+			}
+			isInterChainPaired := handleNsInterChainTransactionOrders(byteTx, txIndex, namespaceId)
+			if !isInterChainPaired {
 				continue
 			}
 
 			sortTxs = append(sortTxs, txBz)
 			offset++
-
-			handleNsTransactionOrders(tx, txIndex, namespaceId)
+			handleNsTransactionOrders(from, to, txIndex, namespaceId)
 			txIndex++
+
+			if isNeedCheck {
+				txsLen := len(sortTxs)
+				for sender, senderSeq := range txSignersSeqs {
+					// If txsLen != selectedTxsNums is true, it means that we've
+					// added a new tx to the selected txs, so we need to update
+					// the sequence of the sender.
+					if txsLen != selectedTxsNums {
+						selectedTxsSignersSeqs[sender] = senderSeq
+					} else if _, ok := selectedTxsSignersSeqs[sender]; !ok {
+						// The transaction hasn't been added but it passed the
+						// verification, so we know that the sequence is correct.
+						// So we set this sender's sequence to seq-1, in order
+						// to avoid unnecessary calls to PrepareProposalVerifyTx.
+						selectedTxsSignersSeqs[sender] = senderSeq - 1
+					}
+				}
+				selectedTxsNums = txsLen
+			}
+
 		}
-		app.logger.Info("4.2->sortTxs orders time", "used", fmt.Sprintf("%v ms", time.Since(orderTime).Milliseconds()), "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
+		app.logger.Info("4.2->sortTxs orders time", "used", fmt.Sprintf("%v ms", time.Since(orderTime).Milliseconds()), "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "sortType", req.SortType, "height", ctx.BlockHeight())
 
 		if len(nsTransactionIndexes) > 0 {
 			nsTable = append(nsTable, &cmtproto.NamespaceTableEntries{
@@ -1930,8 +1968,8 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 		}
 
 	}
-	app.logger.Info("4->sortTxs total orders time", "used", fmt.Sprintf("%v ms", time.Since(staticTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
-	app.logger.Info("5->sortTxs total time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
+	app.logger.Info("4->sortTxs total orders time", "used", fmt.Sprintf("%v ms", time.Since(staticTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "sortType", req.SortType, "height", ctx.BlockHeight())
+	app.logger.Info("5->sortTxs total time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "sortType", req.SortType, "height", ctx.BlockHeight())
 
 	return &abci.ResponseSortTxs{Txs: sortTxs, NsTable: nsTable, Orders: orders}, nil
 }

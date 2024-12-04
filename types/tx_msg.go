@@ -9,6 +9,7 @@ import (
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	"github.com/cosmos/gogoproto/proto"
 	protov2 "google.golang.org/protobuf/proto"
+	"math/big"
 	strings "strings"
 )
 
@@ -101,7 +102,7 @@ type TxDecoder func(txBytes []byte) (Tx, error)
 // TxEncoder marshals transaction to bytes
 type TxEncoder func(tx Tx) ([]byte, error)
 
-type TxAccountInfoHandler func(tx Tx) (string, string)
+type TxAccountInfoHandler func(tx Tx) (string, string, uint64)
 type NextAccountNumberHandler func(ctx Context, nsAccounts []NamespaceAccount) (map[string]map[uint64]uint64, uint64)
 type TxNewAccountAddressesHandler func(ctx Context, tx Tx) []NamespaceAccount
 type CrossNamespaceTransactionIdentifierHandler func(ctx Context, tx Tx) ([]byte, bool, bool)
@@ -117,6 +118,9 @@ type SetBlockBloomTransientHandler func(ctx Context, logs []string)
 type ContractStaticAnalysisResultHandler func(ctx Context, contractAddress string) (bool, bool)
 
 type GetAccountNonceHandler func(ctx Context, address string) (uint64, error)
+
+type BaseFeeHandler func(ctx Context) *big.Int
+type CheckTxFeeHandler func(ctx Context, baseFee *big.Int, tx Tx) bool
 
 // MsgTypeURL returns the TypeURL of a `sdk.Msg`.
 var MsgTypeURL = codectypes.MsgTypeURL

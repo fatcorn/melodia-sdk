@@ -400,6 +400,12 @@ func (app *BaseApp) SetTxAccountInfoHandler(txAccountInfoHandler sdk.TxAccountIn
 func (app *BaseApp) SetNextAccountNumberHandler(nextAccountNumberHandler sdk.NextAccountNumberHandler) {
 	app.nextAccountNumberHandler = nextAccountNumberHandler
 }
+func (app *BaseApp) SetBaseFeeHandler(baseFeeHandler sdk.BaseFeeHandler) {
+	app.baseFeeHandler = baseFeeHandler
+}
+func (app *BaseApp) SetCheckTxFeeHandler(checkTxFeeHandler sdk.CheckTxFeeHandler) {
+	app.checkTxFeeHandler = checkTxFeeHandler
+}
 func (app *BaseApp) SetTxNewAccountAddressesHandler(txNewAccountAddressesHandler sdk.TxNewAccountAddressesHandler) {
 	app.txNewAccountAddressesHandler = txNewAccountAddressesHandler
 }
