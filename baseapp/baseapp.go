@@ -1773,7 +1773,8 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 	var selectedTxsNums int
 	selectedTxsSignersSeqs := make(map[string]uint64)
 
-	isNeedCheck := req.SortType == uint32(bfttypes.SortAndCheck)
+	//isNeedCheck := req.SortType == uint32(bfttypes.SortAndCheck)
+	isNeedCheck := false
 
 	for _, nsIterator := range nsIterators {
 		iterator := nsIterator.Iterator
