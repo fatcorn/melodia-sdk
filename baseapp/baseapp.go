@@ -1363,14 +1363,17 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			anteCtx sdk.Context
 			msCache storetypes.CacheMultiStore
 		)
+		if mode == execModeCheck {
+			if m, ok := app.mempool.(*mempool.NamespaceNoncer); ok {
 
-		if m, ok := app.mempool.(*mempool.NamespaceNoncer); ok {
-			maxNonce, err := m.GetNonce(ctx, tx, app.getAccountNonceHandler)
-			if err != nil {
-				return sdk.GasInfo{}, nil, nil, nil, err
+				maxNonce, err := m.GetNonce(ctx, tx, app.getAccountNonceHandler)
+				if err != nil {
+					return sdk.GasInfo{}, nil, nil, nil, err
+				}
+				ctx = ctx.WithMaxNonce(maxNonce)
 			}
-			ctx = ctx.WithMaxNonce(maxNonce)
 		}
+
 		a2 := time.Now()
 		//now := cmttime.Now()
 		// Branch context before AnteHandler call in case it aborts.
