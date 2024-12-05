@@ -16,6 +16,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/cosmos/cosmos-sdk/x/auth/types"
+	"sync"
 )
 
 // AccountKeeperI is the interface contract that x/auth's keeper implements.
@@ -101,6 +102,8 @@ type AccountKeeper struct {
 	Params        collections.Item[types.Params]
 	AccountNumber *collections.Sequence
 	Accounts      *collections.IndexedMap[sdk.AccAddress, sdk.AccountI, AccountsIndexes]
+
+	mtx sync.RWMutex
 }
 
 var _ AccountKeeperI = &AccountKeeper{}
@@ -191,6 +194,9 @@ func (ak AccountKeeper) NextAccountNumber(ctx context.Context) uint64 {
 			panic(scheduler.NewErrNextAccountNumber(sdkCtx.TxIndex()))
 		}
 	}
+	ak.mtx.Lock()
+	defer ak.mtx.Unlock()
+
 	n, err := ak.AccountNumber.Next(sdkCtx)
 	if err != nil {
 		panic(err)
@@ -202,6 +208,9 @@ func (ak AccountKeeper) NextAccountNumber(ctx context.Context) uint64 {
 // We do not want to increase account number, so make cache context
 // and drop write() to fetch next account number without update.
 func (ak AccountKeeper) NextCacheAccountNumber(ctx context.Context) uint64 {
+
+	ak.mtx.Lock()
+	defer ak.mtx.Unlock()
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	tmpCtx, _ := sdkCtx.CacheContext()
 	n, err := ak.AccountNumber.Next(tmpCtx)
