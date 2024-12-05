@@ -454,9 +454,10 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) []
 				}
 			}
 		}
-		if t.Response.Code == 0 {
-			namespaceBlockTxIndexes[t.NamespaceId] = evmTxIndex + 1
-		}
+		//if t.Response.Code == 0 {
+		//	namespaceBlockTxIndexes[t.NamespaceId] = evmTxIndex + 1
+		//}
+		namespaceBlockTxIndexes[t.NamespaceId] = evmTxIndex + 1
 
 	}
 	t1 := time.Now()
@@ -619,8 +620,6 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 		}
 		go printCpuCount()
 	}
-
-
 
 	t6 := time.Now()
 	// execution tasks are limited by workers
