@@ -237,9 +237,15 @@ func (s TxByNonce[C]) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 // for all at once sorting as well as individually adding and removing elements.
 type TxByPrice[C comparable] Transactions[C]
 
-func (s TxByPrice[C]) Len() int           { return len(s) }
-func (s TxByPrice[C]) Less(i, j int) bool { return skiplist.Int64.Compare(s[i].Price, s[j].Price) > 0 }
-func (s TxByPrice[C]) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+func (s TxByPrice[C]) Len() int { return len(s) }
+func (s TxByPrice[C]) Less(i, j int) bool {
+	cmp := skiplist.Int64.Compare(s[i].Price, s[j].Price)
+	if cmp == 0 {
+		return s[i].Sender < s[j].Sender
+	}
+	return cmp > 0
+}
+func (s TxByPrice[C]) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
 
 func (s *TxByPrice[C]) Push(x interface{}) {
 	*s = append(*s, x.(*Transaction[C]))

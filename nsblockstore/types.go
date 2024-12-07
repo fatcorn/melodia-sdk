@@ -125,9 +125,15 @@ func (manager *NamespaceStoreManager) IsMoudleStoreKeyExist(moudleName string, n
 func (manager *NamespaceStoreManager) Commit() {
 	manager.RLock()
 	defer manager.RUnlock()
+	wg := sync.WaitGroup{}
 	for _, store := range manager.nsStores {
-		store.Commit()
+		wg.Add(1)
+		go func(blockStore NSBlockStore) {
+			defer wg.Done()
+			blockStore.Commit()
+		}(store)
 	}
+	wg.Wait()
 }
 
 type NamespaceStoreDBInfo struct {

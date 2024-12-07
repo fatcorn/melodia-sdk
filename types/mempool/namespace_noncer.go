@@ -137,7 +137,7 @@ func (nsm *NamespaceNoncer) RemoveWithCtx(ctx context.Context, tx sdk.Tx) error 
 	//nsm.txs.Delete(txHash)
 	return nil
 }
-func (nsm *NamespaceNoncer) Rollback(ctx sdk.Context, tx sdk.Tx, fallback sdk.GetAccountNonceHandler) {
+func (nsm *NamespaceNoncer) Rollback(ctx sdk.Context, tx sdk.Tx, fallback sdk.GetAccountNonceHandler, failReason error) {
 
 	pendingNoncer := nsm.getNoncer(ctx, fallback)
 
@@ -155,7 +155,7 @@ func (nsm *NamespaceNoncer) Rollback(ctx sdk.Context, tx sdk.Tx, fallback sdk.Ge
 	if nonce > 0 {
 		nonce = nonce - 1
 	}
-	ctx.Logger().Warn("noncer rollback", "address", sender, "nonce", pendingNoncer.get(ctx, sender), "newNonce", nonce, "txNonce", sig.Sequence, "height", ctx.BlockHeight())
+	ctx.Logger().Debug("noncer rollback", "address", sender, "nonce", pendingNoncer.get(ctx, sender), "newNonce", nonce, "txNonce", sig.Sequence, "mode", ctx.ExecMode(), "height", ctx.BlockHeight(), "err", failReason)
 
 	pendingNoncer.setIfLower(ctx, sender, nonce)
 }

@@ -454,9 +454,10 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) []
 				}
 			}
 		}
-		if t.Response.Code == 0 {
-			namespaceBlockTxIndexes[t.NamespaceId] = evmTxIndex + 1
-		}
+		//if t.Response.Code == 0 {
+		//	namespaceBlockTxIndexes[t.NamespaceId] = evmTxIndex + 1
+		//}
+		namespaceBlockTxIndexes[t.NamespaceId] = evmTxIndex + 1
 
 	}
 	t1 := time.Now()

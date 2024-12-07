@@ -34,7 +34,7 @@ func (ak AccountKeeper) NewAccount(ctx context.Context, acc sdk.AccountI) sdk.Ac
 		panic(err)
 	}
 	if sdkCtx.ExecMode() == sdk.ExecModeFinalize {
-		sdkCtx.Logger().Info("new account", "accountNumber", acc.GetAccountNumber(), "execMode=", sdkCtx.ExecMode(), "address", acc.GetAddress().String(), "namespace", sdkCtx.Namespace(), "height", sdkCtx.BlockHeight())
+		sdkCtx.Logger().Debug("new account", "accountNumber", acc.GetAccountNumber(), "execMode=", sdkCtx.ExecMode(), "address", acc.GetAddress().String(), "namespace", sdkCtx.Namespace(), "height", sdkCtx.BlockHeight())
 	}
 	return acc
 }

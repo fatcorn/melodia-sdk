@@ -95,3 +95,15 @@ type ByteTx struct {
 	Tx
 	TxBytes []byte
 }
+
+func ListNamespaceByteTxs(byteTxs []ByteTx, nsTable []*tdmtypes.NamespaceTableEntries) map[uint64][]ByteTx {
+	nsByteTxs := make(map[uint64][]ByteTx)
+	lastOffset := int32(0)
+	for _, entry := range nsTable {
+		namespaceTxs := byteTxs[lastOffset:entry.Offset]
+		namespaceId := entry.Namespace
+		lastOffset = entry.Offset
+		nsByteTxs[namespaceId] = namespaceTxs
+	}
+	return nsByteTxs
+}

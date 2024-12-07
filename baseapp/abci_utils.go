@@ -3,21 +3,19 @@ package baseapp
 import (
 	"bytes"
 	"context"
+	"cosmossdk.io/core/comet"
 	"fmt"
-	"github.com/cockroachdb/errors"
 	abci "github.com/cometbft/cometbft/abci/types"
 	cryptoenc "github.com/cometbft/cometbft/crypto/encoding"
 	cmtprotocrypto "github.com/cometbft/cometbft/proto/tendermint/crypto"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	consensustypes "github.com/cometbft/cometbft/types"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/mempool"
 	protoio "github.com/cosmos/gogoproto/io"
 	"github.com/cosmos/gogoproto/proto"
 	"slices"
-
-	"cosmossdk.io/core/comet"
-
-	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/cosmos/cosmos-sdk/types/mempool"
+	"time"
 )
 
 type (
@@ -250,7 +248,22 @@ func (h *DefaultProposalHandler) SetTxSelector(ts TxSelector) {
 // requested from CometBFT will simply be returned, which, by default, are in
 // FIFO order.
 func (h *DefaultProposalHandler) PrepareProposalHandler() sdk.PrepareProposalHandler {
+	isDef := false
+	switch h.mempool.(type) {
+	case *mempool.NamespaceMempool:
+		isDef = true
+	case *mempool.NamespaceNoncer:
+		isDef = true
+	case mempool.NoOpMempool:
+		isDef = true
+	}
+
+	if h.mempool == nil || isDef {
+		return NoOpPrepareProposal()
+	}
 	return func(ctx sdk.Context, req *abci.RequestPrepareProposal) (*abci.ResponsePrepareProposal, error) {
+
+		startTime := time.Now()
 		var maxBlockGas uint64
 		if b := ctx.ConsensusParams().Block; b != nil {
 			maxBlockGas = uint64(b.MaxGas)
@@ -258,125 +271,92 @@ func (h *DefaultProposalHandler) PrepareProposalHandler() sdk.PrepareProposalHan
 
 		defer h.txSelector.Clear()
 
-		// If the mempool is nil or NoOp we simply return the transactions
-		// requested from CometBFT, which, by default, should be in FIFO order.
-		//
-		// Note, we still need to ensure the transactions returned respect req.MaxTxBytes.
-		isDef := false
-		switch h.mempool.(type) {
-		case *mempool.NamespaceMempool:
-			isDef = true
-		case *mempool.NamespaceNoncer:
-			isDef = true
-		case mempool.NoOpMempool:
-			isDef = true
-		}
+		var (
+			offset  = 0
+			nsTable = make([]*cmtproto.NamespaceTableEntries, 0, len(req.Txs))
+		)
+		app := h.txVerifier.(*BaseApp)
+		reqByteTxs, _ := app.TxDecodeBatch(req.Txs)
+		app.logger.Info("prepareProposal TxDecodeBatch time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(req.Txs), "height", ctx.BlockHeight())
 
-		if h.mempool == nil || isDef {
+		nsByteTxs := sdk.ListNamespaceByteTxs(reqByteTxs, req.NsTable)
+		var selectedTxsNums int
+		selectedTxsSignersSeqs := make(map[string]uint64)
+		stop := false
+		for namespaceId, byteTxs := range nsByteTxs {
+			baseFee := app.baseFeeHandler(ctx.WithNamepace(namespaceId))
 
-			for _, txBz := range req.Txs {
-				tx, err := h.txVerifier.TxDecode(txBz)
+			for _, byteTx := range byteTxs {
+				txBz := byteTx.TxBytes
+				memTx := byteTx.Tx
+				if memTx == nil || txBz == nil {
+					continue
+				}
+				signerData, err := h.signerExtAdapter.GetSigners(memTx)
 				if err != nil {
 					return nil, err
 				}
+				shouldAdd := true
+				txSignersSeqs := make(map[string]uint64)
+				for _, signer := range signerData {
+					seq, ok := selectedTxsSignersSeqs[signer.Signer.String()]
+					if !ok {
+						txSignersSeqs[signer.Signer.String()] = signer.Sequence
+						continue
+					}
 
-				stop := h.txSelector.SelectTxForProposal(ctx, uint64(req.MaxTxBytes), maxBlockGas, tx, txBz)
-				if stop {
-					break
-				}
-			}
-			newTxs := h.txSelector.SelectedTxs(ctx)
-			newNsTable := req.NsTable
-			newOffset := len(newTxs)
-			if newOffset != len(req.Txs) {
-				newNsTable = make([]*cmtproto.NamespaceTableEntries, 0)
-				for _, nsEntry := range req.NsTable {
-					if int(nsEntry.Offset) >= newOffset {
-						nsEntry.Offset = int32(newOffset)
-						newNsTable = append(newNsTable, nsEntry)
+					// If we have seen this signer before in this block, we must make
+					// sure that the current sequence is seq+1; otherwise is invalid
+					// and we skip it.
+					if seq+1 != signer.Sequence {
+						shouldAdd = false
 						break
 					}
-					newNsTable = append(newNsTable, nsEntry)
-				}
-			}
-			return &abci.ResponsePrepareProposal{Txs: newTxs, NsTable: newNsTable}, nil
-		}
-
-		iterator := h.mempool.Select(ctx, req.Txs)
-		selectedTxsSignersSeqs := make(map[string]uint64)
-		var selectedTxsNums int
-
-		for iterator != nil {
-			memTx := iterator.Tx()
-			signerData, err := h.signerExtAdapter.GetSigners(memTx)
-			if err != nil {
-				return nil, err
-			}
-
-			// If the signers aren't in selectedTxsSignersSeqs then we haven't seen them before
-			// so we add them and continue given that we don't need to check the sequence.
-			shouldAdd := true
-			txSignersSeqs := make(map[string]uint64)
-			for _, signer := range signerData {
-				seq, ok := selectedTxsSignersSeqs[signer.Signer.String()]
-				if !ok {
 					txSignersSeqs[signer.Signer.String()] = signer.Sequence
+				}
+				if !shouldAdd {
 					continue
 				}
 
-				// If we have seen this signer before in this block, we must make
-				// sure that the current sequence is seq+1; otherwise is invalid
-				// and we skip it.
-				if seq+1 != signer.Sequence {
-					shouldAdd = false
-					break
-				}
-				txSignersSeqs[signer.Signer.String()] = signer.Sequence
-			}
-			if !shouldAdd {
-				iterator = iterator.Next()
-				continue
-			}
-
-			// NOTE: Since transaction verification was already executed in CheckTx,
-			// which calls mempool.Insert, in theory everything in the pool should be
-			// valid. But some mempool implementations may insert invalid txs, so we
-			// check again.
-
-			txBz, err := h.txVerifier.PrepareProposalVerifyTx(memTx)
-			if err != nil {
-				err := h.mempool.Remove(memTx)
-				if err != nil && !errors.Is(err, mempool.ErrTxNotFound) {
-					return nil, err
-				}
-			} else {
-				stop := h.txSelector.SelectTxForProposal(ctx, uint64(req.MaxTxBytes), maxBlockGas, memTx, txBz)
-				if stop {
-					break
-				}
-
-				txsLen := len(h.txSelector.SelectedTxs(ctx))
-				for sender, seq := range txSignersSeqs {
-					// If txsLen != selectedTxsNums is true, it means that we've
-					// added a new tx to the selected txs, so we need to update
-					// the sequence of the sender.
-					if txsLen != selectedTxsNums {
-						selectedTxsSignersSeqs[sender] = seq
-					} else if _, ok := selectedTxsSignersSeqs[sender]; !ok {
-						// The transaction hasn't been added but it passed the
-						// verification, so we know that the sequence is correct.
-						// So we set this sender's sequence to seq-1, in order
-						// to avoid unnecessary calls to PrepareProposalVerifyTx.
-						selectedTxsSignersSeqs[sender] = seq - 1
+				isFeeVerified := app.checkTxFeeHandler(ctx, baseFee, memTx)
+				if !isFeeVerified {
+					continue
+				} else {
+					stop = h.txSelector.SelectTxForProposal(ctx, uint64(req.MaxTxBytes), maxBlockGas, memTx, txBz)
+					offset++
+					if stop {
+						break
 					}
+					txsLen := len(h.txSelector.SelectedTxs(ctx))
+					for sender, seq := range txSignersSeqs {
+						// If txsLen != selectedTxsNums is true, it means that we've
+						// added a new tx to the selected txs, so we need to update
+						// the sequence of the sender.
+						if txsLen != selectedTxsNums {
+							selectedTxsSignersSeqs[sender] = seq
+						} else if _, ok := selectedTxsSignersSeqs[sender]; !ok {
+							// The transaction hasn't been added but it passed the
+							// verification, so we know that the sequence is correct.
+							// So we set this sender's sequence to seq-1, in order
+							// to avoid unnecessary calls to PrepareProposalVerifyTx.
+							selectedTxsSignersSeqs[sender] = seq - 1
+						}
+					}
+					selectedTxsNums = txsLen
 				}
-				selectedTxsNums = txsLen
 			}
-
-			iterator = iterator.Next()
+			nsTable = append(nsTable, &cmtproto.NamespaceTableEntries{
+				Namespace: namespaceId,
+				Offset:    int32(offset),
+			})
+			if stop {
+				break
+			}
 		}
 
-		return &abci.ResponsePrepareProposal{Txs: h.txSelector.SelectedTxs(ctx)}, nil
+		txs := h.txSelector.SelectedTxs(ctx)
+		app.logger.Info("prepareProposal total time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(txs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
+		return &abci.ResponsePrepareProposal{Txs: txs, NsTable: nsTable}, nil
 	}
 }
 
@@ -446,7 +426,7 @@ func (h *DefaultProposalHandler) ProcessProposalHandler() sdk.ProcessProposalHan
 // return the transactions sent by the client's request.
 func NoOpPrepareProposal() sdk.PrepareProposalHandler {
 	return func(_ sdk.Context, req *abci.RequestPrepareProposal) (*abci.ResponsePrepareProposal, error) {
-		return &abci.ResponsePrepareProposal{Txs: req.Txs}, nil
+		return &abci.ResponsePrepareProposal{Txs: req.Txs, NsTable: req.NsTable}, nil
 	}
 }
 
