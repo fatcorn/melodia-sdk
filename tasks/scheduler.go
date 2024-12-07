@@ -605,22 +605,8 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	// set trace store file
 	tracePathEnv := os.Getenv("tracePath")
 	if tracePathEnv != "" {
-		nowTime := strconv.Itoa(int(now.UnixMilli()))
-		tracePath := "trace/trace" + nowTime + ".out"
-		tracePath = tracePathEnv + tracePath
-		f, err := os.Create(tracePath)
-
-		if err != nil {
-			println("err", "err", err.Error())
-		}
-		// start trace
-		if err := trace.Start(f); err != nil {
-			panic(err)
-		}
 		go printCpuCount()
 	}
-
-
 
 	t6 := time.Now()
 	// execution tasks are limited by workers
@@ -749,11 +735,6 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	//printSystemStats("after process")
 
 	//s.setMsgsHandler(ctx, evmTxs)
-	if tracePathEnv != "" {
-		t7 := time.Now()
-		trace.Stop()
-		println("trace time===============", "sub", time.Now().Sub(t7).String())
-	}
 	ctx.Logger().Info("occ scheduler", "height", ctx.BlockHeight(), "txs", len(tasks), "latency_ms", time.Since(startTime).String(), "retries", s.metrics.retries, "maxIncarnation", s.maxIncarnation, "iterations", iterations, "sync", s.synchronous, "workers", workers)
 
 	return res, nil
