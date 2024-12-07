@@ -21,7 +21,6 @@ import (
 	"github.com/shirou/gopsutil/docker"
 	"os"
 	"runtime/pprof"
-	"runtime/trace"
 	"sort"
 	"strconv"
 	"sync"
@@ -586,7 +585,6 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	println("init version store time========", "sub", toTaskStartTime.Sub(startTime).String(), "len(tasks)", len(tasks))
 
 	fmt.Printf("========= toTasks Time used: %v\n", time.Since(toTaskStartTime))
-	now := time.Now()
 	s.allTasks = tasks
 	s.allTasksMap = tasksMap
 	s.executeCh = make(chan func(), len(tasks))
