@@ -36,7 +36,7 @@ func NewNamespaceMempool() *NamespaceMempool {
 	return nsm
 }
 
-func (nsm *NamespaceMempool) SelectWithNsTable(ctx context.Context, txs [][]byte, nsTable []*cmtproto.NamespaceTableEntries) []NamespaceInterator {
+func (nsm *NamespaceMempool) SelectWithNsTable(ctx context.Context, nsByteTxs map[uint64][]*sdk.ByteTx) []NamespaceInterator {
 
 	var (
 		nsIters []NamespaceInterator
@@ -44,25 +44,21 @@ func (nsm *NamespaceMempool) SelectWithNsTable(ctx context.Context, txs [][]byte
 	)
 
 	nsIters = make([]NamespaceInterator, 0)
-	lastOffset := int32(0)
-	for _, entry := range nsTable {
-		namespaceTxs := txs[lastOffset:entry.Offset]
-		namespaceId := entry.Namespace
+	for namespaceId, byteTxs := range nsByteTxs {
 		pool, ok := nsm.pools[namespaceId]
 		if ok {
 			wg.Add(1)
-			go func(ctx context.Context, txs [][]byte, namespaceId uint64) {
+			go func(ctx context.Context, txs []*sdk.ByteTx, namespaceId uint64) {
 				defer wg.Done()
-				iter := pool.Select(ctx, txs)
+				iter := pool.Select(ctx, nil)
 				nsm.mtx.Lock()
 				defer nsm.mtx.Unlock()
 				nsIters = append(nsIters, NamespaceInterator{
 					NamespaceId: namespaceId,
 					Iterator:    iter,
 				})
-			}(ctx, namespaceTxs, namespaceId)
+			}(ctx, byteTxs, namespaceId)
 		}
-		lastOffset = entry.Offset
 	}
 
 	wg.Wait()
@@ -74,6 +70,47 @@ func (nsm *NamespaceMempool) SelectWithNsTable(ctx context.Context, txs [][]byte
 	})
 
 	return nsIters
+}
+
+func (nsm *NamespaceMempool) SelectSortTxs(ctx context.Context, maxBytes, maxGas int64, nsByteTxs map[uint64][]*sdk.ByteTx, txEncodeBatch func(txs []sdk.Tx) ([]*sdk.ByteTx, error)) ([]*sdk.ByteTx, []*cmtproto.NamespaceTableEntries) {
+
+	txsIterators := nsm.SelectWithNsTable(ctx, nsByteTxs)
+
+	byteTxs := make([]*sdk.ByteTx, 0, nsm.CountTx())
+	nsTable := make([]*cmtproto.NamespaceTableEntries, 0)
+	offset := 0
+
+	for _, txIterator := range txsIterators {
+		iterator := txIterator.Iterator
+		namespaceId := txIterator.NamespaceId
+
+		// If the iterator is nil use the NoOpMempool, get all namespace txs
+		if iterator == nil {
+			txs := nsByteTxs[namespaceId]
+			byteTxs = append(byteTxs, txs...)
+		} else {
+			txs := make([]sdk.Tx, 0)
+			for iterator != nil {
+				tx := iterator.Tx()
+				txs = append(txs, tx)
+				iterator = iterator.Next()
+			}
+			encodeTxs, _ := txEncodeBatch(txs)
+			byteTxs = append(byteTxs, encodeTxs...)
+		}
+
+		offset += len(byteTxs)
+		nsTable = append(nsTable, &cmtproto.NamespaceTableEntries{
+			Namespace: namespaceId,
+			Offset:    int32(offset),
+		})
+	}
+
+	if maxBytes > 0 {
+		byteTxs, nsTable = sdk.ReapMaxBytesMaxGasNsTable(maxBytes, maxGas, byteTxs, nsTable)
+	}
+
+	return byteTxs, nsTable
 }
 
 func (nsm *NamespaceMempool) Init(ctx context.Context) Mempool {
@@ -97,7 +134,7 @@ func (nsm *NamespaceMempool) Init(ctx context.Context) Mempool {
 		case types2.SortModeGasPrice:
 			pool = DefaultPriceNonceMempool()
 		case types2.SortModeQueue:
-			pool = NoOpMempool{}
+			pool = NewSenderNonceMempool()
 		default:
 			pool = DefaultPriceNonceMempool()
 		}

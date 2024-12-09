@@ -405,7 +405,7 @@ func (app *BaseApp) SortTxs(req *abci.RequestSortTxs) (resp *abci.ResponseSortTx
 	resp, err = app.sortTxs(app.checkState.Context(), req)
 	if err != nil {
 		app.logger.Error("failed to sort txs", "err", err)
-		return &abci.ResponseSortTxs{Txs: req.Txs, NsTable: req.NsTable}, nil
+		panic("sort txs error")
 	}
 
 	return resp, nil
