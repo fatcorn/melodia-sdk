@@ -1722,7 +1722,7 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 	if b := ctx.ConsensusParams().Block; b != nil {
 		maxBlockGas = b.MaxGas
 	}
-	reqByteTxs, reqNsTable = nsMempool.SelectSortTxs(ctx, int64(req.MaxTxBytes), maxBlockGas, nsByteTxs, app.TxEncodeBatch)
+	reqByteTxs, reqNsTable = nsMempool.SelectSortTxs(ctx, req.MaxTxBytes, maxBlockGas, nsByteTxs, app.TxEncodeBatch)
 
 	app.logger.Info("3->sortTxs sort time", "used", fmt.Sprintf("%v ms", time.Since(sortTime).Milliseconds()), "size", len(reqByteTxs), "nsTable", reqNsTable, "sortType", req.SortType, "height", ctx.BlockHeight())
 
