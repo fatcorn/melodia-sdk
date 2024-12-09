@@ -106,7 +106,11 @@ func (nsm *NamespaceMempool) SelectSortTxs(ctx context.Context, maxBytes, maxGas
 		})
 	}
 
-	return sdk.ReapMaxBytesMaxGasNsTable(maxBytes, maxGas, byteTxs, nsTable)
+	if maxBytes > 0 {
+		byteTxs, nsTable = sdk.ReapMaxBytesMaxGasNsTable(maxBytes, maxGas, byteTxs, nsTable)
+	}
+
+	return byteTxs, nsTable
 }
 
 func (nsm *NamespaceMempool) Init(ctx context.Context) Mempool {
