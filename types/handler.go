@@ -30,7 +30,7 @@ func NewPIBCPacketGeneratorHandler(generators []PIBCPacketGenerator, checker PIB
 	}
 }
 
-func (handler PIBCPacketGeneratorHandler) Handle(ctx Context, tx Tx, signerAddr AccAddress) (*PIBCPacket, error) {
+func (handler PIBCPacketGeneratorHandler) Handle(ctx Context, tx Tx, getSignerAddr func() AccAddress) (*PIBCPacket, error) {
 	includePibcMsg, err := handler.checker(ctx, tx)
 
 	if err != nil {
@@ -39,6 +39,8 @@ func (handler PIBCPacketGeneratorHandler) Handle(ctx Context, tx Tx, signerAddr 
 	if !includePibcMsg {
 		return nil, err
 	}
+
+	signerAddr := getSignerAddr()
 
 	for _, v := range handler.generators {
 		ret, err := v.GeneratePacketMsg(ctx, tx, signerAddr)

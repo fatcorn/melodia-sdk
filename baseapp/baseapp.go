@@ -1438,15 +1438,18 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			}
 		}
 		if app.pibcPacketGeneratorHadler != nil && app.signerName != "" {
-			record, err := app.signerKeyring.Key(app.signerName)
-			if err != nil {
-				panic(fmt.Errorf("load tx signer failed"))
+			getSigigner := func() sdk.AccAddress {
+				record, err := app.signerKeyring.Key(app.signerName)
+				if err != nil {
+					panic(fmt.Errorf("load tx signer failed"))
+				}
+				signerAddr, err := record.GetAddress()
+				if err != nil {
+					panic(fmt.Errorf("load tx signer address failed"))
+				}
+				return signerAddr
 			}
-			signerAddr, err := record.GetAddress()
-			if err != nil {
-				panic(fmt.Errorf("load tx signer address failed"))
-			}
-			msg, err := app.pibcPacketGeneratorHadler.Handle(ctx, tx, signerAddr)
+			msg, err := app.pibcPacketGeneratorHadler.Handle(ctx, tx, getSigigner)
 			if err != nil {
 				return gInfo, nil, anteEvents, nil, err
 			}
