@@ -99,4 +99,13 @@ type (
 		opts AppOptions,
 		modulesToExport []string,
 	) (ExportedApp, error)
+
+	// LoadVersion load store version
+	LoadVersion func(
+		logger log.Logger,
+		db dbm.DB,
+		traceWriter io.Writer,
+		height int64,
+		opts AppOptions,
+	) (storetypes.CommitID, error)
 )
