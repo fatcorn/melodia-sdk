@@ -1949,9 +1949,7 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 				}
 				selectedTxsNums = txsLen
 			}
-
 		}
-
 		if len(nsTransactionIndexes) > 0 {
 			nsTable = append(nsTable, &cmtproto.NamespaceTableEntries{
 				Namespace: namespaceId,
@@ -1963,8 +1961,7 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 			})
 		}
 		globalOffset = nsEntry.Offset
-		app.logger.Info("4.1->sortTxs orders time", "used", fmt.Sprintf("%v ms", time.Since(orderTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "sortType", req.SortType, "height", ctx.BlockHeight())
-
+		app.logger.Info("4.1->sortTxs namespace orders time", "used", fmt.Sprintf("%v ms", time.Since(orderTime).Milliseconds()), "nsTxSize", len(byteTxs), "namespaceId", namespaceId, "offset", offset, "sortType", req.SortType, "height", ctx.BlockHeight())
 	}
 	app.logger.Info("4->sortTxs total orders time", "used", fmt.Sprintf("%v ms", time.Since(staticTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "sortType", req.SortType, "height", ctx.BlockHeight())
 	app.logger.Info("5->sortTxs total time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "sortType", req.SortType, "height", ctx.BlockHeight())
