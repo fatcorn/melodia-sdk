@@ -7,7 +7,7 @@ import (
 )
 
 // NamespacePortWaitCh Define the namespace port for json-rpc
-var NamespacePortWaitCh = make(chan types.NamespacePort)
+var NamespacePortWaitCh = make(chan types.NamespacePort, 1024)
 
 // NamespaceGenesis the module genesis
 type NamespaceGenesis struct {
