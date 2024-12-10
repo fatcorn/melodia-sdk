@@ -1095,9 +1095,17 @@ func (app *BaseApp) Commit() (*abci.ResponseCommit, error) {
 	}
 	t1 := time.Now()
 
-	rms, ok := app.cms.(*rootmulti.Store)
+	rms, ok := app.cms.(*rootmultiv2.Store)
 	if ok {
 		rms.SetCommitHeader(header)
+
+		if rms.LatestVersion() >= header.Height {
+			err := rms.RollbackToVersion(header.Height - 1)
+			if err != nil {
+				app.logger.Error("Commit prune stores error.", "height", header.Height, "err", err)
+			}
+			app.logger.Info("Commit roll back store", "hash", hex.EncodeToString(app.cms.WorkingHash()))
+		}
 	}
 
 	t2 := time.Now()
