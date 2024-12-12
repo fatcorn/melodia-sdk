@@ -360,7 +360,7 @@ func (app *BaseApp) CheckTx(req *abci.RequestCheckTx) (*abci.ResponseCheckTx, er
 	}
 	checkContext := app.checkState.Context()
 	checkContext = checkContext.WithConsensusParams(app.GetConsensusParams(checkContext))
-	checkContext = checkContext.WithNamepace(req.NamespaceId)
+	checkContext = checkContext.WithNamepace(req.NamespaceId).WithTxBytes(req.Tx)
 
 	gInfo, result, anteEvents, packet, err := app.runTx(mode, req.Tx, checkContext)
 
