@@ -1,6 +1,7 @@
 package mempool
 
 import (
+	"bytes"
 	"container/heap"
 	"context"
 	"fmt"
@@ -241,7 +242,7 @@ func (s TxByPrice[C]) Len() int { return len(s) }
 func (s TxByPrice[C]) Less(i, j int) bool {
 	cmp := skiplist.Int64.Compare(s[i].Price, s[j].Price)
 	if cmp == 0 {
-		return s[i].Sender < s[j].Sender
+		return bytes.Compare([]byte(s[i].Sender), []byte(s[j].Sender)) < 0
 	}
 	return cmp > 0
 }
