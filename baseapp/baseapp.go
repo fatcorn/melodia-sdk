@@ -1107,7 +1107,10 @@ func (app *BaseApp) deliverTx(tx []byte, opts ...sdk.Context) *abci.ExecTxResult
 	// Check if a context was provided
 	if len(opts) > 0 {
 		ctx = opts[0]
-		ctx = ctx.WithTxBytes(tx).WithConsensusParams(app.GetConsensusParams(ctx))
+		ctx = ctx.WithTxBytes(tx)
+		if ctx.ConsensusParams().Block == nil {
+			ctx = ctx.WithConsensusParams(app.GetConsensusParams(ctx))
+		}
 	} else {
 		ctx = app.getContextForTx(execModeFinalize, tx)
 	}

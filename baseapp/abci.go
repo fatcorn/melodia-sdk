@@ -1629,7 +1629,7 @@ func (app *BaseApp) DeliverTxBatch(ctx sdk.Context, req sdk.DeliverTxBatchReques
 	scheduler := tasks.NewScheduler(app.concurrencyWorkers, app.deliverTx, namespaceList)
 	scheduler.SetSchedulerHandlers(app.modifyLogIndexHandler, app.setBlockBloomTransientHandler, app.isEVMTxHandler, app.nextAccountNumberHandler, app.txAccountInfoHandler, app.addTransientGasWanted, app.txNewAccountAddressesHandler)
 
-	txRes, err := scheduler.ProcessAll(ctx.WithNamespaceBlockManager(app.namespaceStoreManager), req)
+	txRes, err := scheduler.ProcessAll(ctx.WithNamespaceBlockManager(app.namespaceStoreManager).WithConsensusParams(app.GetConsensusParams(ctx)), req)
 
 	if err != nil {
 		ctx.Logger().Error("error while processing scheduler", "err", err)
