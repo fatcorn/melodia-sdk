@@ -28,6 +28,7 @@ func NewNamespaceNoncer() *NamespaceNoncer {
 	nsm := &NamespaceNoncer{
 		pendingNonces:   make(map[uint64]*noncer),
 		signerExtractor: NewDefaultSignerExtractionAdapter(),
+		signerMap:       cmap.NewShardedMap(20000),
 	}
 	return nsm
 }
