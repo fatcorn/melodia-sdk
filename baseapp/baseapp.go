@@ -1301,11 +1301,9 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 
 		}
 		if err != nil {
-			if !errors.Is(err, sdkerrors.ErrInvalidSequence) {
-				switch m := app.mempool.(type) {
-				case *mempool.NamespaceNoncer:
-					m.Rollback(ctx, tx, app.getAccountNonceHandler, err)
-				}
+			switch m := app.mempool.(type) {
+			case *mempool.NamespaceNoncer:
+				m.Rollback(ctx, tx, app.getAccountNonceHandler, err)
 			}
 		}
 		gInfo = sdk.GasInfo{GasWanted: gasWanted, GasUsed: ctx.GasMeter().GasConsumed()}

@@ -2,10 +2,12 @@ package mempool
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	tmbytes "github.com/cometbft/cometbft/libs/bytes"
 	tmtypes "github.com/cometbft/cometbft/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	errors2 "github.com/cosmos/cosmos-sdk/types/errors"
 	"sync"
 )
 
@@ -152,9 +154,16 @@ func (nsm *NamespaceNoncer) Rollback(ctx sdk.Context, tx sdk.Tx, fallback sdk.Ge
 	sig := sigs[0]
 	sender := sig.Signer.String()
 	nonce := sig.Sequence
+	if errors.Is(failReason, errors2.ErrInvalidSequence) {
+		if nonce > ctx.MaxNonce() {
+			return
+		}
+	}
+
 	if nonce > 0 {
 		nonce = nonce - 1
 	}
+
 	ctx.Logger().Debug("noncer rollback", "address", sender, "nonce", pendingNoncer.get(ctx, sender), "newNonce", nonce, "txNonce", sig.Sequence, "mode", ctx.ExecMode(), "height", ctx.BlockHeight(), "err", failReason)
 
 	pendingNoncer.setIfLower(ctx, sender, nonce)
