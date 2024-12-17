@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	tmbytes "github.com/cometbft/cometbft/libs/bytes"
+	"github.com/cometbft/cometbft/libs/cmap"
 	tmtypes "github.com/cometbft/cometbft/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	errors2 "github.com/cosmos/cosmos-sdk/types/errors"
@@ -18,7 +19,7 @@ type NamespaceNoncer struct {
 	mtx             sync.RWMutex
 	pendingNonces   map[uint64]*noncer // Pending state tracking virtual nonces
 	signerExtractor SignerExtractionAdapter
-	signerMap       sync.Map
+	signerMap       *cmap.ShardedMap
 }
 
 // NewNamespaceNoncer creates a new mempool that prioritizes transactions by
@@ -103,7 +104,7 @@ func (nsm *NamespaceNoncer) Insert(ctx context.Context, tx sdk.Tx) error {
 	txHash := tmbytes.HexBytes(tmtypes.Tx(sdkCtx.TxBytes()).Hash()).String()
 	txSigner := sdkCtx.TxSigner()
 	if txSigner != nil {
-		nsm.signerMap.Store(txHash, txSigner)
+		nsm.signerMap.Store(txHash, txSigner, func() {})
 	}
 	return nil
 }
@@ -120,7 +121,7 @@ func (nsm *NamespaceNoncer) Remove(tx sdk.Tx) error {
 func (nsm *NamespaceNoncer) RemoveWithCtx(ctx context.Context, tx sdk.Tx) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	txHash := tmbytes.HexBytes(tmtypes.Tx(sdkCtx.TxBytes()).Hash()).String()
-	nsm.signerMap.Delete(txHash)
+	nsm.signerMap.Delete(txHash, func(any any) {})
 	return nil
 }
 func (nsm *NamespaceNoncer) Rollback(ctx sdk.Context, tx sdk.Tx, fallback sdk.GetAccountNonceHandler, failReason error) {
