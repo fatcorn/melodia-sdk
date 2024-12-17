@@ -18,7 +18,7 @@ type NamespaceNoncer struct {
 	mtx             sync.RWMutex
 	pendingNonces   map[uint64]*noncer // Pending state tracking virtual nonces
 	signerExtractor SignerExtractionAdapter
-	txs             sync.Map
+	signerMap       sync.Map
 }
 
 // NewNamespaceNoncer creates a new mempool that prioritizes transactions by
@@ -48,22 +48,6 @@ func (nsm *NamespaceNoncer) UpdateNonce(ctx sdk.Context, tx sdk.Tx, fallback sdk
 	ctx.Logger().Debug("noncer update", "address", sender, "nonce", pendingNoncer.get(ctx, sender), "newNonce", nonce, "height", ctx.BlockHeight())
 	pendingNoncer.setIfHigher(ctx, sender, nonce)
 
-	//nonce := pendingNoncer.get(ctx, sender)
-
-	//// we merged the nonce verification to nonce increment, so when tx includes multiple messages
-	//// with same sender, they'll be accepted.
-	//if txNonce != nonce {
-	//	nonce = pendingNoncer.getLatest(ctx, sender)
-	//	if txNonce != nonce {
-	//		return errorsmod.Wrapf(
-	//			errors.ErrInvalidSequence,
-	//			"invalid signer nonce; got %d, expected %d", txNonce, nonce,
-	//		)
-	//	}
-	//}
-
-	//nonce++
-	//pendingNoncer.set(ctx, sender, nonce)
 	return nil
 }
 
@@ -106,13 +90,21 @@ func (nsm *NamespaceNoncer) Reset() {
 	}
 }
 
+func (nsm *NamespaceNoncer) GetSigner(txBytes []byte) *string {
+	txHash := tmbytes.HexBytes(tmtypes.Tx(txBytes).Hash()).String()
+	signer, ok := nsm.signerMap.Load(txHash)
+	if ok {
+		return signer.(*string)
+	}
+	return nil
+}
 func (nsm *NamespaceNoncer) Insert(ctx context.Context, tx sdk.Tx) error {
-	//sdkCtx := sdk.UnwrapSDKContext(ctx)
-	//txHash := tmbytes.HexBytes(tmtypes.Tx(sdkCtx.TxBytes()).Hash()).String()
-	//nsm.txs.Store(txHash, sdk.ByteTx{
-	//	Tx:      tx,
-	//	TxBytes: sdkCtx.TxBytes(),
-	//})
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	txHash := tmbytes.HexBytes(tmtypes.Tx(sdkCtx.TxBytes()).Hash()).String()
+	txSigner := sdkCtx.TxSigner()
+	if txSigner != nil {
+		nsm.signerMap.Store(txHash, txSigner)
+	}
 	return nil
 }
 func (nsm *NamespaceNoncer) Select(context.Context, [][]byte) Iterator {
@@ -124,19 +116,11 @@ func (nsm *NamespaceNoncer) CountTx() int {
 func (nsm *NamespaceNoncer) Remove(tx sdk.Tx) error {
 	return nil
 }
-func (nsm *NamespaceNoncer) GetTx(txByte []byte) *sdk.ByteTx {
-	txHash := tmbytes.HexBytes(tmtypes.Tx(txByte).Hash()).String()
-	tx, ok := nsm.txs.Load(txHash)
-	if ok {
-		result := tx.(sdk.ByteTx)
-		return &result
-	}
-	return nil
-}
+
 func (nsm *NamespaceNoncer) RemoveWithCtx(ctx context.Context, tx sdk.Tx) error {
-	//sdkCtx := sdk.UnwrapSDKContext(ctx)
-	//txHash := tmbytes.HexBytes(tmtypes.Tx(sdkCtx.TxBytes()).Hash()).String()
-	//nsm.txs.Delete(txHash)
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	txHash := tmbytes.HexBytes(tmtypes.Tx(sdkCtx.TxBytes()).Hash()).String()
+	nsm.signerMap.Delete(txHash)
 	return nil
 }
 func (nsm *NamespaceNoncer) Rollback(ctx sdk.Context, tx sdk.Tx, fallback sdk.GetAccountNonceHandler, failReason error) {

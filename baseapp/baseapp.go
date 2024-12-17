@@ -1371,6 +1371,9 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 				return sdk.GasInfo{}, nil, nil, nil, err
 			}
 			ctx = ctx.WithMaxNonce(maxNonce)
+			if mode == execModeFinalize {
+				ctx = ctx.WithTxSigner(m.GetSigner(txBytes))
+			}
 		}
 
 		a2 := time.Now()
