@@ -211,11 +211,11 @@ func (n *NamespaceBLockStore) SaveBlock(height int64, hash []byte, block *Namesp
 	if err != nil {
 		panic(err)
 	}
-	err = batch.WriteSync()
-	n.logger.Info("save namespace Block", "height", block.Height, "cosmos height", block.RelatedCometBFTBlockHeight)
+	err = batch.Write()
 	if err != nil {
 		panic(err)
 	}
+	n.logger.Info("save namespace Block", "height", block.Height, "cosmos height", block.RelatedCometBFTBlockHeight, "current hash", fmt.Sprintf("%X", block.Hash))
 }
 
 func (n *NamespaceBLockStore) CacheBlock(block *NamespaceBLock) {

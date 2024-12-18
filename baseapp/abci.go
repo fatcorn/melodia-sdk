@@ -1107,12 +1107,14 @@ func (app *BaseApp) Commit() (*abci.ResponseCommit, error) {
 			app.logger.Info("Commit roll back store", "hash", hex.EncodeToString(app.cms.WorkingHash()))
 		}
 	}
-
 	t2 := time.Now()
+	app.namespaceStoreManager.Commit()
+
+	t3 := time.Now()
 
 	app.cms.Commit()
 
-	t3 := time.Now()
+	t4 := time.Now()
 
 	resp := &abci.ResponseCommit{
 		RetainHeight: retainHeight,
@@ -1131,8 +1133,6 @@ func (app *BaseApp) Commit() (*abci.ResponseCommit, error) {
 		}
 	}
 
-	t4 := time.Now()
-
 	// Reset the CheckTx state to the latest committed.
 	//
 	// NOTE: This is safe because CometBFT holds a lock on the mempool for
@@ -1145,15 +1145,13 @@ func (app *BaseApp) Commit() (*abci.ResponseCommit, error) {
 		app.prepareCheckStater(app.checkState.Context())
 	}
 
-	app.namespaceStoreManager.Commit()
-
 	t5 := time.Now()
 	// The SnapshotIfApplicable method will create the snapshot by starting the goroutine
 	app.snapshotManager.SnapshotIfApplicable(header.Height)
 
 	t6 := time.Now()
 
-	println("base app Commit time", t5.Sub(startTime).String(), "precommiter ", t1.Sub(startTime).String(), "SetCommitHeader", t2.Sub(t1).String(), "commit", t3.Sub(t2).String(), "abciListeners", t4.Sub(t3).String(), "namespaceBlock", t5.Sub(t4).String(), "SnapshotIfApplicable", t6.Sub(t5).String())
+	println("base app Commit time", t5.Sub(startTime).String(), "precommiter ", t1.Sub(startTime).String(), "SetCommitHeader", t2.Sub(t1).String(), "namespaceBlock", t3.Sub(t2).String(), "commit", t4.Sub(t3).String(), "abciListeners", t5.Sub(t4).String(), "SnapshotIfApplicable", t6.Sub(t5).String())
 
 	return resp, nil
 }

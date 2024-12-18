@@ -486,7 +486,7 @@ func (rs *Store) LastCommitID() types.CommitID {
 func CreateNamespaceDB(namespaceId uint64, moudleName string, dbRootDir string) (cmtdbm.DB, error) {
 	namespaceDB, err := cmtcfg.DefaultDBProvider(&cmtcfg.DBContext{
 		ID:     "namespace" + "_" + strconv.FormatUint(namespaceId, 10) + "_" + moudleName,
-		Config: cmtcfg.DefaultConfig().SetRoot(dbRootDir).AddDBPath("namespace"),
+		Config: cmtcfg.DefaultConfig().SetRoot(dbRootDir).AddDBPath("namespace").SetBanCacheDB(true).SetDBBackend("goleveldb"),
 	})
 	return namespaceDB, err
 }

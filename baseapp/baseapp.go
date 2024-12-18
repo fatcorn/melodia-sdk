@@ -496,7 +496,7 @@ func ListDBNamespace(db dbm.DB) []*bfttypes.NamespacePort {
 func CreateNamespaceDB(namespaceId uint64, moudleName string, dbRootDir string) (cmtdbm.DB, error) {
 	namespaceDB, err := cmtcfg.DefaultDBProvider(&cmtcfg.DBContext{
 		ID:     "namespace" + "_" + strconv.FormatUint(namespaceId, 10) + "_" + moudleName,
-		Config: cmtcfg.DefaultConfig().SetRoot(dbRootDir).AddDBPath("namespace"),
+		Config: cmtcfg.DefaultConfig().SetRoot(dbRootDir).AddDBPath("namespace").SetBanCacheDB(true).SetDBBackend("goleveldb"),
 	})
 	return namespaceDB, err
 }
@@ -516,6 +516,8 @@ func (app *BaseApp) addNewNamespaceBLockStore(namespaceID uint64, moduleName str
 // loadNamespaceBLockStore Load a namespace blockdb to namespace store manager
 func (app *BaseApp) loadNamespaceBLockStore(namespaceID uint64, db cmtdbm.DB, moduleName string, moduleRelatedModules []string) {
 	nsBLockStore := nsblockstore.NewNamespaceBlockStore(db, namespaceID, app.logger)
+	curentBlock := nsBLockStore.LoadBlock(nsBLockStore.Height())
+	fmt.Printf("namespace current block %X, heigth %d\n", curentBlock.Hash, curentBlock.Height)
 	app.namespaceStoreManager.AddNamespaceStore(namespaceID, moduleName, nsBLockStore)
 	app.namespaceStoreManager.AddNamespaceIdsModule(namespaceID, moduleName)
 	app.namespaceStoreManager.AddModuleRelatedModules(moduleName, moduleRelatedModules)
