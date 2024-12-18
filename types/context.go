@@ -74,6 +74,8 @@ type Context struct {
 	synchronous        bool
 	maxNonce           uint64
 
+	txSigner *string
+
 	namespaceBlockManager *nsblockstore.NamespaceStoreManager
 	executionCounter      uint64
 }
@@ -106,6 +108,7 @@ func (c Context) CometInfo() comet.BlockInfo                    { return c.comet
 func (c Context) HeaderInfo() header.Info                       { return c.headerInfo }
 func (c Context) TxIndex() int                                  { return c.txIndex }
 func (c Context) Namespace() uint64                             { return c.namespaceId }
+func (c Context) TxSigner() *string                             { return c.txSigner }
 
 func (c Context) Synchronous() bool { return c.synchronous }
 func (c Context) MaxNonce() uint64  { return c.maxNonce }
@@ -228,7 +231,10 @@ func (c Context) WithMaxNonce(maxNonce uint64) Context {
 	c.maxNonce = maxNonce
 	return c
 }
-
+func (c Context) WithTxSigner(txSigner *string) Context {
+	c.txSigner = txSigner
+	return c
+}
 func (c Context) WithNextAccountNumber(nextAccountNumbers map[string]map[uint64]uint64) Context {
 	c.nextAccountNumbers = nextAccountNumbers
 	return c
