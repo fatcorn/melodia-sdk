@@ -17,6 +17,7 @@ import (
 	protov2 "google.golang.org/protobuf/proto"
 	"math"
 	"math/big"
+	"runtime"
 	"sort"
 	"strconv"
 	"sync"
@@ -2012,24 +2013,23 @@ func (app *BaseApp) TxDecodeBatch(txsBytes [][]byte) ([]*sdk.ByteTx, error) {
 
 	wg := sync.WaitGroup{}
 	decodeTxs := make([]*sdk.ByteTx, len(txsBytes))
-
-	//f, _ := os.Create("trace.out")
-	//
-	//if err := trace.Start(f); err != nil {
-	//	//panic(err)
-	//}
+	ch := make(chan struct{}, runtime.NumCPU())
 	for idx, txBz := range txsBytes {
 		wg.Add(1)
+		ch <- struct{}{}
 		go func(txBz []byte, idx int) {
-			defer wg.Done()
+			defer func() {
+				wg.Done()
+				<-ch
+			}()
 			tx, err := app.txDecoder(txBz)
 			if err == nil {
 				decodeTxs[idx] = &sdk.ByteTx{Tx: tx, TxBytes: txBz}
 			}
 		}(txBz, idx)
 	}
-	//trace.Stop()
 	wg.Wait()
+	close(ch)
 
 	return decodeTxs, nil
 }
