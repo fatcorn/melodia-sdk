@@ -54,7 +54,6 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/cosmos/gogoproto/proto"
-	"slices"
 )
 
 // AppModuleBasic is the standard form for basic non-dependant elements of an application module.
@@ -884,7 +883,10 @@ func (m *Manager) PrepareNamespaceBlock(
 		var emptyNamespaceTxs [][]byte
 		// if block not include this namespace txs, namespace root hash set to empty root hash
 		if namespaceTxs, ok := namespaceTxsMap[namespaceId]; ok {
-			namespaceIds := slices.Repeat([]uint64{namespaceId}, len(namespaceTxs))
+			namespaceIds := make([]uint64, 0)
+			for i := 0; i < len(namespaceTxs); i++ {
+				namespaceIds = append(namespaceIds, namespaceId)
+			}
 			args.TxRootHash = merkle.GenerateBlockDataNmtRootHash(namespaceIds, namespaceTxs)
 		} else {
 			args.TxRootHash = merkle.GenerateBlockDataNmtRootHash([]uint64{}, emptyNamespaceTxs)
