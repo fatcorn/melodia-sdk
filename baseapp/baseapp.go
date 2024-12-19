@@ -1673,54 +1673,41 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 	insertTime := time.Now()
 	var (
 		sortTxs                 = make([][]byte, 0)
-		wg                      sync.WaitGroup
 		nsMempool               = mempool.NewNamespaceMempool()
 		beforeInterChainPairTxs = make(map[string][]*cmtproto.NsInterChainTransactionIndex)
 		afterInterChainPairTxs  = make(map[string][]*cmtproto.NsInterChainTransactionIndex)
-
-		nsMempoolInsertTxs = func(ctx sdk.Context, namespaceTxs []*sdk.ByteTx, namespaceId uint64) {
-			defer wg.Done()
-			singleStartTime := time.Now()
-			for idx, byteTx := range namespaceTxs {
-				tx := byteTx.Tx
-				txBz := byteTx.TxBytes
-				if tx == nil || txBz == nil {
-					continue
-				}
-
-				txIdBz, isCross, _ := app.crossNamespaceTransactionIdentifierHandler(ctx.WithTxBytes(txBz), tx)
-				if isCross {
-					txId := tmbytes.HexBytes(txIdBz).String()
-					if _, ok := beforeInterChainPairTxs[txId]; ok {
-						beforeInterChainPairTxs[txId] = append(beforeInterChainPairTxs[txId], &cmtproto.NsInterChainTransactionIndex{
-							Namespace: namespaceId,
-							Index:     int32(idx),
-						})
-					} else {
-						beforeInterChainPairTxs[txId] = []*cmtproto.NsInterChainTransactionIndex{
-							{
-								Namespace: namespaceId,
-								Index:     int32(idx),
-							},
-						}
-					}
-				}
-
-				ctx = ctx.WithNamepace(namespaceId)
-				_ = nsMempool.Insert(ctx, tx)
-
-			}
-			app.logger.Info("2.1->sortTxs single namespace insert time", "used", fmt.Sprintf("%v ms", time.Since(singleStartTime).Milliseconds()), "size", len(namespaceTxs), "namespaceId", namespaceId, "sortType", req.SortType, "height", ctx.BlockHeight())
-		}
 	)
 
 	nsByteTxs := sdk.ListNamespaceByteTxs(reqByteTxs, reqNsTable)
 
 	for namespaceId, byteTxs := range nsByteTxs {
-		wg.Add(1)
-		go nsMempoolInsertTxs(ctx, byteTxs, namespaceId)
+		for idx, byteTx := range byteTxs {
+			tx := byteTx.Tx
+			txBz := byteTx.TxBytes
+			if tx == nil || txBz == nil {
+				continue
+			}
+			txIdBz, isCross, _ := app.crossNamespaceTransactionIdentifierHandler(ctx.WithTxBytes(txBz), tx)
+			if isCross {
+				txId := tmbytes.HexBytes(txIdBz).String()
+				if _, ok := beforeInterChainPairTxs[txId]; ok {
+					beforeInterChainPairTxs[txId] = append(beforeInterChainPairTxs[txId], &cmtproto.NsInterChainTransactionIndex{
+						Namespace: namespaceId,
+						Index:     int32(idx),
+					})
+				} else {
+					beforeInterChainPairTxs[txId] = []*cmtproto.NsInterChainTransactionIndex{
+						{
+							Namespace: namespaceId,
+							Index:     int32(idx),
+						},
+					}
+				}
+			}
+			ctx = ctx.WithNamepace(namespaceId)
+			_ = nsMempool.Insert(ctx, tx)
+		}
 	}
-	wg.Wait()
 	app.logger.Info("2->sortTxs total insert time", "used", fmt.Sprintf("%v ms", time.Since(insertTime).Milliseconds()), "size", len(reqByteTxs), "nsTable", reqNsTable, "sortType", req.SortType, "height", ctx.BlockHeight())
 
 	sortTime := time.Now()
@@ -1728,7 +1715,7 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 	if b := ctx.ConsensusParams().Block; b != nil {
 		maxBlockGas = b.MaxGas
 	}
-	reqByteTxs, reqNsTable = nsMempool.SelectSortTxs(ctx, req.MaxTxBytes, maxBlockGas, nsByteTxs, app.TxEncodeBatch)
+	reqByteTxs, reqNsTable = nsMempool.SelectSortTxs(ctx, req.MaxTxBytes, maxBlockGas, nsByteTxs)
 
 	app.logger.Info("3->sortTxs sort time", "used", fmt.Sprintf("%v ms", time.Since(sortTime).Milliseconds()), "size", len(reqByteTxs), "nsTable", reqNsTable, "sortType", req.SortType, "height", ctx.BlockHeight())
 
@@ -2045,23 +2032,6 @@ func (app *BaseApp) TxDecodeBatch(txsBytes [][]byte) ([]*sdk.ByteTx, error) {
 	wg.Wait()
 
 	return decodeTxs, nil
-}
-func (app *BaseApp) TxEncodeBatch(txs []sdk.Tx) ([]*sdk.ByteTx, error) {
-
-	wg := sync.WaitGroup{}
-	encodeTxs := make([]*sdk.ByteTx, len(txs))
-	for idx, tx := range txs {
-		wg.Add(1)
-		go func(tx sdk.Tx, idx int) {
-			defer wg.Done()
-			txBz, err := app.txEncoder(tx)
-			if err == nil {
-				encodeTxs[idx] = &sdk.ByteTx{Tx: tx, TxBytes: txBz}
-			}
-		}(tx, idx)
-	}
-	wg.Wait()
-	return encodeTxs, nil
 }
 
 // Close is called in start cmd to gracefully cleanup resources.

@@ -8,7 +8,6 @@ import (
 	"github.com/huandu/skiplist"
 	"math"
 	"sort"
-	"sync"
 )
 
 var (
@@ -115,28 +114,28 @@ func (mp *PriceNonceMempool[C]) Insert(_ context.Context, tx sdk.Tx) error {
 }
 func (mp *PriceNonceMempool[C]) PrepareSenderTxs() (map[string][]*Transaction[C], []string) {
 
-	var wg sync.WaitGroup
+	//var wg sync.WaitGroup
 	senderTxs := make(map[string][]*Transaction[C])
-	mux := sync.Mutex{}
+	//mux := sync.Mutex{}
 	for _, tx := range mp.txs {
-		wg.Add(1)
-		go func(tx sdk.Tx) {
-			defer wg.Done()
-			transaction, err := mp.ToTransaction(tx)
-			if err != nil {
-				panic(err)
-			}
-			mux.Lock()
-			defer mux.Unlock()
-			transactions, ok := senderTxs[transaction.Sender]
-			if ok {
-				senderTxs[transaction.Sender] = append(transactions, &transaction)
-			} else {
-				senderTxs[transaction.Sender] = []*Transaction[C]{&transaction}
-			}
-		}(tx)
+		//wg.Add(1)
+		//go func(tx sdk.Tx) {
+		//	defer wg.Done()
+		transaction, err := mp.ToTransaction(tx)
+		if err != nil {
+			panic(err)
+		}
+		//mux.Lock()
+		//defer mux.Unlock()
+		transactions, ok := senderTxs[transaction.Sender]
+		if ok {
+			senderTxs[transaction.Sender] = append(transactions, &transaction)
+		} else {
+			senderTxs[transaction.Sender] = []*Transaction[C]{&transaction}
+		}
+		//}(tx)
 	}
-	wg.Wait()
+	//wg.Wait()
 
 	senders := make([]string, 0, len(senderTxs))
 	for sender, _ := range senderTxs {
