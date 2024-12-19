@@ -2013,7 +2013,7 @@ func (app *BaseApp) TxDecodeBatch(txsBytes [][]byte) ([]*sdk.ByteTx, error) {
 
 	wg := sync.WaitGroup{}
 	decodeTxs := make([]*sdk.ByteTx, len(txsBytes))
-	ch := make(chan struct{}, runtime.NumCPU())
+	ch := make(chan struct{}, runtime.NumCPU()*2)
 	for idx, txBz := range txsBytes {
 		wg.Add(1)
 		ch <- struct{}{}

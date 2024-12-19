@@ -121,7 +121,7 @@ func (mp *PriceNonceMempool[C]) PrepareSenderTxs() (map[string][]*Transaction[C]
 	var wg sync.WaitGroup
 	senderTxs := make(map[string][]*Transaction[C])
 	mux := sync.Mutex{}
-	ch := make(chan struct{}, runtime.NumCPU())
+	ch := make(chan struct{}, runtime.NumCPU()*2)
 	for _, tx := range mp.txs {
 		wg.Add(1)
 		ch <- struct{}{}
