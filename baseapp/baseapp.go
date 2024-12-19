@@ -496,7 +496,7 @@ func ListDBNamespace(db dbm.DB) []*bfttypes.NamespacePort {
 func CreateNamespaceDB(namespaceId uint64, moudleName string, dbRootDir string) (cmtdbm.DB, error) {
 	namespaceDB, err := cmtcfg.DefaultDBProvider(&cmtcfg.DBContext{
 		ID:     "namespace" + "_" + strconv.FormatUint(namespaceId, 10) + "_" + moudleName,
-		Config: cmtcfg.DefaultConfig().SetRoot(dbRootDir).AddDBPath("namespace").SetBanCacheDB(true).SetDBBackend("goleveldb"),
+		Config: cmtcfg.DefaultConfig().SetRoot(dbRootDir).AddDBPath("namespace"),
 	})
 	return namespaceDB, err
 }
