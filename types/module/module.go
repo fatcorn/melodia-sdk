@@ -887,9 +887,9 @@ func (m *Manager) PrepareNamespaceBlock(
 			for i := 0; i < len(namespaceTxs); i++ {
 				namespaceIds = append(namespaceIds, namespaceId)
 			}
-			args.TxRootHash = merkle.GenerateBlockDataNmtRootHash(namespaceIds, namespaceTxs)
+			args.TxRootHash = merkle.ParellelGenerateBlockDataNmtRootHash(namespaceIds, namespaceTxs)
 		} else {
-			args.TxRootHash = merkle.GenerateBlockDataNmtRootHash([]uint64{}, emptyNamespaceTxs)
+			args.TxRootHash = merkle.ParellelGenerateBlockDataNmtRootHash([]uint64{}, emptyNamespaceTxs)
 		}
 
 		if module, ok := m.Modules[moduleName].(appmodule.HasVMNamespaceBLockMaker); ok {
