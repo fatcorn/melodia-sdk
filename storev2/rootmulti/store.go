@@ -63,19 +63,20 @@ var (
 )
 
 type Store struct {
-	logger          log.Logger
-	mtx             sync.RWMutex
-	scStore         sctypes.Committer
-	ssStore         sstypes.StateStore
-	lastCommitInfo  *types.CommitInfo
-	storesParams    map[types.StoreKey]storeParams
-	storeKeys       map[string]types.StoreKey
-	ckvStores       map[types.StoreKey]types.CommitKVStore
-	pendingChanges  chan VersionedChangesets
-	pruningManager  *pruning.Manager
-	commitHeader    cmtproto.Header
-	removalMap      map[types.StoreKey]bool
-	interBlockCache types.MultiStorePersistentCache
+	logger              log.Logger
+	mtx                 sync.RWMutex
+	scStore             sctypes.Committer
+	ssStore             sstypes.StateStore
+	lastCommitInfo      *types.CommitInfo
+	storesParams        map[types.StoreKey]storeParams
+	storeKeys           map[string]types.StoreKey
+	ckvStores           map[types.StoreKey]types.CommitKVStore
+	pendingChanges      chan VersionedChangesets
+	pruningManager      *pruning.Manager
+	commitHeader        cmtproto.Header
+	removalMap          map[types.StoreKey]bool
+	interBlockCache     types.MultiStorePersistentCache
+	commitHashInfoCache sync.Map
 }
 
 func (rs *Store) Commit() types.CommitID {
@@ -373,7 +374,9 @@ func (rs *Store) Commit1(bumpVersion bool) types.CommitID {
 
 	rs.lastCommitInfo = convertCommitInfo(rs.scStore.LastCommitInfo())
 	rs.lastCommitInfo = amendCommitInfo(rs.lastCommitInfo, rs.storesParams)
-	return rs.lastCommitInfo.CommitID()
+	id := rs.lastCommitInfo.CommitID()
+	rs.commitHashInfoCache.Store(id.Version, id)
+	return id
 }
 
 // StateStoreCommit is a background routine to apply changes to SS store
@@ -477,6 +480,10 @@ func (rs *Store) LastCommitID() types.CommitID {
 			panic(fmt.Errorf("failed to get latest version: %w", err))
 		}
 		return types.CommitID{Version: v}
+	}
+	load, ok := rs.commitHashInfoCache.Load(rs.lastCommitInfo.Version)
+	if ok {
+		return load.(types.CommitID)
 	}
 
 	return rs.lastCommitInfo.CommitID()
@@ -927,6 +934,8 @@ func (rs *Store) LoadVersionAndUpgrade(version int64, upgrades *types.StoreUpgra
 	} else {
 		rs.lastCommitInfo = &types.CommitInfo{}
 	}
+	id := rs.lastCommitInfo.CommitID()
+	rs.commitHashInfoCache.Store(id.Version, id)
 	return nil
 }
 
