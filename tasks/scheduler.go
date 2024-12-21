@@ -339,10 +339,10 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 	wg := &sync.WaitGroup{}
 	wg.Add(len(reqs))
 	for idx, tx := range reqs {
-		go func(callTx *sdk.DeliverTxEntry) {
+		go func(idx int, callTx *sdk.DeliverTxEntry) {
 			defer wg.Done()
 			callTx.NewAccAddresses = s.txNewAccountAddressesHandler(ctx.WithNamepace(s.namespaceList[idx]), callTx.SdkTx)
-		}(tx)
+		}(idx, tx)
 	}
 	wg.Wait()
 
