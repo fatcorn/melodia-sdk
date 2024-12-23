@@ -71,7 +71,7 @@ func (nsm *NamespaceMempool) SelectWithNsTable(ctx context.Context, nsByteTxs ma
 	return nsIters
 }
 
-func (nsm *NamespaceMempool) SelectSortTxs(ctx context.Context, maxBytes, maxGas int64, nsByteTxs map[uint64][]*sdk.ByteTx, txEncodeBatch func(txs []sdk.Tx) ([]*sdk.ByteTx, error)) ([]*sdk.ByteTx, []*cmtproto.NamespaceTableEntries) {
+func (nsm *NamespaceMempool) SelectSortTxs(ctx context.Context, maxBytes, maxGas int64, nsByteTxs map[uint64][]*sdk.ByteTx) ([]*sdk.ByteTx, []*cmtproto.NamespaceTableEntries) {
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	t0 := time.Now()
@@ -88,22 +88,26 @@ func (nsm *NamespaceMempool) SelectSortTxs(ctx context.Context, maxBytes, maxGas
 		namespaceId := txIterator.NamespaceId
 
 		// If the iterator is nil use the NoOpMempool, get all namespace txs
-		var nsTxs []*sdk.ByteTx
+		txsLen := 0
 		if iterator == nil {
-			nsTxs = nsByteTxs[namespaceId]
+			nsTxs := nsByteTxs[namespaceId]
 			byteTxs = append(byteTxs, nsTxs...)
+			txsLen = len(nsTxs)
 		} else {
-			txs := make([]sdk.Tx, 0)
+			txByteMappings := make(map[sdk.Tx]*sdk.ByteTx)
+			nsTxs := nsByteTxs[namespaceId]
+			for _, nsTx := range nsTxs {
+				txByteMappings[nsTx.Tx] = nsTx
+			}
 			for iterator != nil {
 				tx := iterator.Tx()
-				txs = append(txs, tx)
+				byteTx := txByteMappings[tx]
+				byteTxs = append(byteTxs, byteTx)
+				txsLen++
 				iterator = iterator.Next()
 			}
-			nsTxs, _ = txEncodeBatch(txs)
-			byteTxs = append(byteTxs, nsTxs...)
 		}
-
-		offset += len(nsTxs)
+		offset += txsLen
 		nsTable = append(nsTable, &cmtproto.NamespaceTableEntries{
 			Namespace: namespaceId,
 			Offset:    int32(offset),

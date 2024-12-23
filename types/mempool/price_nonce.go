@@ -7,8 +7,10 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/huandu/skiplist"
 	"math"
+	"runtime"
 	"sort"
 	"sync"
+	"time"
 )
 
 var (
@@ -115,34 +117,37 @@ func (mp *PriceNonceMempool[C]) Insert(_ context.Context, tx sdk.Tx) error {
 }
 func (mp *PriceNonceMempool[C]) PrepareSenderTxs() (map[string][]*Transaction[C], []string) {
 
+	t0 := time.Now()
 	var wg sync.WaitGroup
 	senderTxs := make(map[string][]*Transaction[C])
 	mux := sync.Mutex{}
+	ch := make(chan struct{}, runtime.NumCPU()*2)
 	for _, tx := range mp.txs {
 		wg.Add(1)
+		ch <- struct{}{}
 		go func(tx sdk.Tx) {
-			defer wg.Done()
+			defer func() {
+				wg.Done()
+				<-ch
+			}()
 			transaction, err := mp.ToTransaction(tx)
 			if err != nil {
 				panic(err)
 			}
 			mux.Lock()
-			defer mux.Unlock()
-			transactions, ok := senderTxs[transaction.Sender]
-			if ok {
-				senderTxs[transaction.Sender] = append(transactions, &transaction)
-			} else {
-				senderTxs[transaction.Sender] = []*Transaction[C]{&transaction}
-			}
+			senderTxs[transaction.Sender] = append(senderTxs[transaction.Sender], &transaction)
+			mux.Unlock()
 		}(tx)
 	}
 	wg.Wait()
-
+	close(ch)
 	senders := make([]string, 0, len(senderTxs))
 	for sender, _ := range senderTxs {
 		senders = append(senders, sender)
 	}
 	sort.Strings(senders)
+
+	println("PrepareSenderTxs use=", time.Since(t0).String())
 	return senderTxs, senders
 }
 func (mp *PriceNonceMempool[C]) Select(context.Context, [][]byte) Iterator {
