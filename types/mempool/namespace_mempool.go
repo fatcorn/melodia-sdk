@@ -3,9 +3,7 @@ package mempool
 import (
 	"context"
 	"errors"
-	tmbytes "github.com/cometbft/cometbft/libs/bytes"
 	"github.com/cometbft/cometbft/libs/cmap"
-	tmtypes "github.com/cometbft/cometbft/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	errors2 "github.com/cosmos/cosmos-sdk/types/errors"
 	"sync"
@@ -33,9 +31,8 @@ func NewNamespaceMempool() *NamespaceMempool {
 
 func (nsm *NamespaceMempool) BeforeRun(ctx sdk.Context, tx sdk.MempoolTx, fallback sdk.GetAccountNonceHandler) sdk.Context {
 	if ctx.ExecMode() == sdk.ExecModeFinalize {
-		key := nsm.TxKey(tx)
 		//set signer
-		if signer, ok := nsm.txsSigner.Load(key); ok {
+		if signer, ok := nsm.txsSigner.Load(tx.Hash()); ok {
 			ctx = ctx.WithTxSigner(signer.(*string))
 		}
 		//set max nonce
@@ -58,8 +55,7 @@ func (nsm *NamespaceMempool) AfterRun(ctx sdk.Context, tx sdk.MempoolTx, success
 			//add signer cache
 			txSigner := ctx.TxSigner()
 			if txSigner != nil {
-				key := nsm.TxKey(tx)
-				nsm.txsSigner.Store(key, txSigner, func() {})
+				nsm.txsSigner.Store(tx.Hash(), txSigner, func() {})
 			}
 		}
 	}
@@ -102,9 +98,6 @@ func (nsm *NamespaceMempool) Reset() {
 	defer nsm.mux.Unlock()
 	nsm.signersNonce = &sync.Map{}
 	nsm.txsSigner.Clear()
-}
-func (nsm *NamespaceMempool) TxKey(tx sdk.MempoolTx) string {
-	return tmbytes.HexBytes(tmtypes.Tx(tx.TxBytes).Hash()).String()
 }
 
 func (nsm *NamespaceMempool) Insert(ctx context.Context, tx sdk.MempoolTx) error {

@@ -3,7 +3,9 @@ package types
 import (
 	"cosmossdk.io/core/appmodule"
 	abci "github.com/cometbft/cometbft/abci/types"
+	tmbytes "github.com/cometbft/cometbft/libs/bytes"
 	tdmtypes "github.com/cometbft/cometbft/proto/tendermint/types"
+	tmtypes "github.com/cometbft/cometbft/types"
 )
 
 // InitChainer initializes application state at genesis
@@ -113,6 +115,10 @@ type MempoolTx struct {
 type NamespaceMempoolTxs struct {
 	NamespaceId uint64
 	Txs         []MempoolTx
+}
+
+func (tx *MempoolTx) Hash() string {
+	return tmbytes.HexBytes(tmtypes.Tx(tx.TxBytes).Hash()).String()
 }
 
 func ListNamespaceMemTxs(MempoolTxs []MempoolTx, nsTable []*tdmtypes.NamespaceTableEntries) map[uint64][]MempoolTx {
