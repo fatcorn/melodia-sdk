@@ -16,6 +16,7 @@ import (
 	"golang.org/x/exp/maps"
 	protov2 "google.golang.org/protobuf/proto"
 	"math"
+	"math/big"
 	"runtime"
 	"sort"
 	"strconv"
@@ -1642,7 +1643,7 @@ func createEvents(cdc codec.Codec, events sdk.Events, msg sdk.Msg, msgV2 protov2
 // sortTxs return sort txs and nsTable & orders
 func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.ResponseSortTxs, error) {
 	t0 := time.Now()
-	memTxs, err := app.decodeSortTxs(ctx, req.Txs, req.NsTable)
+	memTxs, err := app.decodeSortTxs(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -1661,7 +1662,10 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 }
 
 // decodeSortTxs decode txByte to mempoolTx
-func (app *BaseApp) decodeSortTxs(ctx sdk.Context, nsTxsBytes [][]byte, nsTable []*cmtproto.NamespaceTableEntries) ([]sdk.MempoolTx, error) {
+func (app *BaseApp) decodeSortTxs(ctx sdk.Context, req *abci.RequestSortTxs) ([]sdk.MempoolTx, error) {
+
+	nsTxsBytes := req.Txs
+	nsTable := req.NsTable
 
 	wg := sync.WaitGroup{}
 	txs := make([]sdk.MempoolTx, len(nsTxsBytes))
@@ -1669,10 +1673,15 @@ func (app *BaseApp) decodeSortTxs(ctx sdk.Context, nsTxsBytes [][]byte, nsTable 
 
 	lastOffset := int32(0)
 	txIndex := 0
+
+	isNeedCheck := req.SortType == uint32(bfttypes.SortAndCheck)
 	for _, entry := range nsTable {
 		txBytes := nsTxsBytes[lastOffset:entry.Offset]
 		namespaceId := entry.Namespace
-		//baseFee := app.baseFeeHandler(ctx.WithNamepace(namespaceId))
+		var baseFee *big.Int
+		if isNeedCheck {
+			baseFee = app.baseFeeHandler(ctx.WithNamepace(namespaceId))
+		}
 		for _, txBz := range txBytes {
 			wg.Add(1)
 			ch <- struct{}{}
@@ -1686,15 +1695,18 @@ func (app *BaseApp) decodeSortTxs(ctx sdk.Context, nsTxsBytes [][]byte, nsTable 
 					txIdBz, isCross, isFirst := app.crossNamespaceTransactionIdentifierHandler(ctx.WithTxBytes(txBz), tx.Tx)
 					txId := tmbytes.HexBytes(txIdBz).String()
 					isContract, isContractSerial := app.contractStaticAnalysisResultHandler(ctx.WithNamepace(namespaceId), tx.To)
-					//isBaseFeeVerified := app.checkTxFeeHandler(ctx.WithNamepace(namespaceId), baseFee, tx.Tx)
+					isBaseFeeVerified := true
+					if isNeedCheck {
+						isBaseFeeVerified = app.checkTxFeeHandler(ctx.WithNamepace(namespaceId), baseFee, tx.Tx)
+					}
 					tx.SortTx = sdk.SortTx{
-						TxId:             txId,
-						IsCross:          isCross,
-						IsFirst:          isFirst,
-						TxIndex:          idx,
-						IsContract:       isContract,
-						IsContractSerial: isContractSerial,
-						//IsBaseFeeVerified: isBaseFeeVerified,
+						TxId:              txId,
+						IsCross:           isCross,
+						IsFirst:           isFirst,
+						TxIndex:           idx,
+						IsContract:        isContract,
+						IsContractSerial:  isContractSerial,
+						IsBaseFeeVerified: isBaseFeeVerified,
 					}
 					txs[idx] = tx
 				}
