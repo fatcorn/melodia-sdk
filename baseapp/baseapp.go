@@ -9,14 +9,12 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	cmtcfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/crypto/tmhash"
-	tmbytes "github.com/cometbft/cometbft/libs/bytes"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/gogoproto/proto"
 	"golang.org/x/exp/maps"
 	protov2 "google.golang.org/protobuf/proto"
 	"math"
-	"math/big"
 	"runtime"
 	"sort"
 	"strconv"
@@ -1643,10 +1641,7 @@ func createEvents(cdc codec.Codec, events sdk.Events, msg sdk.Msg, msgV2 protov2
 // sortTxs return sort txs and nsTable & orders
 func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.ResponseSortTxs, error) {
 	t0 := time.Now()
-	memTxs, err := app.decodeSortTxs(ctx, req)
-	if err != nil {
-		return nil, err
-	}
+	memTxs := app.decodeSortTxs(req.Txs)
 	app.logger.Info("1->sortTxs decode time", "used", time.Since(t0).String(), "size", len(req.Txs), "height", ctx.BlockHeight())
 
 	t1 := time.Now()
@@ -1662,63 +1657,36 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 }
 
 // decodeSortTxs decode txByte to mempoolTx
-func (app *BaseApp) decodeSortTxs(ctx sdk.Context, req *abci.RequestSortTxs) ([]sdk.MempoolTx, error) {
-
-	nsTxsBytes := req.Txs
-	nsTable := req.NsTable
+func (app *BaseApp) decodeSortTxs(txBytes [][]byte) []sdk.MempoolTx {
 
 	wg := sync.WaitGroup{}
-	txs := make([]sdk.MempoolTx, len(nsTxsBytes))
+	txs := make([]sdk.MempoolTx, len(txBytes))
 	ch := make(chan struct{}, runtime.NumCPU()*2)
 
-	lastOffset := int32(0)
-	txIndex := 0
-
-	isNeedCheck := req.SortType == uint32(bfttypes.SortAndCheck)
-	for _, entry := range nsTable {
-		txBytes := nsTxsBytes[lastOffset:entry.Offset]
-		namespaceId := entry.Namespace
-		var baseFee *big.Int
-		if isNeedCheck {
-			baseFee = app.baseFeeHandler(ctx.WithNamepace(namespaceId))
-		}
-		for _, txBz := range txBytes {
-			wg.Add(1)
-			ch <- struct{}{}
-			go func(txBz []byte, idx int) {
-				defer func() {
-					wg.Done()
-					<-ch
-				}()
-				tx, err := app.ToMemTx(txBz)
-				if err == nil {
-					txIdBz, isCross, isFirst := app.crossNamespaceTransactionIdentifierHandler(ctx.WithTxBytes(txBz), tx.Tx)
-					txId := tmbytes.HexBytes(txIdBz).String()
-					isContract, isContractSerial := app.contractStaticAnalysisResultHandler(ctx.WithNamepace(namespaceId), tx.To)
-					isBaseFeeVerified := true
-					if isNeedCheck {
-						isBaseFeeVerified = app.checkTxFeeHandler(ctx.WithNamepace(namespaceId), baseFee, tx.Tx)
-					}
-					tx.SortTx = sdk.SortTx{
-						TxId:              txId,
-						IsCross:           isCross,
-						IsFirst:           isFirst,
-						TxIndex:           idx,
-						IsContract:        isContract,
-						IsContractSerial:  isContractSerial,
-						IsBaseFeeVerified: isBaseFeeVerified,
-					}
-					txs[idx] = tx
+	for idx, txBz := range txBytes {
+		wg.Add(1)
+		ch <- struct{}{}
+		go func(txBz []byte, idx int) {
+			defer func() {
+				wg.Done()
+				<-ch
+			}()
+			tx, err := app.ToMemTx(txBz)
+			if err == nil {
+				tx.SortTxHandler = sdk.SortTxHandler{
+					CrossNamespaceTransactionIdentifierHandler: app.crossNamespaceTransactionIdentifierHandler,
+					ContractStaticAnalysisResultHandler:        app.contractStaticAnalysisResultHandler,
+					CheckTxFeeHandler:                          app.checkTxFeeHandler,
+					BaseFeeHandler:                             app.baseFeeHandler,
 				}
-			}(txBz, txIndex)
-			txIndex++
-		}
-		lastOffset = entry.Offset
+				txs[idx] = tx
+			}
+		}(txBz, idx)
 	}
 	wg.Wait()
 	close(ch)
 
-	return txs, nil
+	return txs
 }
 
 // PrepareProposalVerifyTx performs transaction verification when a proposer is

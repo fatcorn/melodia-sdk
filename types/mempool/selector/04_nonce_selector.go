@@ -5,10 +5,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
-func NonceSelector(txs []sdk.MempoolTx, nsTable []*cmtproto.NamespaceTableEntries) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) {
-
-	var selectedTxsNums int
-	selectedTxsSignersSeqs := make(map[string]uint64)
+func NonceSelector(ctx sdk.Context, txs []sdk.MempoolTx, nsTable []*cmtproto.NamespaceTableEntries) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) {
 
 	var (
 		selectedTxs     = make([]sdk.MempoolTx, 0, len(txs))
@@ -21,6 +18,10 @@ func NonceSelector(txs []sdk.MempoolTx, nsTable []*cmtproto.NamespaceTableEntrie
 
 		memTxs := txs[iterOffset:nsEntry.Offset]
 		namespaceId := nsEntry.Namespace
+
+		var selectedTxsNums int
+		selectedTxsSignersSeqs := make(map[string]uint64)
+		txsLen := 0
 
 		for _, memTx := range memTxs {
 			from, nonce := memTx.From, memTx.Nonce
@@ -41,8 +42,7 @@ func NonceSelector(txs []sdk.MempoolTx, nsTable []*cmtproto.NamespaceTableEntrie
 
 			selectedTxs = append(selectedTxs, memTx)
 			offset++
-
-			txsLen := len(selectedTxs)
+			txsLen++
 			for sender, senderSeq := range txSignersSeqs {
 				// If txsLen != selectedTxsNums is true, it means that we've
 				// added a new tx to the selected txs, so we need to update

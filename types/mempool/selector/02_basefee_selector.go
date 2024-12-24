@@ -5,9 +5,9 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
-func BaseFeeSelector(txs []sdk.MempoolTx, nsTable []*cmtproto.NamespaceTableEntries) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) {
+func BaseFeeSelector(ctx sdk.Context, txs []sdk.MempoolTx, nsTable []*cmtproto.NamespaceTableEntries) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) {
 	return txs, nsTable
-	//
+
 	//var (
 	//	selectedTxs     = make([]sdk.MempoolTx, 0, len(txs))
 	//	selectedNsTable = make([]*cmtproto.NamespaceTableEntries, 0)
@@ -20,8 +20,12 @@ func BaseFeeSelector(txs []sdk.MempoolTx, nsTable []*cmtproto.NamespaceTableEntr
 	//	memTxs := txs[iterOffset:nsEntry.Offset]
 	//	namespaceId := nsEntry.Namespace
 	//
+	//	var baseFee *big.Int
 	//	for _, memTx := range memTxs {
-	//		isFeeVerified := memTx.IsBaseFeeVerified
+	//		if baseFee == nil {
+	//			baseFee = memTx.BaseFeeHandler(ctx.WithNamepace(namespaceId))
+	//		}
+	//		isFeeVerified := memTx.CheckTxFeeHandler(ctx, baseFee, memTx.Tx)
 	//		if !isFeeVerified {
 	//			continue
 	//		}

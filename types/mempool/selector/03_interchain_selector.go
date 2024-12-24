@@ -1,25 +1,29 @@
 package selector
 
 import (
+	tmbytes "github.com/cometbft/cometbft/libs/bytes"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
-func InterChainSelector(txs []sdk.MempoolTx, nsTable []*cmtproto.NamespaceTableEntries) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) {
+func InterChainSelector(ctx sdk.Context, txs []sdk.MempoolTx, nsTable []*cmtproto.NamespaceTableEntries) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) {
 
 	var (
 		checkInterChainPairTxs = make(map[string][]*cmtproto.NsInterChainTransactionIndex)
 		beforeIterOffset       = int32(0)
+		crossTxsId             = make(map[sdk.Tx]string)
 	)
 
 	for _, nsEntry := range nsTable {
 		memTxs := txs[beforeIterOffset:nsEntry.Offset]
 		namespaceId := nsEntry.Namespace
 		for _, memTx := range memTxs {
-			if memTx.IsCross {
-				checkInterChainPairTxs[memTx.TxId] = append(checkInterChainPairTxs[memTx.TxId], &cmtproto.NsInterChainTransactionIndex{
+			txIdBz, isCross, _ := memTx.CrossNamespaceTransactionIdentifierHandler(ctx.WithTxBytes(memTx.TxBytes), memTx.Tx)
+			if isCross {
+				txId := tmbytes.HexBytes(txIdBz).String()
+				crossTxsId[memTx.Tx] = txId
+				checkInterChainPairTxs[txId] = append(checkInterChainPairTxs[txId], &cmtproto.NsInterChainTransactionIndex{
 					Namespace: namespaceId,
-					Index:     int32(memTx.TxIndex),
 				})
 			}
 		}
@@ -42,8 +46,7 @@ func InterChainSelector(txs []sdk.MempoolTx, nsTable []*cmtproto.NamespaceTableE
 		namespaceId := nsEntry.Namespace
 
 		for _, memTx := range memTxs {
-			if memTx.IsCross {
-				txId := memTx.TxId
+			if txId, ok := crossTxsId[memTx.Tx]; ok {
 				if pairTxs, inPair := checkInterChainPairTxs[txId]; inPair {
 					if len(pairTxs) != 2 {
 						continue

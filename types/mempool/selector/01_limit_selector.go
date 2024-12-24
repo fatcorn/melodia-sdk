@@ -7,7 +7,7 @@ import (
 	"math"
 )
 
-func LimitSelector(txs []sdk.MempoolTx, nsTable []*cmtproto.NamespaceTableEntries, maxBytes, maxGas int64) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) {
+func LimitSelector(ctx sdk.Context, txs []sdk.MempoolTx, nsTable []*cmtproto.NamespaceTableEntries, maxBytes, maxGas int64) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) {
 	if maxBytes > 0 {
 		return ReapMaxBytesMaxGasNsTable(maxBytes, maxGas, txs, nsTable)
 	}

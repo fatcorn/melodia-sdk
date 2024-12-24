@@ -6,6 +6,7 @@ import (
 	tmbytes "github.com/cometbft/cometbft/libs/bytes"
 	tdmtypes "github.com/cometbft/cometbft/proto/tendermint/types"
 	tmtypes "github.com/cometbft/cometbft/types"
+	"math/big"
 )
 
 // InitChainer initializes application state at genesis
@@ -93,18 +94,15 @@ func (r ResponsePreBlock) IsConsensusParamsChanged() bool {
 	return r.ConsensusParamsChanged
 }
 
-type SortTx struct {
-	TxIndex           int
-	TxId              string
-	IsFirst           bool
-	IsCross           bool
-	IsBaseFeeVerified bool
-	IsContract        bool
-	IsContractSerial  bool
+type SortTxHandler struct {
+	CrossNamespaceTransactionIdentifierHandler func(ctx Context, tx Tx) ([]byte, bool, bool)
+	ContractStaticAnalysisResultHandler        func(ctx Context, contractAddress string) (bool, bool)
+	CheckTxFeeHandler                          func(ctx Context, baseFee *big.Int, tx Tx) bool
+	BaseFeeHandler                             func(ctx Context) *big.Int
 }
 type MempoolTx struct {
 	Tx
-	SortTx
+	SortTxHandler
 	TxBytes []byte
 	TxGas   uint64
 	From    string

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	tmbytes "github.com/cometbft/cometbft/libs/bytes"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/mempool/selector"
@@ -136,9 +137,9 @@ func (nsm *NamespaceSort) SelectTxs(ctx context.Context, maxBytes, maxGas int64,
 
 	t2 := time.Now()
 	// Define selectors in an array to apply them in sequence
-	selectors := []func([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries){
-		func(txs []sdk.MempoolTx, nsTable []*cmtproto.NamespaceTableEntries) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) {
-			return selector.LimitSelector(txs, nsTable, maxBytes, maxGas)
+	selectors := []func(sdk.Context, []sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries){
+		func(ctx sdk.Context, txs []sdk.MempoolTx, nsTable []*cmtproto.NamespaceTableEntries) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) {
+			return selector.LimitSelector(ctx, txs, nsTable, maxBytes, maxGas)
 		},
 		selector.BaseFeeSelector,
 		selector.InterChainSelector,
@@ -147,7 +148,7 @@ func (nsm *NamespaceSort) SelectTxs(ctx context.Context, maxBytes, maxGas int64,
 
 	// Apply all selectors in sequence
 	for _, selectFn := range selectors {
-		selectedTxs, selectedNsTable = selectFn(selectedTxs, selectedNsTable)
+		selectedTxs, selectedNsTable = selectFn(sdkCtx, selectedTxs, selectedNsTable)
 	}
 
 	sdkCtx.Logger().Info("2.3->sortTxs selectors time", "use", time.Since(t2).String(), "size", len(selectedTxs), "selectedNsTable", selectedNsTable, "height", sdkCtx.BlockHeight())
@@ -181,10 +182,12 @@ func (nsm *NamespaceSort) Select(ctx context.Context, maxBytes, maxGas int64, re
 		selectedInterChainPairTxs = make(map[string][]*cmtproto.NsInterChainTransactionIndex)
 	)
 	handleNsInterChainTransactionOrders := func(memTx sdk.MempoolTx, txIdx int, namespaceId uint64) {
-		if memTx.IsCross {
-			txId := memTx.TxId
-			isFirst := memTx.IsFirst
+		tx := memTx.Tx
+		txBz := memTx.TxBytes
+		txIdBz, isCross, isFirst := memTx.CrossNamespaceTransactionIdentifierHandler(sdkCtx.WithTxBytes(txBz), tx)
 
+		if isCross {
+			txId := tmbytes.HexBytes(txIdBz).String()
 			if interTxs, ok := selectedInterChainPairTxs[txId]; ok {
 				interTxs = append(interTxs, &cmtproto.NsInterChainTransactionIndex{
 					Namespace: namespaceId,
@@ -262,7 +265,7 @@ func (nsm *NamespaceSort) Select(ctx context.Context, maxBytes, maxGas int64, re
 				curIdx     int
 				isToSerial bool
 				toIsSerial = func(tx sdk.MempoolTx) bool {
-					isContract, isContractSerial := tx.IsContract, tx.IsContractSerial
+					isContract, isContractSerial := tx.ContractStaticAnalysisResultHandler(sdkCtx.WithNamepace(namespaceId), to)
 					if isContract {
 						return isContractSerial
 					}
