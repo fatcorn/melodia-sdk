@@ -106,19 +106,21 @@ func (snm *SenderNonceMempool) setSeed(seed int64) {
 // NextSenderTx returns the next transaction for a given sender by nonce order,
 // i.e. the next valid transaction for the sender. If no such transaction exists,
 // nil will be returned.
-func (snm *SenderNonceMempool) NextSenderTx(sender string) sdk.Tx {
+func (snm *SenderNonceMempool) NextSenderTx(sender string) *sdk.MempoolTx {
 	senderIndex, ok := snm.senders[sender]
 	if !ok {
 		return nil
 	}
 
 	cursor := senderIndex.Front()
-	return cursor.Value.(sdk.Tx)
+
+	tx := cursor.Value.(sdk.MempoolTx)
+	return &tx
 }
 
 // Insert adds a tx to the mempool. It returns an error if the tx does not have
 // at least one signer. Note, priority is ignored.
-func (snm *SenderNonceMempool) Insert(_ context.Context, tx sdk.Tx) error {
+func (snm *SenderNonceMempool) Insert(_ context.Context, tx sdk.MempoolTx) error {
 	snm.mtx.Lock()
 	defer snm.mtx.Unlock()
 	if snm.maxTx > 0 && len(snm.existingTx) >= snm.maxTx {
@@ -166,7 +168,7 @@ func (snm *SenderNonceMempool) Insert(_ context.Context, tx sdk.Tx) error {
 //
 // NOTE: It is not safe to use this iterator while removing transactions from
 // the underlying mempool.
-func (snm *SenderNonceMempool) Select(_ context.Context, _ [][]byte) Iterator {
+func (snm *SenderNonceMempool) Select(_ context.Context, _ []sdk.MempoolTx) Iterator {
 	snm.mtx.Lock()
 	defer snm.mtx.Unlock()
 	var senders []string
@@ -205,7 +207,7 @@ func (snm *SenderNonceMempool) CountTx() int {
 
 // Remove removes a tx from the mempool. It returns an error if the tx does not
 // have at least one signer or the tx was not found in the pool.
-func (snm *SenderNonceMempool) Remove(tx sdk.Tx) error {
+func (snm *SenderNonceMempool) Remove(tx sdk.MempoolTx) error {
 	snm.mtx.Lock()
 	defer snm.mtx.Unlock()
 	sigs, err := snm.SignerExtractor.GetSigners(tx)
@@ -276,8 +278,8 @@ func (i *senderNonceMempoolIterator) Next() Iterator {
 	return nil
 }
 
-func (i *senderNonceMempoolIterator) Tx() sdk.Tx {
-	return i.currentTx.Value.(sdk.Tx)
+func (i *senderNonceMempoolIterator) Tx() sdk.MempoolTx {
+	return i.currentTx.Value.(sdk.MempoolTx)
 }
 
 func removeAtIndex[T any](slice []T, index int) []T {

@@ -3,13 +3,10 @@ package mempool
 import (
 	"container/heap"
 	"context"
-	"fmt"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/huandu/skiplist"
 	"math"
-	"runtime"
 	"sort"
-	"sync"
 	"time"
 )
 
@@ -23,12 +20,12 @@ type (
 	PriceNonceMempoolConfig[C comparable] struct {
 		// TxPrice defines the transaction priority and comparator.
 		TxPrice TxPrice[C]
-		// SignerExtractor is an implementation which retrieves signer data from a sdk.Tx
+		// SignerExtractor is an implementation which retrieves signer data from a sdk.MempoolTx
 		SignerExtractor SignerExtractionAdapter
 	}
 	PriceNonceMempool[C comparable] struct {
 		cfg PriceNonceMempoolConfig[C]
-		txs []sdk.Tx
+		txs []sdk.MempoolTx
 	}
 
 	TxPrice[C comparable] struct {
@@ -52,7 +49,7 @@ type (
 		Price C
 		// sender is the transaction's sender
 		Sender string
-		Tx     sdk.Tx
+		Tx     sdk.MempoolTx
 	}
 
 	PriceNonceIterator[C comparable] struct {
@@ -102,7 +99,6 @@ func NewPriceNonceMempool[C comparable](cfg PriceNonceMempoolConfig[C]) *PriceNo
 	}
 	mp := &PriceNonceMempool[C]{
 		cfg: cfg,
-		txs: make([]sdk.Tx, 0, 10000),
 	}
 	return mp
 }
@@ -111,36 +107,16 @@ func DefaultPriceNonceMempool() *PriceNonceMempool[int64] {
 	return NewPriceNonceMempool(DefaultPriceNonceMempoolConfig())
 }
 
-func (mp *PriceNonceMempool[C]) Insert(_ context.Context, tx sdk.Tx) error {
-	mp.txs = append(mp.txs, tx)
+func (mp *PriceNonceMempool[C]) Insert(_ context.Context, tx sdk.MempoolTx) error {
 	return nil
 }
 func (mp *PriceNonceMempool[C]) PrepareSenderTxs() (map[string][]*Transaction[C], []string) {
-
 	t0 := time.Now()
-	var wg sync.WaitGroup
 	senderTxs := make(map[string][]*Transaction[C])
-	mux := sync.Mutex{}
-	ch := make(chan struct{}, runtime.NumCPU()*2)
 	for _, tx := range mp.txs {
-		wg.Add(1)
-		ch <- struct{}{}
-		go func(tx sdk.Tx) {
-			defer func() {
-				wg.Done()
-				<-ch
-			}()
-			transaction, err := mp.ToTransaction(tx)
-			if err != nil {
-				panic(err)
-			}
-			mux.Lock()
-			senderTxs[transaction.Sender] = append(senderTxs[transaction.Sender], &transaction)
-			mux.Unlock()
-		}(tx)
+		transaction := mp.ToTransaction(tx)
+		senderTxs[transaction.Sender] = append(senderTxs[transaction.Sender], &transaction)
 	}
-	wg.Wait()
-	close(ch)
 	senders := make([]string, 0, len(senderTxs))
 	for sender, _ := range senderTxs {
 		senders = append(senders, sender)
@@ -150,7 +126,8 @@ func (mp *PriceNonceMempool[C]) PrepareSenderTxs() (map[string][]*Transaction[C]
 	println("PrepareSenderTxs use=", time.Since(t0).String())
 	return senderTxs, senders
 }
-func (mp *PriceNonceMempool[C]) Select(context.Context, [][]byte) Iterator {
+func (mp *PriceNonceMempool[C]) Select(ctx context.Context, txs []sdk.MempoolTx) Iterator {
+	mp.txs = txs
 	senderTxs, accKeys := mp.PrepareSenderTxs()
 	// Separate the transactions by account and sort by nonce
 	byNonce := senderTxs
@@ -190,26 +167,14 @@ func (mp *PriceNonceMempool[C]) Select(context.Context, [][]byte) Iterator {
 func (mp *PriceNonceMempool[C]) CountTx() int {
 	return len(mp.txs)
 }
-func (mp *PriceNonceMempool[C]) Remove(tx sdk.Tx) error {
+func (mp *PriceNonceMempool[C]) Remove(tx sdk.MempoolTx) error {
 	panic("implement me")
 }
 
-func (mp *PriceNonceMempool[C]) ToTransaction(tx sdk.Tx) (Transaction[C], error) {
-
-	sigs, err := mp.cfg.SignerExtractor.GetSigners(tx)
-	if err != nil {
-		return Transaction[C]{}, err
-	}
-	if len(sigs) == 0 {
-		return Transaction[C]{}, fmt.Errorf("tx must have at least one signer")
-	}
-
-	sig := sigs[0]
-	sender := sig.Signer.String()
-	price := mp.cfg.TxPrice.GetTxPrice(tx)
-	nonce := sig.Sequence
-	sortTx := Transaction[C]{Nonce: nonce, Price: price, Sender: sender, Tx: tx}
-	return sortTx, nil
+func (mp *PriceNonceMempool[C]) ToTransaction(tx sdk.MempoolTx) Transaction[C] {
+	price := mp.cfg.TxPrice.GetTxPrice(tx.Tx)
+	sortTx := Transaction[C]{Nonce: tx.Nonce, Price: price, Sender: tx.From, Tx: tx}
+	return sortTx
 }
 func (i *PriceNonceIterator[C]) Next() Iterator {
 
@@ -227,7 +192,7 @@ func (i *PriceNonceIterator[C]) Next() Iterator {
 	}
 }
 
-func (i *PriceNonceIterator[C]) Tx() sdk.Tx {
+func (i *PriceNonceIterator[C]) Tx() sdk.MempoolTx {
 	return i.txs[i.index].Tx
 }
 

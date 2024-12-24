@@ -526,7 +526,7 @@ func (app *BaseApp) ProcessProposal(req *abci.RequestProcessProposal) (resp *abc
 			}
 			app.qms = app.cms
 			switch m := app.mempool.(type) {
-			case *mempool.NamespaceNoncer:
+			case *mempool.NamespaceMempool:
 				app.logger.Info("Rollback to reset noncer", "height", req.Height)
 				m.Reset()
 			}

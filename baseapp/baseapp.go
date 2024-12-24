@@ -16,7 +16,6 @@ import (
 	"golang.org/x/exp/maps"
 	protov2 "google.golang.org/protobuf/proto"
 	"math"
-	"math/big"
 	"runtime"
 	"sort"
 	"strconv"
@@ -1278,6 +1277,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	var gasWanted uint64
 
 	var ctx sdk.Context
+	var memTx sdk.MempoolTx
 	var tx sdk.Tx
 
 	// Check if a context was provided
@@ -1303,11 +1303,9 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			ctx.Logger().Warn("panic recovered in runTx", "err", err, "height", ctx.BlockHeight(), "txIndex", ctx.TxIndex())
 
 		}
-		if err != nil {
-			switch m := app.mempool.(type) {
-			case *mempool.NamespaceNoncer:
-				m.Rollback(ctx, tx, app.getAccountNonceHandler, err)
-			}
+		switch m := app.mempool.(type) {
+		case *mempool.NamespaceMempool:
+			m.DeferRun(ctx, memTx, app.getAccountNonceHandler, err)
 		}
 		gInfo = sdk.GasInfo{GasWanted: gasWanted, GasUsed: ctx.GasMeter().GasConsumed()}
 	}()
@@ -1343,10 +1341,15 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	//}
 
 	t2 := time.Now()
-	tx, err = app.txDecoder(txBytes)
+	memTx, err = app.ToMemTx(txBytes)
 	if err != nil {
 		return sdk.GasInfo{}, nil, nil, nil, err
 	}
+	tx = memTx.Tx
+	if m, ok := app.mempool.(*mempool.NamespaceMempool); ok {
+		ctx = m.BeforeRun(ctx, memTx, app.getAccountNonceHandler)
+	}
+
 	t3 := time.Now()
 	msgs := tx.GetMsgs()
 	if err := validateBasicTxMsgs(msgs); err != nil {
@@ -1367,17 +1370,6 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			anteCtx sdk.Context
 			msCache storetypes.CacheMultiStore
 		)
-		if m, ok := app.mempool.(*mempool.NamespaceNoncer); ok {
-
-			maxNonce, err := m.GetNonce(ctx, tx, app.getAccountNonceHandler)
-			if err != nil {
-				return sdk.GasInfo{}, nil, nil, nil, err
-			}
-			ctx = ctx.WithMaxNonce(maxNonce)
-			if mode == execModeFinalize {
-				ctx = ctx.WithTxSigner(m.GetSigner(txBytes))
-			}
-		}
 
 		a2 := time.Now()
 		//now := cmttime.Now()
@@ -1437,13 +1429,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 
 	//now := cmttime.Now()
 	if mode == execModeCheck {
-		err = app.mempool.Insert(ctx, tx)
-		switch m := app.mempool.(type) {
-		case *mempool.NamespaceNoncer:
-			if err == nil {
-				err = m.UpdateNonce(ctx, tx, app.getAccountNonceHandler)
-			}
-		}
+		err = app.mempool.Insert(ctx, memTx)
 		if app.pibcPacketGeneratorHadler != nil && app.signerName != "" {
 			getSigigner := func() sdk.AccAddress {
 				record, err := app.signerKeyring.Key(app.signerName)
@@ -1463,25 +1449,16 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			packetMsg = msg
 		}
 	} else if mode == execModeFinalize {
-
-		switch m := app.mempool.(type) {
-		case *mempool.NamespaceMempool:
-			err = m.RemoveWithCtx(ctx, tx)
-		case *mempool.NamespaceNoncer:
-			err = m.RemoveWithCtx(ctx, tx)
-		default:
-			err = app.mempool.Remove(tx)
-		}
-
+		err = app.mempool.Remove(memTx)
 		if err != nil && !errors.Is(err, mempool.ErrTxNotFound) {
 			return gInfo, nil, anteEvents, nil,
 				fmt.Errorf("failed to remove tx from mempool: %w", err)
 		}
-	} else if mode == execModeReCheck {
-		switch m := app.mempool.(type) {
-		case *mempool.NamespaceNoncer:
-			err = m.UpdateNonce(ctx, tx, app.getAccountNonceHandler)
-		}
+	}
+	switch m := app.mempool.(type) {
+	case *mempool.NamespaceMempool:
+		success := err == nil
+		m.AfterRun(ctx, memTx, success, app.getAccountNonceHandler)
 	}
 
 	t6 := time.Now()
@@ -1664,303 +1641,72 @@ func createEvents(cdc codec.Codec, events sdk.Events, msg sdk.Msg, msgV2 protov2
 
 // sortTxs return sort txs and nsTable & orders
 func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.ResponseSortTxs, error) {
-	startTime := time.Now()
-	reqNsTable := req.NsTable
-	reqByteTxs, err := app.TxDecodeBatch(req.Txs)
+	t0 := time.Now()
+	memTxs, err := app.decodeSortTxs(ctx, req.Txs, req.NsTable)
 	if err != nil {
 		return nil, err
 	}
-	app.logger.Info("1->sortTxs TxDecodeBatch time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(req.Txs), "sortType", req.SortType, "height", ctx.BlockHeight())
-	insertTime := time.Now()
-	var (
-		sortTxs                 = make([][]byte, 0)
-		nsMempool               = mempool.NewNamespaceMempool()
-		beforeInterChainPairTxs = make(map[string][]*cmtproto.NsInterChainTransactionIndex)
-		afterInterChainPairTxs  = make(map[string][]*cmtproto.NsInterChainTransactionIndex)
-	)
+	app.logger.Info("1->sortTxs decode time", "used", time.Since(t0).String(), "size", len(req.Txs), "height", ctx.BlockHeight())
 
-	nsByteTxs := sdk.ListNamespaceByteTxs(reqByteTxs, reqNsTable)
-
-	for namespaceId, byteTxs := range nsByteTxs {
-		for idx, byteTx := range byteTxs {
-			tx := byteTx.Tx
-			txBz := byteTx.TxBytes
-			if tx == nil || txBz == nil {
-				continue
-			}
-			txIdBz, isCross, _ := app.crossNamespaceTransactionIdentifierHandler(ctx.WithTxBytes(txBz), tx)
-			if isCross {
-				txId := tmbytes.HexBytes(txIdBz).String()
-				if _, ok := beforeInterChainPairTxs[txId]; ok {
-					beforeInterChainPairTxs[txId] = append(beforeInterChainPairTxs[txId], &cmtproto.NsInterChainTransactionIndex{
-						Namespace: namespaceId,
-						Index:     int32(idx),
-					})
-				} else {
-					beforeInterChainPairTxs[txId] = []*cmtproto.NsInterChainTransactionIndex{
-						{
-							Namespace: namespaceId,
-							Index:     int32(idx),
-						},
-					}
-				}
-			}
-			ctx = ctx.WithNamepace(namespaceId)
-			_ = nsMempool.Insert(ctx, tx)
-		}
-	}
-	app.logger.Info("2->sortTxs total insert time", "used", fmt.Sprintf("%v ms", time.Since(insertTime).Milliseconds()), "size", len(reqByteTxs), "nsTable", reqNsTable, "sortType", req.SortType, "height", ctx.BlockHeight())
-
-	sortTime := time.Now()
+	t1 := time.Now()
 	var maxBlockGas int64
 	if b := ctx.ConsensusParams().Block; b != nil {
 		maxBlockGas = b.MaxGas
 	}
-	reqByteTxs, reqNsTable = nsMempool.SelectSortTxs(ctx, req.MaxTxBytes, maxBlockGas, nsByteTxs)
+	txs, nsTable, orders := mempool.NewNamespaceSort().Select(ctx, req.MaxTxBytes, maxBlockGas, memTxs, req.NsTable)
+	app.logger.Info("2->sortTxs select time", "used", time.Since(t1).String(), "size", len(req.Txs), "height", ctx.BlockHeight())
+	app.logger.Info("3->sortTxs total time", "used", time.Since(t0).String(), "size", len(txs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "sortType", req.SortType, "height", ctx.BlockHeight())
 
-	app.logger.Info("3->sortTxs sort time", "used", fmt.Sprintf("%v ms", time.Since(sortTime).Milliseconds()), "size", len(reqByteTxs), "nsTable", reqNsTable, "sortType", req.SortType, "height", ctx.BlockHeight())
+	return &abci.ResponseSortTxs{Txs: txs, NsTable: nsTable, Orders: orders}, nil
+}
 
-	var (
-		offset  = 0
-		nsTable = make([]*cmtproto.NamespaceTableEntries, 0)
-		orders  = &cmtproto.Orders{
-			NsTransactionOrders: &cmtproto.NsTransactionOrders{
-				Entries: make([]*cmtproto.NsTransactionOrderEntry, 0)},
-			NsInterChainTransactionOrders: &cmtproto.NsInterChainTransactionOrders{
-				Entries: make([]*cmtproto.NsInterChainTransactionOrderEntry, 0),
-			},
-		}
-		txIndex = 0
-	)
-	staticTime := time.Now()
-	handleNsInterChainTransactionOrders := func(byteTx *sdk.ByteTx, txIdx int, namespaceId uint64) bool {
-		tx := byteTx.Tx
-		txBz := byteTx.TxBytes
-		txIdBz, isCross, isFirst := app.crossNamespaceTransactionIdentifierHandler(ctx.WithTxBytes(txBz), tx)
-		if isCross {
-			txId := tmbytes.HexBytes(txIdBz).String()
-			if pairTxs, inPair := beforeInterChainPairTxs[txId]; inPair {
-				if len(pairTxs) != 2 {
-					return false
-				}
-			}
+// decodeSortTxs decode txByte to mempoolTx
+func (app *BaseApp) decodeSortTxs(ctx sdk.Context, nsTxsBytes [][]byte, nsTable []*cmtproto.NamespaceTableEntries) ([]sdk.MempoolTx, error) {
 
-			if interTxs, ok := afterInterChainPairTxs[txId]; ok {
-				interTxs = append(interTxs, &cmtproto.NsInterChainTransactionIndex{
-					Namespace: namespaceId,
-					Index:     int32(txIdx),
-				})
+	wg := sync.WaitGroup{}
+	txs := make([]sdk.MempoolTx, len(nsTxsBytes))
+	ch := make(chan struct{}, runtime.NumCPU()*2)
 
-				idxes := make([]*cmtproto.NsInterChainTransactionIndex, 2)
-
-				if isFirst {
-					idxes[0] = interTxs[1]
-					idxes[1] = interTxs[0]
-				} else {
-					idxes[0] = interTxs[0]
-					idxes[1] = interTxs[1]
-				}
-
-				entry := &cmtproto.NsInterChainTransactionOrderEntry{
-					Indexes: idxes,
-				}
-				orders.NsInterChainTransactionOrders.Entries = append(orders.NsInterChainTransactionOrders.Entries, entry)
-			} else {
-				afterInterChainPairTxs[txId] = []*cmtproto.NsInterChainTransactionIndex{
-					{
-						Namespace: namespaceId,
-						Index:     int32(txIdx),
-					},
-				}
-			}
-		}
-		return true
-	}
-
-	var selectedTxsNums int
-	selectedTxsSignersSeqs := make(map[string]uint64)
-
-	isNeedCheck := req.SortType == uint32(bfttypes.SortAndCheck)
-
-	globalOffset := int32(0)
-	for _, nsEntry := range reqNsTable {
-
-		byteTxs := reqByteTxs[globalOffset:nsEntry.Offset]
-		namespaceId := nsEntry.Namespace
-
-		// Static analysis
-		var (
-			addressIndexMap      = make(map[string]int)
-			lastTxIndexMap       = make(map[string]int)
-			nsTransactionIndexes = make([]*cmtproto.NsTransactionIndexes, 0, len(byteTxs))
-			baseFee              = big.NewInt(0)
-		)
-		handleNsTransactionDependOrders := func(txIdx int, namespaceId uint64, from string, to string) {
-			if lastToIdx, toExists := lastTxIndexMap[to]; toExists {
-				if lastFromIdx, fromExists := lastTxIndexMap[from]; !fromExists || lastFromIdx != lastToIdx {
-					entry := &cmtproto.NsInterChainTransactionOrderEntry{
-						Indexes: []*cmtproto.NsInterChainTransactionIndex{
-							{
-								Namespace: namespaceId,
-								Index:     int32(lastToIdx),
-							},
-							{
-								Namespace: namespaceId,
-								Index:     int32(txIdx),
-							},
-						},
+	lastOffset := int32(0)
+	txIndex := 0
+	for _, entry := range nsTable {
+		txBytes := nsTxsBytes[lastOffset:entry.Offset]
+		namespaceId := entry.Namespace
+		//baseFee := app.baseFeeHandler(ctx.WithNamepace(namespaceId))
+		for _, txBz := range txBytes {
+			wg.Add(1)
+			ch <- struct{}{}
+			go func(txBz []byte, idx int) {
+				defer func() {
+					wg.Done()
+					<-ch
+				}()
+				tx, err := app.ToMemTx(txBz)
+				if err == nil {
+					txIdBz, isCross, isFirst := app.crossNamespaceTransactionIdentifierHandler(ctx.WithTxBytes(txBz), tx.Tx)
+					txId := tmbytes.HexBytes(txIdBz).String()
+					isContract, isContractSerial := app.contractStaticAnalysisResultHandler(ctx.WithNamepace(namespaceId), tx.To)
+					//isBaseFeeVerified := app.checkTxFeeHandler(ctx.WithNamepace(namespaceId), baseFee, tx.Tx)
+					tx.SortTx = sdk.SortTx{
+						TxId:             txId,
+						IsCross:          isCross,
+						IsFirst:          isFirst,
+						TxIndex:          idx,
+						IsContract:       isContract,
+						IsContractSerial: isContractSerial,
+						//IsBaseFeeVerified: isBaseFeeVerified,
 					}
-					orders.NsInterChainTransactionOrders.Entries = append(orders.NsInterChainTransactionOrders.Entries, entry)
+					txs[idx] = tx
 				}
-			}
-			lastTxIndexMap[from] = txIdx
-			lastTxIndexMap[to] = txIdx
-		}
-
-		handleNsTransactionOrders := func(from string, to string, txIdx int, namespaceId uint64) {
-
-			var (
-				fromIdx    int
-				toIdx      int
-				fromExists bool
-				toExists   bool
-				curIdx     int
-				isToSerial bool
-				toIsSerial = func(namespaceId uint64, to string) bool {
-					isContract, isContractSerial := app.contractStaticAnalysisResultHandler(ctx.WithNamepace(namespaceId), to)
-					if isContract {
-						return isContractSerial
-					}
-					return true
-				}
-			)
-
-			defer func() {
-				if isToSerial {
-					handleNsTransactionDependOrders(txIdx, namespaceId, from, to)
-				}
-			}()
-
-			fromIdx, fromExists = addressIndexMap[from]
-			toIdx, toExists = addressIndexMap[to]
-
-			if fromExists && toExists {
-				//Both exist,add from index
-				curIdx = fromIdx
-				nsTransactionIndexes[curIdx].Indexes = append(nsTransactionIndexes[curIdx].Indexes, int32(txIdx))
-
-				//Check if they should be depends
-				if toIsSerial(namespaceId, to) {
-					isToSerial = true
-				}
-			} else if fromExists {
-				// Only from exists, add to index
-				curIdx = fromIdx
-				nsTransactionIndexes[curIdx].Indexes = append(nsTransactionIndexes[curIdx].Indexes, int32(txIdx))
-				addressIndexMap[to] = curIdx
-			} else if toExists {
-				// Only to exists, add from index
-				if toIsSerial(namespaceId, to) {
-					isToSerial = true
-					//append to index
-					curIdx = toIdx
-					nsTransactionIndexes[curIdx].Indexes = append(nsTransactionIndexes[curIdx].Indexes, int32(txIdx))
-					addressIndexMap[from] = curIdx
-				} else {
-					//create new from index
-					nsTransactionIndexes = append(nsTransactionIndexes, &cmtproto.NsTransactionIndexes{Indexes: []int32{int32(txIdx)}})
-					curIdx = len(nsTransactionIndexes) - 1
-					addressIndexMap[from] = curIdx
-				}
-			} else {
-				// Neither exists, create both indices
-				//create new from & to index
-				nsTransactionIndexes = append(nsTransactionIndexes, &cmtproto.NsTransactionIndexes{Indexes: []int32{int32(txIdx)}})
-				curIdx = len(nsTransactionIndexes) - 1
-				addressIndexMap[from] = curIdx
-				addressIndexMap[to] = curIdx
-			}
-		}
-
-		orderTime := time.Now()
-		if isNeedCheck {
-			baseFee = app.baseFeeHandler(ctx.WithNamepace(namespaceId))
-		}
-
-		for _, byteTx := range byteTxs {
-			txBz := byteTx.TxBytes
-			tx := byteTx.Tx
-			if tx == nil || txBz == nil {
-				continue
-			}
-			from, to, nonce := app.txAccountInfoHandler(tx)
-
-			txSignersSeqs := make(map[string]uint64)
-			if isNeedCheck {
-				seq, ok := selectedTxsSignersSeqs[from]
-				if !ok {
-					txSignersSeqs[from] = nonce
-				} else {
-					// If we have seen this signer before in this block, we must make
-					// sure that the current sequence is seq+1; otherwise is invalid
-					// and we skip it.
-					if seq+1 != nonce {
-						continue
-					}
-					txSignersSeqs[from] = nonce
-				}
-
-				isFeeVerified := app.checkTxFeeHandler(ctx, baseFee, tx)
-				if !isFeeVerified {
-					continue
-				}
-			}
-			isInterChainPaired := handleNsInterChainTransactionOrders(byteTx, txIndex, namespaceId)
-			if !isInterChainPaired {
-				continue
-			}
-
-			sortTxs = append(sortTxs, txBz)
-			offset++
-			handleNsTransactionOrders(from, to, txIndex, namespaceId)
+			}(txBz, txIndex)
 			txIndex++
-
-			if isNeedCheck {
-				txsLen := len(sortTxs)
-				for sender, senderSeq := range txSignersSeqs {
-					// If txsLen != selectedTxsNums is true, it means that we've
-					// added a new tx to the selected txs, so we need to update
-					// the sequence of the sender.
-					if txsLen != selectedTxsNums {
-						selectedTxsSignersSeqs[sender] = senderSeq
-					} else if _, ok := selectedTxsSignersSeqs[sender]; !ok {
-						// The transaction hasn't been added but it passed the
-						// verification, so we know that the sequence is correct.
-						// So we set this sender's sequence to seq-1, in order
-						// to avoid unnecessary calls to PrepareProposalVerifyTx.
-						selectedTxsSignersSeqs[sender] = senderSeq - 1
-					}
-				}
-				selectedTxsNums = txsLen
-			}
 		}
-		if len(nsTransactionIndexes) > 0 {
-			nsTable = append(nsTable, &cmtproto.NamespaceTableEntries{
-				Namespace: namespaceId,
-				Offset:    int32(offset),
-			})
-			orders.NsTransactionOrders.Entries = append(orders.NsTransactionOrders.Entries, &cmtproto.NsTransactionOrderEntry{
-				Namespace: namespaceId,
-				Indexes:   nsTransactionIndexes,
-			})
-		}
-		globalOffset = nsEntry.Offset
-		app.logger.Info("4.1->sortTxs namespace orders time", "used", fmt.Sprintf("%v ms", time.Since(orderTime).Milliseconds()), "nsTxSize", len(byteTxs), "namespaceId", namespaceId, "offset", offset, "sortType", req.SortType, "height", ctx.BlockHeight())
+		lastOffset = entry.Offset
 	}
-	app.logger.Info("4->sortTxs total orders time", "used", fmt.Sprintf("%v ms", time.Since(staticTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "sortType", req.SortType, "height", ctx.BlockHeight())
-	app.logger.Info("5->sortTxs total time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(sortTxs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "sortType", req.SortType, "height", ctx.BlockHeight())
+	wg.Wait()
+	close(ch)
 
-	return &abci.ResponseSortTxs{Txs: sortTxs, NsTable: nsTable, Orders: orders}, nil
+	return txs, nil
 }
 
 // PrepareProposalVerifyTx performs transaction verification when a proposer is
@@ -2009,29 +1755,14 @@ func (app *BaseApp) TxEncode(tx sdk.Tx) ([]byte, error) {
 	return app.txEncoder(tx)
 }
 
-func (app *BaseApp) TxDecodeBatch(txsBytes [][]byte) ([]*sdk.ByteTx, error) {
-
-	wg := sync.WaitGroup{}
-	decodeTxs := make([]*sdk.ByteTx, len(txsBytes))
-	ch := make(chan struct{}, runtime.NumCPU()*2)
-	for idx, txBz := range txsBytes {
-		wg.Add(1)
-		ch <- struct{}{}
-		go func(txBz []byte, idx int) {
-			defer func() {
-				wg.Done()
-				<-ch
-			}()
-			tx, err := app.txDecoder(txBz)
-			if err == nil {
-				decodeTxs[idx] = &sdk.ByteTx{Tx: tx, TxBytes: txBz}
-			}
-		}(txBz, idx)
+func (app *BaseApp) ToMemTx(txByte []byte) (sdk.MempoolTx, error) {
+	tx, err := app.txDecoder(txByte)
+	gas := uint64(0)
+	if gasTx, ok := tx.(sdk.FeeTx); ok {
+		gas = gasTx.GetGas()
 	}
-	wg.Wait()
-	close(ch)
-
-	return decodeTxs, nil
+	from, to, nonce := app.txAccountInfoHandler(tx)
+	return sdk.MempoolTx{Tx: tx, TxBytes: txByte, TxGas: gas, From: from, To: to, Nonce: nonce}, err
 }
 
 // Close is called in start cmd to gracefully cleanup resources.
