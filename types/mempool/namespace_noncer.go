@@ -141,8 +141,10 @@ func (nsm *NamespaceNoncer) Rollback(ctx sdk.Context, tx sdk.Tx, fallback sdk.Ge
 	sender := sig.Signer.String()
 	nonce := sig.Sequence
 	if errors.Is(failReason, errors2.ErrInvalidSequence) {
-		if nonce > ctx.MaxNonce() {
-			return
+		if ctx.ExecMode() != sdk.ExecModeFinalize {
+			if nonce > ctx.MaxNonce() {
+				return
+			}
 		}
 	}
 
