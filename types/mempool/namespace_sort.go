@@ -371,7 +371,6 @@ func (nsm *NamespaceSort) Select(ctx context.Context, maxBytes, maxGas int64, re
 		})
 		replaceIterOffset = nsEntry.Offset
 	}
-	println("replace txs lens = ", len(nsSelectedTxs.ReplaceTxs), "replaceTxs size=", len(replaceTxs))
 	if len(replaceTxs) > 0 {
 		sdkCtx.Logger().Info("2.5->sortTxs replace time", "use", time.Since(t1).String(), "size", len(nsSelectedTxs.Txs), "reqSize", len(reqTxs), "replaceSize", len(replaceTxs), "height", sdkCtx.BlockHeight())
 	}

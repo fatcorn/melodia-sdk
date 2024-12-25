@@ -18,7 +18,8 @@ func NonceSelector(ctx sdk.Context, nsSelectTxs sdk.NamespaceSelectedTxs) sdk.Na
 		replaceNsTable = make([]*cmtproto.NamespaceTableEntries, 0)
 		replaceOffset  = int32(0)
 
-		iterOffset = int32(0)
+		iterOffset  = int32(0)
+		pendingSize = 0
 	)
 
 	for _, nsEntry := range nsTable {
@@ -38,6 +39,7 @@ func NonceSelector(ctx sdk.Context, nsSelectTxs sdk.NamespaceSelectedTxs) sdk.Na
 			if !ok {
 				isGapped := memTx.IsGapped(ctx.WithNamepace(namespaceId), memTx)
 				if !isGapped {
+					pendingSize++
 					continue
 				}
 				txSignersSeqs[from] = nonce
@@ -49,6 +51,8 @@ func NonceSelector(ctx sdk.Context, nsSelectTxs sdk.NamespaceSelectedTxs) sdk.Na
 					if seq+1 > nonce {
 						replaceTxs = append(replaceTxs, memTx)
 						replaceOffset++
+					} else {
+						pendingSize++
 					}
 					continue
 				}
@@ -90,6 +94,10 @@ func NonceSelector(ctx sdk.Context, nsSelectTxs sdk.NamespaceSelectedTxs) sdk.Na
 		}
 
 		iterOffset = nsEntry.Offset
+	}
+
+	if pendingSize > 0 {
+		ctx.Logger().Info("nonce selector pending txs", "size", len(txs), "nsTable", nsTable, "pendingSize", pendingSize)
 	}
 
 	return sdk.NamespaceSelectedTxs{
