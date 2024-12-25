@@ -3,6 +3,8 @@ package baseapp
 import (
 	"context"
 	"fmt"
+	//"cosmossdk.io/store/cachekv"
+
 	consensustypes "github.com/cometbft/cometbft/types"
 	"github.com/cosmos/cosmos-sdk/tasks"
 	"github.com/cosmos/cosmos-sdk/types/mempool"
@@ -828,11 +830,13 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 		app.setState(execModeFinalize, header)
 	}
 
-	ms := app.cms.CacheMultiStore()
-	if len(ms.ListStores()) > len(app.finalizeBlockState.GetCache().ListStores()) {
-		newCache := app.finalizeBlockState.GetCache().ExpandStores(ms.ListStores())
-		app.finalizeBlockState.SetCache(newCache)
-		app.finalizeBlockState.SetContext(app.finalizeBlockState.Context().WithMultiStore(newCache))
+	if len(app.cms.StoreKeys()) > len(app.finalizeBlockState.GetCache().ListStores()) {
+		ms := app.cms.CacheMultiStore()
+		if len(ms.ListStores()) > len(app.finalizeBlockState.GetCache().ListStores()) {
+			newCache := app.finalizeBlockState.GetCache().ExpandStores(ms.ListStores())
+			app.finalizeBlockState.SetCache(newCache)
+			app.finalizeBlockState.SetContext(app.finalizeBlockState.Context().WithMultiStore(newCache))
+		}
 	}
 
 	//app.setState(execModeFinalize, header)
