@@ -99,7 +99,10 @@ type SortTxHandler struct {
 	ContractStaticAnalysisResultHandler        func(ctx Context, contractAddress string) (bool, bool)
 	CheckTxFeeHandler                          func(ctx Context, baseFee *big.Int, tx Tx) bool
 	BaseFeeHandler                             func(ctx Context) *big.Int
+	GetAccountNonceHandler                     func(ctx Context, address string) (uint64, error)
+	IsGapped                                   func(ctx Context, tx MempoolTx) bool
 }
+
 type MempoolTx struct {
 	Tx
 	SortTxHandler
@@ -108,6 +111,12 @@ type MempoolTx struct {
 	From    string
 	To      string
 	Nonce   uint64
+}
+type NamespaceSelectedTxs struct {
+	Txs            []MempoolTx
+	NsTable        []*tdmtypes.NamespaceTableEntries
+	ReplaceTxs     []MempoolTx
+	ReplaceNsTable []*tdmtypes.NamespaceTableEntries
 }
 
 type NamespaceMempoolTxs struct {

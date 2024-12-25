@@ -29,25 +29,25 @@ func NewNamespaceMempool() *NamespaceMempool {
 	return nsm
 }
 
-func (nsm *NamespaceMempool) BeforeRun(ctx sdk.Context, tx sdk.MempoolTx, fallback sdk.GetAccountNonceHandler) sdk.Context {
+func (nsm *NamespaceMempool) BeforeRun(ctx sdk.Context, tx sdk.MempoolTx) sdk.Context {
 	if ctx.ExecMode() == sdk.ExecModeFinalize {
 		//set signer
 		if signer, ok := nsm.txsSigner.Load(tx.Hash()); ok {
 			ctx = ctx.WithTxSigner(signer.(*string))
 		}
 		//set max nonce
-		maxNonce := nsm.getNoncer(ctx, fallback).get(ctx, tx.From)
+		maxNonce := nsm.getNoncer(ctx, tx.GetAccountNonceHandler).get(ctx, tx.From)
 		return ctx.WithMaxNonce(maxNonce)
 	}
 	return ctx
 }
 
-func (nsm *NamespaceMempool) AfterRun(ctx sdk.Context, tx sdk.MempoolTx, success bool, fallback sdk.GetAccountNonceHandler) {
+func (nsm *NamespaceMempool) AfterRun(ctx sdk.Context, tx sdk.MempoolTx, success bool) {
 
 	if ctx.ExecMode() == sdk.ExecModeCheck || ctx.ExecMode() == sdk.ExecModeReCheck {
 		if success {
 			//update nonce
-			pendingNoncer := nsm.getNoncer(ctx, fallback)
+			pendingNoncer := nsm.getNoncer(ctx, tx.GetAccountNonceHandler)
 			sender := tx.From
 			nonce := ctx.MaxNonce()
 			pendingNoncer.setIfHigher(ctx, sender, nonce)
@@ -60,20 +60,20 @@ func (nsm *NamespaceMempool) AfterRun(ctx sdk.Context, tx sdk.MempoolTx, success
 		}
 	}
 }
-func (nsm *NamespaceMempool) DeferRun(ctx sdk.Context, tx sdk.MempoolTx, fallback sdk.GetAccountNonceHandler, failReason error) {
-	if failReason != nil {
+func (nsm *NamespaceMempool) DeferRun(ctx sdk.Context, tx sdk.MempoolTx, err error) {
+	if err != nil {
 		nonce := tx.Nonce
-		if errors.Is(failReason, errors2.ErrInvalidSequence) {
+		if errors.Is(err, errors2.ErrInvalidSequence) {
 			if nonce > ctx.MaxNonce() {
 				return
 			}
 		}
-		pendingNoncer := nsm.getNoncer(ctx, fallback)
+		pendingNoncer := nsm.getNoncer(ctx, tx.GetAccountNonceHandler)
 		if nonce > 0 {
 			nonce = nonce - 1
 		}
 		sender := tx.From
-		ctx.Logger().Debug("noncer rollback", "address", sender, "nonce", pendingNoncer.get(ctx, sender), "newNonce", nonce, "txNonce", tx.Nonce, "mode", ctx.ExecMode(), "height", ctx.BlockHeight(), "err", failReason)
+		ctx.Logger().Debug("noncer rollback", "address", sender, "nonce", pendingNoncer.get(ctx, sender), "newNonce", nonce, "txNonce", tx.Nonce, "mode", ctx.ExecMode(), "height", ctx.BlockHeight(), "err", err)
 		pendingNoncer.setIfLower(ctx, sender, nonce)
 	}
 }
@@ -93,6 +93,13 @@ func (nsm *NamespaceMempool) getNoncer(ctx sdk.Context, fallback sdk.GetAccountN
 	return pendingNoncer.(*noncer)
 }
 
+// IsGapped reports whether the given transaction is immediately executable.
+func (nsm *NamespaceMempool) IsGapped(ctx sdk.Context, tx sdk.MempoolTx) bool {
+	pendingNoncer := nsm.getNoncer(ctx, tx.GetAccountNonceHandler)
+	maxNonce := pendingNoncer.get(ctx, tx.From)
+	txNonce := tx.Nonce
+	return txNonce <= maxNonce
+}
 func (nsm *NamespaceMempool) Reset() {
 	nsm.mux.Lock()
 	defer nsm.mux.Unlock()

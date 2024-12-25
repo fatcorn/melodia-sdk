@@ -1304,7 +1304,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 		}
 		switch m := app.mempool.(type) {
 		case *mempool.NamespaceMempool:
-			m.DeferRun(ctx, memTx, app.getAccountNonceHandler, err)
+			m.DeferRun(ctx, memTx, err)
 		}
 		gInfo = sdk.GasInfo{GasWanted: gasWanted, GasUsed: ctx.GasMeter().GasConsumed()}
 	}()
@@ -1346,7 +1346,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	}
 	tx = memTx.Tx
 	if m, ok := app.mempool.(*mempool.NamespaceMempool); ok {
-		ctx = m.BeforeRun(ctx, memTx, app.getAccountNonceHandler)
+		ctx = m.BeforeRun(ctx, memTx)
 	}
 
 	t3 := time.Now()
@@ -1457,7 +1457,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	switch m := app.mempool.(type) {
 	case *mempool.NamespaceMempool:
 		success := err == nil
-		m.AfterRun(ctx, memTx, success, app.getAccountNonceHandler)
+		m.AfterRun(ctx, memTx, success)
 	}
 
 	t6 := time.Now()
@@ -1641,23 +1641,24 @@ func createEvents(cdc codec.Codec, events sdk.Events, msg sdk.Msg, msgV2 protov2
 // sortTxs return sort txs and nsTable & orders
 func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.ResponseSortTxs, error) {
 	t0 := time.Now()
-	memTxs := app.decodeSortTxs(req.Txs)
-	app.logger.Info("1->sortTxs decode time", "used", time.Since(t0).String(), "size", len(req.Txs), "height", ctx.BlockHeight())
+	memTxs := app.decodeToMemTxs(req.Txs)
+	app.logger.Info("1->sortTxs decode time", "used", time.Since(t0).String(), "reqSize", len(req.Txs), "height", ctx.BlockHeight())
 
 	t1 := time.Now()
 	var maxBlockGas int64
 	if b := ctx.ConsensusParams().Block; b != nil {
 		maxBlockGas = b.MaxGas
 	}
-	txs, nsTable, orders := mempool.NewNamespaceSort().Select(ctx, req.MaxTxBytes, maxBlockGas, memTxs, req.NsTable)
-	app.logger.Info("2->sortTxs select time", "used", time.Since(t1).String(), "size", len(req.Txs), "height", ctx.BlockHeight())
-	app.logger.Info("3->sortTxs total time", "used", time.Since(t0).String(), "size", len(txs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "sortType", req.SortType, "height", ctx.BlockHeight())
 
-	return &abci.ResponseSortTxs{Txs: txs, NsTable: nsTable, Orders: orders}, nil
+	txs, nsTable, orders, replaceTxs, replaceNsTable := mempool.NewNamespaceSort().Select(ctx, req.MaxTxBytes, maxBlockGas, memTxs, req.NsTable, bfttypes.SortType(req.SortType))
+	app.logger.Info("2->sortTxs select time", "used", time.Since(t1).String(), "size", len(txs), "reqSize", len(req.Txs), "sortType", req.SortType, "height", ctx.BlockHeight())
+	app.logger.Info("3->sortTxs total time", "used", time.Since(t0).String(), "size", len(txs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "replaceSize", len(replaceTxs), "replaceNsTable", replaceNsTable, "sortType", req.SortType, "height", ctx.BlockHeight())
+
+	return &abci.ResponseSortTxs{Txs: txs, NsTable: nsTable, Orders: orders, ReplaceTxs: replaceTxs, ReplaceNsTable: replaceNsTable}, nil
 }
 
-// decodeSortTxs decode txByte to mempoolTx
-func (app *BaseApp) decodeSortTxs(txBytes [][]byte) []sdk.MempoolTx {
+// decodeToMemTxs decode txByte to mempoolTx
+func (app *BaseApp) decodeToMemTxs(txBytes [][]byte) []sdk.MempoolTx {
 
 	wg := sync.WaitGroup{}
 	txs := make([]sdk.MempoolTx, len(txBytes))
@@ -1673,12 +1674,6 @@ func (app *BaseApp) decodeSortTxs(txBytes [][]byte) []sdk.MempoolTx {
 			}()
 			tx, err := app.ToMemTx(txBz)
 			if err == nil {
-				tx.SortTxHandler = sdk.SortTxHandler{
-					CrossNamespaceTransactionIdentifierHandler: app.crossNamespaceTransactionIdentifierHandler,
-					ContractStaticAnalysisResultHandler:        app.contractStaticAnalysisResultHandler,
-					CheckTxFeeHandler:                          app.checkTxFeeHandler,
-					BaseFeeHandler:                             app.baseFeeHandler,
-				}
 				txs[idx] = tx
 			}
 		}(txBz, idx)
@@ -1742,7 +1737,18 @@ func (app *BaseApp) ToMemTx(txByte []byte) (sdk.MempoolTx, error) {
 		gas = gasTx.GetGas()
 	}
 	from, to, nonce := app.txAccountInfoHandler(tx)
-	return sdk.MempoolTx{Tx: tx, TxBytes: txByte, TxGas: gas, From: from, To: to, Nonce: nonce}, err
+	memTx := sdk.MempoolTx{Tx: tx, TxBytes: txByte, TxGas: gas, From: from, To: to, Nonce: nonce, SortTxHandler: sdk.SortTxHandler{
+		CrossNamespaceTransactionIdentifierHandler: app.crossNamespaceTransactionIdentifierHandler,
+		ContractStaticAnalysisResultHandler:        app.contractStaticAnalysisResultHandler,
+		CheckTxFeeHandler:                          app.checkTxFeeHandler,
+		BaseFeeHandler:                             app.baseFeeHandler,
+		GetAccountNonceHandler:                     app.getAccountNonceHandler,
+	}}
+	switch m := app.mempool.(type) {
+	case *mempool.NamespaceMempool:
+		memTx.SortTxHandler.IsGapped = m.IsGapped
+	}
+	return memTx, err
 }
 
 // Close is called in start cmd to gracefully cleanup resources.

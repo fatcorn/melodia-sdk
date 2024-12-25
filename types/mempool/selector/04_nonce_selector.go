@@ -5,13 +5,20 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
-func NonceSelector(ctx sdk.Context, txs []sdk.MempoolTx, nsTable []*cmtproto.NamespaceTableEntries) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) {
+func NonceSelector(ctx sdk.Context, nsSelectTxs sdk.NamespaceSelectedTxs) sdk.NamespaceSelectedTxs {
 
+	txs := nsSelectTxs.Txs
+	nsTable := nsSelectTxs.NsTable
 	var (
 		selectedTxs     = make([]sdk.MempoolTx, 0, len(txs))
 		selectedNsTable = make([]*cmtproto.NamespaceTableEntries, 0)
 		offset          = int32(0)
-		iterOffset      = int32(0)
+
+		replaceTxs     = make([]sdk.MempoolTx, 0)
+		replaceNsTable = make([]*cmtproto.NamespaceTableEntries, 0)
+		replaceOffset  = int32(0)
+
+		iterOffset = int32(0)
 	)
 
 	for _, nsEntry := range nsTable {
@@ -29,12 +36,20 @@ func NonceSelector(ctx sdk.Context, txs []sdk.MempoolTx, nsTable []*cmtproto.Nam
 			txSignersSeqs := make(map[string]uint64)
 			seq, ok := selectedTxsSignersSeqs[from]
 			if !ok {
+				isGapped := memTx.IsGapped(ctx.WithNamepace(namespaceId), memTx)
+				if !isGapped {
+					continue
+				}
 				txSignersSeqs[from] = nonce
 			} else {
 				// If we have seen this signer before in this block, we must make
 				// sure that the current sequence is seq+1; otherwise is invalid
 				// and we skip it.
 				if seq+1 != nonce {
+					if seq+1 > nonce {
+						replaceTxs = append(replaceTxs, memTx)
+						replaceOffset++
+					}
 					continue
 				}
 				txSignersSeqs[from] = nonce
@@ -59,11 +74,28 @@ func NonceSelector(ctx sdk.Context, txs []sdk.MempoolTx, nsTable []*cmtproto.Nam
 			}
 			selectedTxsNums = txsLen
 		}
-		selectedNsTable = append(selectedNsTable, &cmtproto.NamespaceTableEntries{
-			Namespace: namespaceId,
-			Offset:    offset,
-		})
+
+		if len(selectedTxs) > 0 {
+			selectedNsTable = append(selectedNsTable, &cmtproto.NamespaceTableEntries{
+				Namespace: namespaceId,
+				Offset:    offset,
+			})
+		}
+
+		if len(replaceTxs) > 0 {
+			replaceNsTable = append(replaceNsTable, &cmtproto.NamespaceTableEntries{
+				Namespace: namespaceId,
+				Offset:    replaceOffset,
+			})
+		}
+
 		iterOffset = nsEntry.Offset
 	}
-	return selectedTxs, selectedNsTable
+
+	return sdk.NamespaceSelectedTxs{
+		Txs:            selectedTxs,
+		NsTable:        selectedNsTable,
+		ReplaceTxs:     replaceTxs,
+		ReplaceNsTable: replaceNsTable,
+	}
 }

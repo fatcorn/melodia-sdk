@@ -1,13 +1,15 @@
 package selector
 
 import (
-	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
-func BaseFeeSelector(ctx sdk.Context, txs []sdk.MempoolTx, nsTable []*cmtproto.NamespaceTableEntries) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) {
-	return txs, nsTable
-
+func BaseFeeSelector(ctx sdk.Context, nsSelectTxs sdk.NamespaceSelectedTxs) sdk.NamespaceSelectedTxs {
+	return nsSelectTxs
+	//
+	//txs := nsSelectTxs.Txs
+	//nsTable := nsSelectTxs.NsTable
+	//
 	//var (
 	//	selectedTxs     = make([]sdk.MempoolTx, 0, len(txs))
 	//	selectedNsTable = make([]*cmtproto.NamespaceTableEntries, 0)
@@ -38,6 +40,10 @@ func BaseFeeSelector(ctx sdk.Context, txs []sdk.MempoolTx, nsTable []*cmtproto.N
 	//	})
 	//	iterOffset = nsEntry.Offset
 	//}
-	//
-	//return selectedTxs, selectedNsTable
+	//return sdk.NamespaceSelectedTxs{
+	//	Txs:            selectedTxs,
+	//	NsTable:        selectedNsTable,
+	//	ReplaceTxs:     nsSelectTxs.ReplaceTxs,
+	//	ReplaceNsTable: nsSelectTxs.ReplaceNsTable,
+	//}
 }
