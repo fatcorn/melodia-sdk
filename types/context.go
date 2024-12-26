@@ -72,7 +72,7 @@ type Context struct {
 	namespaceId        uint64 // The tx related namespaceId
 	nextAccountNumbers map[string]map[uint64]uint64
 	synchronous        bool
-	maxNonce           uint64
+	nonce              uint64
 
 	txSigner *string
 
@@ -111,7 +111,7 @@ func (c Context) Namespace() uint64                             { return c.names
 func (c Context) TxSigner() *string                             { return c.txSigner }
 
 func (c Context) Synchronous() bool { return c.synchronous }
-func (c Context) MaxNonce() uint64  { return c.maxNonce }
+func (c Context) Nonce() uint64     { return c.nonce }
 func (c Context) NextAccountNumber(address string) *uint64 {
 	if accNumbers, ok := c.nextAccountNumbers[address]; ok {
 		if accountNumber, numOk := accNumbers[c.namespaceId]; numOk {
@@ -227,8 +227,8 @@ func (c Context) WithNamespaceBlockHeight(namespaceBlockHeight int64) Context {
 	c.namespaceBlockHeight = namespaceBlockHeight
 	return c
 }
-func (c Context) WithMaxNonce(maxNonce uint64) Context {
-	c.maxNonce = maxNonce
+func (c Context) WithNonce(nonce uint64) Context {
+	c.nonce = nonce
 	return c
 }
 func (c Context) WithTxSigner(txSigner *string) Context {

@@ -112,12 +112,6 @@ type MempoolTx struct {
 	To      string
 	Nonce   uint64
 }
-type NamespaceSelectedTxs struct {
-	Txs            []MempoolTx
-	NsTable        []*tdmtypes.NamespaceTableEntries
-	ReplaceTxs     []MempoolTx
-	ReplaceNsTable []*tdmtypes.NamespaceTableEntries
-}
 
 type NamespaceMempoolTxs struct {
 	NamespaceId uint64
@@ -126,6 +120,31 @@ type NamespaceMempoolTxs struct {
 
 func (tx *MempoolTx) Hash() string {
 	return tmbytes.HexBytes(tmtypes.Tx(tx.TxBytes).Hash()).String()
+}
+
+// GasFeeCapCmp compares the fee cap of two transactions.
+func (tx *MempoolTx) GasFeeCapCmp(other *MempoolTx) int {
+	return tx.GasFeeCap().Cmp(other.GasFeeCap())
+}
+
+// GasFeeCapCmp compares the fee cap of two transactions.
+func (tx *MempoolTx) GasFeeCap() *big.Int {
+	var gasFeeCap int64
+	feeTx, ok := tx.Tx.(FeeTx)
+	if ok {
+		fee := feeTx.GetFee()
+		gas := feeTx.GetGas()
+		for _, c := range fee {
+			gasPrice := c.Amount.QuoRaw(int64(gas))
+			if gasPrice.IsInt64() {
+				gasFeeCap = gasPrice.Int64()
+			}
+			if gasFeeCap > 0 {
+				return big.NewInt(gasFeeCap)
+			}
+		}
+	}
+	return big.NewInt(0)
 }
 
 func ListNamespaceMemTxs(MempoolTxs []MempoolTx, nsTable []*tdmtypes.NamespaceTableEntries) map[uint64][]MempoolTx {

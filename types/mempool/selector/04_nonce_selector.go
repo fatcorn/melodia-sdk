@@ -5,18 +5,12 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
-func NonceSelector(ctx sdk.Context, nsSelectTxs sdk.NamespaceSelectedTxs) sdk.NamespaceSelectedTxs {
+func NonceSelector(ctx sdk.Context, txs []sdk.MempoolTx, nsTable []*cmtproto.NamespaceTableEntries) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) {
 
-	txs := nsSelectTxs.Txs
-	nsTable := nsSelectTxs.NsTable
 	var (
 		selectedTxs     = make([]sdk.MempoolTx, 0, len(txs))
 		selectedNsTable = make([]*cmtproto.NamespaceTableEntries, 0)
 		offset          = int32(0)
-
-		replaceTxs     = make([]sdk.MempoolTx, 0)
-		replaceNsTable = make([]*cmtproto.NamespaceTableEntries, 0)
-		replaceOffset  = int32(0)
 
 		iterOffset  = int32(0)
 		pendingSize = 0
@@ -36,6 +30,11 @@ func NonceSelector(ctx sdk.Context, nsSelectTxs sdk.NamespaceSelectedTxs) sdk.Na
 
 			txSignersSeqs := make(map[string]uint64)
 			seq, ok := selectedTxsSignersSeqs[from]
+			//if memTx.Nonce == 48370 {
+			//	if ctx.BlockHeight() < 660 {
+			//		continue
+			//	}
+			//}
 			if !ok {
 				isGapped := memTx.IsGapped(ctx.WithNamepace(namespaceId), memTx)
 				if !isGapped {
@@ -48,12 +47,7 @@ func NonceSelector(ctx sdk.Context, nsSelectTxs sdk.NamespaceSelectedTxs) sdk.Na
 				// sure that the current sequence is seq+1; otherwise is invalid
 				// and we skip it.
 				if seq+1 != nonce {
-					if seq+1 > nonce {
-						replaceTxs = append(replaceTxs, memTx)
-						replaceOffset++
-					} else {
-						pendingSize++
-					}
+					pendingSize++
 					continue
 				}
 				txSignersSeqs[from] = nonce
@@ -85,14 +79,6 @@ func NonceSelector(ctx sdk.Context, nsSelectTxs sdk.NamespaceSelectedTxs) sdk.Na
 				Offset:    offset,
 			})
 		}
-
-		if len(replaceTxs) > 0 {
-			replaceNsTable = append(replaceNsTable, &cmtproto.NamespaceTableEntries{
-				Namespace: namespaceId,
-				Offset:    replaceOffset,
-			})
-		}
-
 		iterOffset = nsEntry.Offset
 	}
 
@@ -100,10 +86,5 @@ func NonceSelector(ctx sdk.Context, nsSelectTxs sdk.NamespaceSelectedTxs) sdk.Na
 		ctx.Logger().Info("nonce selector pending txs", "size", len(txs), "nsTable", nsTable, "pendingSize", pendingSize)
 	}
 
-	return sdk.NamespaceSelectedTxs{
-		Txs:            selectedTxs,
-		NsTable:        selectedNsTable,
-		ReplaceTxs:     replaceTxs,
-		ReplaceNsTable: replaceNsTable,
-	}
+	return selectedTxs, selectedNsTable
 }

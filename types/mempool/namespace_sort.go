@@ -98,7 +98,7 @@ func (nsm *NamespaceSort) SortTxs(ctx context.Context, nsTxs map[uint64][]sdk.Me
 	return nsIters
 }
 
-func (nsm *NamespaceSort) SelectTxs(ctx context.Context, maxBytes, maxGas int64, reqTxs []sdk.MempoolTx, reqNsTable []*cmtproto.NamespaceTableEntries, sortType types.SortType) sdk.NamespaceSelectedTxs {
+func (nsm *NamespaceSort) SelectTxs(ctx context.Context, maxBytes, maxGas int64, reqTxs []sdk.MempoolTx, reqNsTable []*cmtproto.NamespaceTableEntries, sortType types.SortType) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) {
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	t0 := time.Now()
@@ -137,20 +137,15 @@ func (nsm *NamespaceSort) SelectTxs(ctx context.Context, maxBytes, maxGas int64,
 		})
 	}
 
-	nsSelectedTxs := sdk.NamespaceSelectedTxs{
-		Txs:     selectedTxs,
-		NsTable: selectedNsTable,
-	}
-
-	sdkCtx.Logger().Info("2.2->sortTxs txsIterators time", "use", time.Since(t1).String(), "size", len(nsSelectedTxs.Txs), "reqSize", len(reqTxs), "height", sdkCtx.BlockHeight())
+	sdkCtx.Logger().Info("2.2->sortTxs txsIterators time", "use", time.Since(t1).String(), "size", len(selectedTxs), "reqSize", len(reqTxs), "height", sdkCtx.BlockHeight())
 
 	t2 := time.Now()
 
 	if sortType == types.SortAndSelect {
 		// Define selectors in an array to apply them in sequence
-		selectors := []func(sdk.Context, sdk.NamespaceSelectedTxs) sdk.NamespaceSelectedTxs{
-			func(ctx sdk.Context, nsSelectedTxs sdk.NamespaceSelectedTxs) sdk.NamespaceSelectedTxs {
-				return selector.LimitSelector(ctx, nsSelectedTxs, maxBytes, maxGas)
+		selectors := []func(sdk.Context, []sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries){
+			func(ctx sdk.Context, txs []sdk.MempoolTx, nsTable []*cmtproto.NamespaceTableEntries) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) {
+				return selector.LimitSelector(ctx, maxBytes, maxGas, txs, nsTable)
 			},
 			selector.BaseFeeSelector,
 			selector.InterChainSelector,
@@ -158,20 +153,20 @@ func (nsm *NamespaceSort) SelectTxs(ctx context.Context, maxBytes, maxGas int64,
 		}
 		// Apply all selectors in sequence
 		for _, selectFn := range selectors {
-			nsSelectedTxs = selectFn(sdkCtx, nsSelectedTxs)
+			selectedTxs, selectedNsTable = selectFn(sdkCtx, selectedTxs, selectedNsTable)
 		}
 	}
 
-	sdkCtx.Logger().Info("2.3->sortTxs selectors time", "use", time.Since(t2).String(), "size", len(nsSelectedTxs.Txs), "reqSize", len(reqTxs), "height", sdkCtx.BlockHeight())
+	sdkCtx.Logger().Info("2.3->sortTxs selectors time", "use", time.Since(t2).String(), "size", len(selectedTxs), "reqSize", len(reqTxs), "height", sdkCtx.BlockHeight())
 
-	return nsSelectedTxs
+	return selectedTxs, selectedNsTable
 }
 
-func (nsm *NamespaceSort) Select(ctx context.Context, maxBytes, maxGas int64, reqTxs []sdk.MempoolTx, reqNsTable []*cmtproto.NamespaceTableEntries, sortType types.SortType) ([][]byte, []*cmtproto.NamespaceTableEntries, *cmtproto.Orders, [][]byte, []*cmtproto.NamespaceTableEntries) {
+func (nsm *NamespaceSort) Select(ctx context.Context, maxBytes, maxGas int64, reqTxs []sdk.MempoolTx, reqNsTable []*cmtproto.NamespaceTableEntries, sortType types.SortType) ([][]byte, []*cmtproto.NamespaceTableEntries, *cmtproto.Orders) {
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 
-	nsSelectedTxs := nsm.SelectTxs(ctx, maxBytes, maxGas, reqTxs, reqNsTable, sortType)
+	selectedTxs, selectedNsTable := nsm.SelectTxs(ctx, maxBytes, maxGas, reqTxs, reqNsTable, sortType)
 
 	var (
 		//sort
@@ -230,9 +225,9 @@ func (nsm *NamespaceSort) Select(ctx context.Context, maxBytes, maxGas int64, re
 
 	t0 := time.Now()
 
-	for _, nsEntry := range nsSelectedTxs.NsTable {
+	for _, nsEntry := range selectedNsTable {
 
-		memTxs := nsSelectedTxs.Txs[iterOffset:nsEntry.Offset]
+		memTxs := selectedTxs[iterOffset:nsEntry.Offset]
 		namespaceId := nsEntry.Namespace
 
 		// Static analysis
@@ -348,32 +343,7 @@ func (nsm *NamespaceSort) Select(ctx context.Context, maxBytes, maxGas int64, re
 		}
 		iterOffset = nsEntry.Offset
 	}
-	sdkCtx.Logger().Info("2.4->sortTxs orders time", "use", time.Since(t0).String(), "size", len(nsSelectedTxs.Txs), "reqSize", len(reqTxs), "height", sdkCtx.BlockHeight())
+	sdkCtx.Logger().Info("2.4->sortTxs orders time", "use", time.Since(t0).String(), "size", len(selectedTxs), "reqSize", len(reqTxs), "height", sdkCtx.BlockHeight())
 
-	t1 := time.Now()
-
-	var (
-		replaceTxs        = make([][]byte, 0)
-		replaceNsTable    = make([]*cmtproto.NamespaceTableEntries, 0)
-		replaceOffset     = 0
-		replaceIterOffset = int32(0)
-	)
-	for _, nsEntry := range nsSelectedTxs.ReplaceNsTable {
-		memTxs := nsSelectedTxs.ReplaceTxs[replaceIterOffset:nsEntry.Offset]
-		namespaceId := nsEntry.Namespace
-		for _, memTx := range memTxs {
-			replaceTxs = append(replaceTxs, memTx.TxBytes)
-			replaceOffset++
-		}
-		replaceNsTable = append(replaceNsTable, &cmtproto.NamespaceTableEntries{
-			Namespace: namespaceId,
-			Offset:    int32(replaceOffset),
-		})
-		replaceIterOffset = nsEntry.Offset
-	}
-	if len(replaceTxs) > 0 {
-		sdkCtx.Logger().Info("2.5->sortTxs replace time", "use", time.Since(t1).String(), "size", len(nsSelectedTxs.Txs), "reqSize", len(reqTxs), "replaceSize", len(replaceTxs), "height", sdkCtx.BlockHeight())
-	}
-
-	return txs, nsTable, orders, replaceTxs, replaceNsTable
+	return txs, nsTable, orders
 }

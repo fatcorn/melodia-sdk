@@ -1128,7 +1128,7 @@ func (app *BaseApp) deliverTx(tx []byte, opts ...sdk.Context) *abci.ExecTxResult
 	}()
 	t2 := time.Now()
 
-	gInfo, result, anteEvents, _, err := app.runTx(execModeFinalize, tx, ctx)
+	gInfo, result, anteEvents, _, _, err := app.runTx(execModeFinalize, tx, ctx)
 	if err != nil {
 		resultStr = "failed"
 		resp = sdkerrors.ResponseExecTxResultWithEvents(
@@ -1268,7 +1268,7 @@ func (app *BaseApp) endBlock(ctx context.Context) (sdk.EndBlock, error) {
 // Note, gas execution info is always returned. A reference to a Result is
 // returned if the tx does not run out of gas and if all the messages are valid
 // and execute successfully. An error is returned otherwise.
-func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (gInfo sdk.GasInfo, result *sdk.Result, anteEvents []abci.Event, packetMsg *sdk.PIBCPacket, err error) {
+func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (gInfo sdk.GasInfo, result *sdk.Result, anteEvents []abci.Event, packetMsg *sdk.PIBCPacket, replaceTxBytes []byte, err error) {
 	// NOTE: GasWanted should be returned by the AnteHandler. GasUsed is
 	// determined by the GasMeter. We need access to the context to get the gas
 	// meter, so we initialize upfront.
@@ -1291,7 +1291,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 
 	// only run the tx if there is block gas remaining
 	if mode == execModeFinalize && ctx.BlockGasMeter().IsOutOfGas() {
-		return gInfo, nil, nil, nil, errorsmod.Wrap(sdkerrors.ErrOutOfGas, "no block gas left to run tx")
+		return gInfo, nil, nil, nil, nil, errorsmod.Wrap(sdkerrors.ErrOutOfGas, "no block gas left to run tx")
 	}
 
 	defer func() {
@@ -1301,10 +1301,6 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			err, result = processRecovery(r, recoveryMW), nil
 			ctx.Logger().Warn("panic recovered in runTx", "err", err, "height", ctx.BlockHeight(), "txIndex", ctx.TxIndex())
 
-		}
-		switch m := app.mempool.(type) {
-		case *mempool.NamespaceMempool:
-			m.DeferRun(ctx, memTx, err)
 		}
 		gInfo = sdk.GasInfo{GasWanted: gasWanted, GasUsed: ctx.GasMeter().GasConsumed()}
 	}()
@@ -1342,7 +1338,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	t2 := time.Now()
 	memTx, err = app.ToMemTx(txBytes)
 	if err != nil {
-		return sdk.GasInfo{}, nil, nil, nil, err
+		return sdk.GasInfo{}, nil, nil, nil, nil, err
 	}
 	tx = memTx.Tx
 	if m, ok := app.mempool.(*mempool.NamespaceMempool); ok {
@@ -1352,13 +1348,13 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	t3 := time.Now()
 	msgs := tx.GetMsgs()
 	if err := validateBasicTxMsgs(msgs); err != nil {
-		return sdk.GasInfo{}, nil, nil, nil, err
+		return sdk.GasInfo{}, nil, nil, nil, nil, err
 	}
 
 	for _, msg := range msgs {
 		handler := app.msgServiceRouter.Handler(msg)
 		if handler == nil {
-			return sdk.GasInfo{}, nil, nil, nil, errorsmod.Wrapf(sdkerrors.ErrUnknownRequest, "no message handler found for %T", msg)
+			return sdk.GasInfo{}, nil, nil, nil, nil, errorsmod.Wrapf(sdkerrors.ErrUnknownRequest, "no message handler found for %T", msg)
 		}
 	}
 	t4 := time.Now()
@@ -1394,7 +1390,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			// Also, in the case of the tx aborting, we need to track gas consumed via
 			// the instantiated gas meter in the AnteHandler, so we update the context
 			// prior to returning.
-			ctx = newCtx.WithMultiStore(ms).WithMaxNonce(newCtx.MaxNonce())
+			ctx = newCtx.WithMultiStore(ms)
 		}
 
 		events := ctx.EventManager().Events()
@@ -1403,7 +1399,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 		gasWanted = ctx.GasMeter().Limit()
 
 		if err != nil {
-			return gInfo, nil, nil, nil, err
+			return gInfo, nil, nil, nil, nil, err
 		}
 		a4 := time.Now()
 		//now = cmttime.Now()
@@ -1426,6 +1422,17 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 
 	t5 := time.Now()
 
+	switch m := app.mempool.(type) {
+	case *mempool.NamespaceMempool:
+		oldTx, err := m.AfterRun(ctx, memTx)
+		if err != nil {
+			return gInfo, nil, nil, nil, nil, err
+		}
+		if oldTx != nil {
+			replaceTxBytes = oldTx.TxBytes
+		}
+	}
+
 	//now := cmttime.Now()
 	if mode == execModeCheck {
 		err = app.mempool.Insert(ctx, memTx)
@@ -1443,21 +1450,16 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			}
 			msg, err := app.pibcPacketGeneratorHadler.Handle(ctx, tx, getSigigner)
 			if err != nil {
-				return gInfo, nil, anteEvents, nil, err
+				return gInfo, nil, anteEvents, nil, nil, err
 			}
 			packetMsg = msg
 		}
 	} else if mode == execModeFinalize {
 		err = app.mempool.Remove(memTx)
 		if err != nil && !errors.Is(err, mempool.ErrTxNotFound) {
-			return gInfo, nil, anteEvents, nil,
+			return gInfo, nil, anteEvents, nil, nil,
 				fmt.Errorf("failed to remove tx from mempool: %w", err)
 		}
-	}
-	switch m := app.mempool.(type) {
-	case *mempool.NamespaceMempool:
-		success := err == nil
-		m.AfterRun(ctx, memTx, success)
 	}
 
 	t6 := time.Now()
@@ -1494,7 +1496,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 
 		newCtx, errPostHandler := app.postHandler(postCtx, tx, mode == execModeSimulate, err == nil)
 		if errPostHandler != nil {
-			return gInfo, nil, anteEvents, nil, errors.Join(err, errPostHandler)
+			return gInfo, nil, anteEvents, nil, nil, errors.Join(err, errPostHandler)
 		}
 
 		// we don't want runTx to panic if runMsgs has failed earlier
@@ -1533,7 +1535,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			"cache write", t9.Sub(t8).String(),
 		)
 	}
-	return gInfo, result, anteEvents, packetMsg, err
+	return gInfo, result, anteEvents, packetMsg, replaceTxBytes, err
 }
 
 // runMsgs iterates through a list of messages and executes them with the provided
@@ -1650,11 +1652,11 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 		maxBlockGas = b.MaxGas
 	}
 
-	txs, nsTable, orders, replaceTxs, replaceNsTable := mempool.NewNamespaceSort().Select(ctx, req.MaxTxBytes, maxBlockGas, memTxs, req.NsTable, bfttypes.SortType(req.SortType))
+	txs, nsTable, orders := mempool.NewNamespaceSort().Select(ctx, req.MaxTxBytes, maxBlockGas, memTxs, req.NsTable, bfttypes.SortType(req.SortType))
 	app.logger.Info("2->sortTxs select time", "used", time.Since(t1).String(), "size", len(txs), "reqSize", len(req.Txs), "sortType", req.SortType, "height", ctx.BlockHeight())
-	app.logger.Info("3->sortTxs total time", "used", time.Since(t0).String(), "size", len(txs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "replaceSize", len(replaceTxs), "replaceNsTable", replaceNsTable, "sortType", req.SortType, "height", ctx.BlockHeight())
+	app.logger.Info("3->sortTxs total time", "used", time.Since(t0).String(), "size", len(txs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "sortType", req.SortType, "height", ctx.BlockHeight())
 
-	return &abci.ResponseSortTxs{Txs: txs, NsTable: nsTable, Orders: orders, ReplaceTxs: replaceTxs, ReplaceNsTable: replaceNsTable}, nil
+	return &abci.ResponseSortTxs{Txs: txs, NsTable: nsTable, Orders: orders}, nil
 }
 
 // decodeToMemTxs decode txByte to mempoolTx
@@ -1695,7 +1697,7 @@ func (app *BaseApp) PrepareProposalVerifyTx(tx sdk.Tx) ([]byte, error) {
 		return nil, err
 	}
 
-	_, _, _, _, err = app.runTx(execModePrepareProposal, bz)
+	_, _, _, _, _, err = app.runTx(execModePrepareProposal, bz)
 	if err != nil {
 		return nil, err
 	}
@@ -1714,7 +1716,7 @@ func (app *BaseApp) ProcessProposalVerifyTx(txBz []byte) (sdk.Tx, error) {
 		return nil, err
 	}
 
-	_, _, _, _, err = app.runTx(execModeProcessProposal, txBz)
+	_, _, _, _, _, err = app.runTx(execModeProcessProposal, txBz)
 	if err != nil {
 		return nil, err
 	}
