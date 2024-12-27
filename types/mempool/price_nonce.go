@@ -107,8 +107,8 @@ func DefaultPriceNonceMempool() *PriceNonceMempool[int64] {
 	return NewPriceNonceMempool(DefaultPriceNonceMempoolConfig())
 }
 
-func (mp *PriceNonceMempool[C]) Insert(_ context.Context, tx sdk.MempoolTx) error {
-	return nil
+func (mp *PriceNonceMempool[C]) Insert(ctx context.Context, tx sdk.MempoolTx) (context.Context, error) {
+	return ctx, nil
 }
 func (mp *PriceNonceMempool[C]) PrepareSenderTxs() (map[string][]*Transaction[C], []string) {
 	t0 := time.Now()
@@ -167,7 +167,7 @@ func (mp *PriceNonceMempool[C]) Select(ctx context.Context, txs []sdk.MempoolTx)
 func (mp *PriceNonceMempool[C]) CountTx() int {
 	return len(mp.txs)
 }
-func (mp *PriceNonceMempool[C]) Remove(tx sdk.MempoolTx) error {
+func (mp *PriceNonceMempool[C]) Remove(ctx context.Context, tx sdk.MempoolTx) error {
 	panic("implement me")
 }
 

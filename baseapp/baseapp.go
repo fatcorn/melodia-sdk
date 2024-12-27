@@ -1341,8 +1341,9 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 		return sdk.GasInfo{}, nil, nil, nil, nil, err
 	}
 	tx = memTx.Tx
+
 	if m, ok := app.mempool.(*mempool.NamespaceMempool); ok {
-		ctx = m.BeforeRun(ctx, memTx)
+		ctx = m.Prepare(ctx, memTx)
 	}
 
 	t3 := time.Now()
@@ -1422,20 +1423,15 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 
 	t5 := time.Now()
 
-	switch m := app.mempool.(type) {
-	case *mempool.NamespaceMempool:
-		oldTx, err := m.AfterRun(ctx, memTx)
+	//now := cmttime.Now()
+	if mode == execModeCheck {
+		var newCtx context.Context
+		newCtx, err = app.mempool.Insert(ctx, memTx)
 		if err != nil {
 			return gInfo, nil, nil, nil, nil, err
 		}
-		if oldTx != nil {
-			replaceTxBytes = oldTx.TxBytes
-		}
-	}
-
-	//now := cmttime.Now()
-	if mode == execModeCheck {
-		err = app.mempool.Insert(ctx, memTx)
+		ctx = sdk.UnwrapSDKContext(newCtx)
+		replaceTxBytes = ctx.ReplaceTxBytes()
 		if app.pibcPacketGeneratorHadler != nil && app.signerName != "" {
 			getSigigner := func() sdk.AccAddress {
 				record, err := app.signerKeyring.Key(app.signerName)
@@ -1455,7 +1451,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			packetMsg = msg
 		}
 	} else if mode == execModeFinalize {
-		err = app.mempool.Remove(memTx)
+		err = app.mempool.Remove(ctx, memTx)
 		if err != nil && !errors.Is(err, mempool.ErrTxNotFound) {
 			return gInfo, nil, anteEvents, nil, nil,
 				fmt.Errorf("failed to remove tx from mempool: %w", err)

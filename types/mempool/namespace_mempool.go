@@ -33,57 +33,6 @@ func NewNamespaceMempool() *NamespaceMempool {
 	return nsm
 }
 
-func (nsm *NamespaceMempool) BeforeRun(ctx sdk.Context, tx sdk.MempoolTx) sdk.Context {
-	if ctx.ExecMode() == sdk.ExecModeFinalize {
-		//set signer
-		if signer, ok := nsm.txsSigner.Load(tx.Hash()); ok {
-			ctx = ctx.WithTxSigner(signer.(*string))
-		}
-	}
-	return ctx
-}
-
-func (nsm *NamespaceMempool) AfterRun(ctx sdk.Context, tx sdk.MempoolTx) (*sdk.MempoolTx, error) {
-
-	if ctx.ExecMode() == sdk.ExecModeCheck {
-		//update nonce
-		pendingNoncer := nsm.getCheckNoncer(ctx, tx.GetAccountNonceHandler)
-		sender := tx.From
-		nonce := ctx.Nonce()
-		pendingNoncer.setIfHigher(ctx, sender, nonce)
-
-		//add signer cache
-		txSigner := ctx.TxSigner()
-		if txSigner != nil {
-			nsm.txsSigner.Store(tx.Hash(), txSigner, func() {})
-		}
-
-		//add pending tx
-		pendingTxs := nsm.getPendingTxs(ctx, tx.From)
-		if pendingTxs.Contains(tx.Nonce) {
-			ok, old := pendingTxs.Add(&tx)
-			if !ok {
-				return nil, errors.New("replacement transaction underpriced")
-			}
-			return old, nil
-		} else {
-			pendingTxs.Put(&tx)
-		}
-	} else if ctx.ExecMode() == sdk.ExecModeFinalize {
-		finalNoncer := nsm.getFinalNoncer(ctx, func(ctx sdk.Context, address string) (uint64, error) {
-			return 0, nil
-		})
-		sender := tx.From
-		nonce := ctx.Nonce()
-		finalNoncer.setIfHigher(ctx, sender, nonce)
-
-		//remove pending tx
-		pendingTxs := nsm.getPendingTxs(ctx, tx.From)
-		pendingTxs.Remove(&tx)
-	}
-	return nil, nil
-}
-
 func (nsm *NamespaceMempool) getPendingTxs(ctx sdk.Context, address string) *list {
 	namespaceId := ctx.Namespace()
 	addressKey := strconv.FormatUint(namespaceId, 10) + address
@@ -161,10 +110,54 @@ func (nsm *NamespaceMempool) Reset() {
 	nsm.txsSigner.Clear()
 }
 
-func (nsm *NamespaceMempool) Insert(ctx context.Context, tx sdk.MempoolTx) error {
-	return nil
+func (nsm *NamespaceMempool) Prepare(ctx sdk.Context, tx sdk.MempoolTx) sdk.Context {
+	if ctx.ExecMode() == sdk.ExecModeFinalize {
+		//set signer
+		if signer, ok := nsm.txsSigner.Load(tx.Hash()); ok {
+			ctx = ctx.WithTxSigner(signer.(*string))
+		}
+	}
+	return ctx
 }
-func (nsm *NamespaceMempool) Remove(tx sdk.MempoolTx) error {
+
+func (nsm *NamespaceMempool) Insert(ctx context.Context, tx sdk.MempoolTx) (context.Context, error) {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	//update nonce
+	pendingNoncer := nsm.getCheckNoncer(sdkCtx, tx.GetAccountNonceHandler)
+	sender := tx.From
+	nonce := sdkCtx.Nonce()
+	pendingNoncer.setIfHigher(sdkCtx, sender, nonce)
+
+	//add signer cache
+	txSigner := sdkCtx.TxSigner()
+	if txSigner != nil {
+		nsm.txsSigner.Store(tx.Hash(), txSigner, func() {})
+	}
+	//add pending tx
+	pendingTxs := nsm.getPendingTxs(sdkCtx, tx.From)
+	if pendingTxs.Contains(tx.Nonce) {
+		ok, old := pendingTxs.Add(&tx)
+		if !ok {
+			return sdkCtx, errors.New("replacement transaction underpriced")
+		}
+		return sdkCtx.WithReplaceTxBytes(old.TxBytes), nil
+	} else {
+		pendingTxs.Put(&tx)
+	}
+	return sdkCtx, nil
+}
+func (nsm *NamespaceMempool) Remove(ctx context.Context, tx sdk.MempoolTx) error {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	finalNoncer := nsm.getFinalNoncer(sdkCtx, func(ctx sdk.Context, address string) (uint64, error) {
+		return 0, nil
+	})
+	sender := tx.From
+	nonce := sdkCtx.Nonce()
+	finalNoncer.setIfHigher(sdkCtx, sender, nonce)
+
+	//remove pending tx
+	pendingTxs := nsm.getPendingTxs(sdkCtx, tx.From)
+	pendingTxs.Remove(&tx)
 	return nil
 }
 func (nsm *NamespaceMempool) Select(context.Context, []sdk.MempoolTx) Iterator {

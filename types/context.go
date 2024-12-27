@@ -74,7 +74,8 @@ type Context struct {
 	synchronous        bool
 	nonce              uint64
 
-	txSigner *string
+	txSigner       *string
+	replaceTxBytes []byte
 
 	namespaceBlockManager *nsblockstore.NamespaceStoreManager
 	executionCounter      uint64
@@ -110,8 +111,9 @@ func (c Context) TxIndex() int                                  { return c.txInd
 func (c Context) Namespace() uint64                             { return c.namespaceId }
 func (c Context) TxSigner() *string                             { return c.txSigner }
 
-func (c Context) Synchronous() bool { return c.synchronous }
-func (c Context) Nonce() uint64     { return c.nonce }
+func (c Context) Synchronous() bool      { return c.synchronous }
+func (c Context) Nonce() uint64          { return c.nonce }
+func (c Context) ReplaceTxBytes() []byte { return c.replaceTxBytes }
 func (c Context) NextAccountNumber(address string) *uint64 {
 	if accNumbers, ok := c.nextAccountNumbers[address]; ok {
 		if accountNumber, numOk := accNumbers[c.namespaceId]; numOk {
@@ -229,6 +231,10 @@ func (c Context) WithNamespaceBlockHeight(namespaceBlockHeight int64) Context {
 }
 func (c Context) WithNonce(nonce uint64) Context {
 	c.nonce = nonce
+	return c
+}
+func (c Context) WithReplaceTxBytes(replaceTxBytes []byte) Context {
+	c.replaceTxBytes = replaceTxBytes
 	return c
 }
 func (c Context) WithTxSigner(txSigner *string) Context {
