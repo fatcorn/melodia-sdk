@@ -126,8 +126,9 @@ func (nsm *NamespaceMempool) Insert(ctx context.Context, tx sdk.MempoolTx) (cont
 	pendingNoncer := nsm.getCheckNoncer(sdkCtx, tx.GetAccountNonceHandler)
 	sender := tx.From
 	nonce := sdkCtx.Nonce()
-	pendingNoncer.setIfHigher(sdkCtx, sender, nonce)
 
+	newNonce := pendingNoncer.setIfHigher(sender, nonce)
+	println("=======check set nonce = ", newNonce, "sender=", sender)
 	//add signer cache
 	txSigner := sdkCtx.TxSigner()
 	if txSigner != nil {
@@ -153,7 +154,9 @@ func (nsm *NamespaceMempool) Remove(ctx context.Context, tx sdk.MempoolTx) error
 	})
 	sender := tx.From
 	nonce := sdkCtx.Nonce()
-	finalNoncer.setIfHigher(sdkCtx, sender, nonce)
+	newNonce := finalNoncer.setIfHigher(sender, nonce)
+
+	println("=======final set nonce = ", newNonce, "sender=", sender)
 
 	//remove pending tx
 	pendingTxs := nsm.getPendingTxs(sdkCtx, tx.From)

@@ -79,41 +79,23 @@ func (txn *noncer) set(_ sdk.Context, addr string, nonce uint64) {
 
 // setIfLower updates a new virtual nonce into the virtual state database if the
 // new one is lower.
-func (txn *noncer) setIfLower(ctx sdk.Context, addr string, nonce uint64) {
-	if _, ok := txn.nonces.Get(addr); !ok {
-		nonce, err := txn.fallback(ctx, addr)
-		if err != nil {
-			panic(err)
+func (txn *noncer) setIfLower(addr string, nonce uint64) {
+	txn.nonces.SetIf(addr, nonce, func(oldNonce interface{}, exists bool) bool {
+		if exists && oldNonce.(uint64) <= nonce {
+			return false
 		}
-		if nonce != 0 {
-			txn.nonces.Set(addr, nonce)
-		}
-	}
-	nonce2, ex := txn.nonces.Get(addr)
-	if ex {
-		if nonce2.(uint64) <= nonce {
-			return
-		}
-	}
-	txn.nonces.Set(addr, nonce)
+		return true
+	})
 }
-func (txn *noncer) setIfHigher(ctx sdk.Context, addr string, nonce uint64) {
-	if _, ok := txn.nonces.Get(addr); !ok {
-		nonce, err := txn.fallback(ctx, addr)
-		if err != nil {
-			panic(err)
+func (txn *noncer) setIfHigher(addr string, nonce uint64) uint64 {
+	latestNonce := txn.nonces.SetIf(addr, nonce, func(oldNonce interface{}, exists bool) bool {
+		if exists && oldNonce.(uint64) > nonce {
+			return false
 		}
-		if nonce != 0 {
-			txn.nonces.Set(addr, nonce)
-		}
-	}
-	nonce2, ex := txn.nonces.Get(addr)
-	if ex {
-		if nonce2.(uint64) > nonce {
-			return
-		}
-	}
-	txn.nonces.Set(addr, nonce)
+		return true
+	})
+
+	return latestNonce.(uint64)
 }
 
 // Reset reset the nonces
