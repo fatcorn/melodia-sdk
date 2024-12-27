@@ -1730,18 +1730,18 @@ func (app *BaseApp) TxEncode(tx sdk.Tx) ([]byte, error) {
 
 func (app *BaseApp) ToMemTx(txByte []byte) (sdk.MempoolTx, error) {
 	tx, err := app.txDecoder(txByte)
-	gas := uint64(0)
-	if gasTx, ok := tx.(sdk.FeeTx); ok {
-		gas = gasTx.GetGas()
-	}
 	from, to, nonce := app.txAccountInfoHandler(tx)
-	memTx := sdk.MempoolTx{Tx: tx, TxBytes: txByte, TxGas: gas, From: from, To: to, Nonce: nonce, SortTxHandler: sdk.SortTxHandler{
+	memTx := sdk.MempoolTx{Tx: tx, TxBytes: txByte, From: from, To: to, Nonce: nonce, SortTxHandler: sdk.SortTxHandler{
 		CrossNamespaceTransactionIdentifierHandler: app.crossNamespaceTransactionIdentifierHandler,
 		ContractStaticAnalysisResultHandler:        app.contractStaticAnalysisResultHandler,
 		CheckTxFeeHandler:                          app.checkTxFeeHandler,
 		BaseFeeHandler:                             app.baseFeeHandler,
 		GetAccountNonceHandler:                     app.getAccountNonceHandler,
 	}}
+
+	memTx.TxGas = memTx.Gas()
+	memTx.GasPrice = memTx.GasFeeCap()
+
 	switch m := app.mempool.(type) {
 	case *mempool.NamespaceMempool:
 		memTx.SortTxHandler.IsGapped = m.IsGapped

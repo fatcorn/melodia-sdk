@@ -106,11 +106,12 @@ type SortTxHandler struct {
 type MempoolTx struct {
 	Tx
 	SortTxHandler
-	TxBytes []byte
-	TxGas   uint64
-	From    string
-	To      string
-	Nonce   uint64
+	TxBytes  []byte
+	TxGas    uint64
+	GasPrice *big.Int
+	From     string
+	To       string
+	Nonce    uint64
 }
 
 type NamespaceMempoolTxs struct {
@@ -124,7 +125,7 @@ func (tx *MempoolTx) Hash() string {
 
 // GasFeeCapCmp compares the fee cap of two transactions.
 func (tx *MempoolTx) GasFeeCapCmp(other *MempoolTx) int {
-	return tx.GasFeeCap().Cmp(other.GasFeeCap())
+	return tx.GasPrice.Cmp(other.GasPrice)
 }
 
 // GasFeeCapCmp compares the fee cap of two transactions.
@@ -145,6 +146,14 @@ func (tx *MempoolTx) GasFeeCap() *big.Int {
 		}
 	}
 	return big.NewInt(0)
+}
+
+func (tx *MempoolTx) Gas() uint64 {
+	feeTx, ok := tx.Tx.(FeeTx)
+	if ok {
+		return feeTx.GetGas()
+	}
+	return 0
 }
 
 func ListNamespaceMemTxs(MempoolTxs []MempoolTx, nsTable []*tdmtypes.NamespaceTableEntries) map[uint64][]MempoolTx {

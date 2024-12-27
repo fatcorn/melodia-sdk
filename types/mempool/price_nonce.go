@@ -31,7 +31,7 @@ type (
 	TxPrice[C comparable] struct {
 		// GetTxPrice returns the price of the transaction. A price must be
 		// comparable via Compare.
-		GetTxPrice func(tx sdk.Tx) C
+		GetTxPrice func(tx sdk.MempoolTx) C
 
 		// Compare compares two transaction priorities. The result must be 0 if
 		// a == b, -1 if a < b, and +1 if a > b.
@@ -60,8 +60,11 @@ type (
 
 func NewDefaultTxPrice() TxPrice[int64] {
 	return TxPrice[int64]{
-		GetTxPrice: func(tx sdk.Tx) int64 {
-			feeTx, ok := tx.(sdk.FeeTx)
+		GetTxPrice: func(tx sdk.MempoolTx) int64 {
+			if tx.GasPrice != nil {
+				return tx.GasPrice.Int64()
+			}
+			feeTx, ok := tx.Tx.(sdk.FeeTx)
 			if ok {
 				fee := feeTx.GetFee()
 				gas := feeTx.GetGas()
@@ -123,7 +126,7 @@ func (mp *PriceNonceMempool[C]) PrepareSenderTxs() (map[string][]*Transaction[C]
 	}
 	sort.Strings(senders)
 
-	println("PrepareSenderTxs use=", time.Since(t0).String())
+	println("PrepareSenderTxs use=", time.Since(t0).String(), "size=", len(mp.txs))
 	return senderTxs, senders
 }
 func (mp *PriceNonceMempool[C]) Select(ctx context.Context, txs []sdk.MempoolTx) Iterator {
@@ -172,7 +175,7 @@ func (mp *PriceNonceMempool[C]) Remove(ctx context.Context, tx sdk.MempoolTx) er
 }
 
 func (mp *PriceNonceMempool[C]) ToTransaction(tx sdk.MempoolTx) Transaction[C] {
-	price := mp.cfg.TxPrice.GetTxPrice(tx.Tx)
+	price := mp.cfg.TxPrice.GetTxPrice(tx)
 	sortTx := Transaction[C]{Nonce: tx.Nonce, Price: price, Sender: tx.From, Tx: tx}
 	return sortTx
 }
