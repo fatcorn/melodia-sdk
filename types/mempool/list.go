@@ -17,7 +17,7 @@ type list struct {
 // gapped, sortable MempoolTx lists.
 func newList() *list {
 	return &list{
-		txs: cmap.NewShardedMap(1024),
+		txs: cmap.NewShardedMap(20000),
 	}
 }
 

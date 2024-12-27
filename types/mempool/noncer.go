@@ -33,7 +33,7 @@ type noncer struct {
 func newNoncer(fallback sdk.GetAccountNonceHandler) *noncer {
 	return &noncer{
 		fallback: fallback,
-		nonces:   multiversion.NewShardedMap(1024),
+		nonces:   multiversion.NewShardedMap(20000),
 	}
 }
 
@@ -100,5 +100,5 @@ func (txn *noncer) setIfHigher(addr string, nonce uint64) uint64 {
 
 // Reset reset the nonces
 func (txn *noncer) Reset() {
-	txn.nonces = multiversion.NewShardedMap(1024)
+	txn.nonces = multiversion.NewShardedMap(20000)
 }
