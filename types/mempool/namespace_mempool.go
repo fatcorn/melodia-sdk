@@ -2,6 +2,7 @@ package mempool
 
 import (
 	"context"
+	"errors"
 	"github.com/cometbft/cometbft/libs/cmap"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"strconv"
@@ -107,16 +108,16 @@ func (nsm *NamespaceMempool) Insert(ctx context.Context, tx sdk.MempoolTx) (cont
 		nsm.txsSigner.Store(tx.Hash(), txSigner, func() {})
 	}
 	//add pending tx
-	//pendingTxs := nsm.getPendingTxs(sdkCtx, tx.From)
-	//if pendingTxs.Contains(tx.Nonce) {
-	//	ok, old := pendingTxs.Add(&tx)
-	//	if !ok {
-	//		return sdkCtx, errors.New("replacement transaction underpriced")
-	//	}
-	//	return sdkCtx.WithReplaceTxBytes(old.TxBytes), nil
-	//} else {
-	//	pendingTxs.Put(&tx)
-	//}
+	pendingTxs := nsm.getPendingTxs(sdkCtx, tx.From)
+	if pendingTxs.Contains(tx.Nonce) {
+		ok, old := pendingTxs.Add(&tx)
+		if !ok {
+			return sdkCtx, errors.New("replacement transaction underpriced")
+		}
+		return sdkCtx.WithReplaceTxBytes(old.TxBytes), nil
+	} else {
+		pendingTxs.Put(&tx)
+	}
 	return sdkCtx, nil
 }
 func (nsm *NamespaceMempool) Remove(ctx context.Context, tx sdk.MempoolTx) error {

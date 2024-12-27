@@ -33,7 +33,7 @@ type noncer struct {
 func newNoncer(fallback sdk.GetAccountNonceHandler) *noncer {
 	return &noncer{
 		fallback: fallback,
-		nonces:   multiversion.NewShardedMap(20000),
+		nonces:   multiversion.NewShardedMap(1024),
 	}
 }
 
