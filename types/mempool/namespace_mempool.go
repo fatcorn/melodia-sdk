@@ -67,7 +67,9 @@ func (nsm *NamespaceMempool) Insert(ctx context.Context, tx sdk.MempoolTx) (cont
 	if err != nil {
 		return nil, err
 	}
-	sdkCtx.WithReplaceTxBytes(oldTx.TxBytes)
+	if oldTx != nil {
+		sdkCtx = sdkCtx.WithReplaceTxBytes(oldTx.TxBytes)
+	}
 	return sdkCtx, nil
 }
 func (nsm *NamespaceMempool) Remove(ctx context.Context, tx sdk.MempoolTx) error {
