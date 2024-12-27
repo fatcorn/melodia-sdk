@@ -110,7 +110,7 @@ func (nsm *NamespaceMempool) Insert(ctx context.Context, tx sdk.MempoolTx) (cont
 	//add pending tx
 	pendingTxs := nsm.getPendingTxs(sdkCtx, tx.From)
 	if pendingTxs.Contains(tx.Nonce) {
-		ok, old := pendingTxs.Add(&tx)
+		ok, old := pendingTxs.Add(&sdk.MempoolTx{Nonce: tx.Nonce, TxBytes: tx.TxBytes, GasPrice: tx.GasPrice})
 		if !ok {
 			return sdkCtx, errors.New("replacement transaction underpriced")
 		}
