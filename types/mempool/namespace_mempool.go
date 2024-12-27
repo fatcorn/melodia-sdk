@@ -71,14 +71,15 @@ func (nsm *NamespaceMempool) IsGapped(ctx sdk.Context, tx sdk.MempoolTx) bool {
 	finalNoncer := nsm.getNoncer(ctx, func(ctx sdk.Context, address string) (uint64, error) {
 		return 0, nil
 	})
-	minNonce := finalNoncer.get(ctx, tx.From)
+	nextNonce := finalNoncer.get(ctx, tx.From)
 	txNonce := tx.Nonce
 
-	println("IsGapped-> minNonce=", minNonce, "txNonce=", txNonce)
-	if minNonce == 0 {
-		return txNonce >= minNonce
+	println("IsGapped-> nextNonce=", nextNonce, "txNonce=", txNonce)
+	if nextNonce == 0 {
+		return txNonce >= nextNonce
 	}
-	return txNonce == minNonce
+	return txNonce >= nextNonce
+	//return txNonce == nextNonce
 }
 func (nsm *NamespaceMempool) Reset() {
 	nsm.mux.Lock()
@@ -126,10 +127,7 @@ func (nsm *NamespaceMempool) Remove(ctx context.Context, tx sdk.MempoolTx) error
 	})
 	sender := tx.From
 	nonce := sdkCtx.Nonce()
-	newNonce := finalNoncer.setIfHigher(sender, nonce)
-
-	println("=======final set nonce = ", newNonce, "sender=", sender)
-
+	finalNoncer.setIfHigher(sender, nonce)
 	//remove pending tx
 	pendingTxs := nsm.getPendingTxs(sdkCtx, tx.From)
 	pendingTxs.Remove(&tx)
