@@ -19,6 +19,7 @@ package mempool
 import (
 	"cosmossdk.io/store/multiversion"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"sync"
 )
 
 // noncer is a tiny virtual state database to manage the executable nonces of
@@ -101,4 +102,44 @@ func (txn *noncer) setIfHigher(addr string, nonce uint64) uint64 {
 // Reset reset the nonces
 func (txn *noncer) Reset() {
 	txn.nonces = multiversion.NewShardedMap(20000)
+}
+
+type namepaceNoncer struct {
+	noncers *sync.Map
+	mux     sync.Mutex
+}
+
+func newNamepsaceNoncer() *namepaceNoncer {
+	return &namepaceNoncer{
+		noncers: &sync.Map{},
+	}
+}
+
+func (ns *namepaceNoncer) getNonce(ctx sdk.Context, sender string) uint64 {
+	finalNoncer := ns.getNoncer(ctx, func(ctx sdk.Context, sender string) (uint64, error) {
+		return 0, nil
+	})
+	return finalNoncer.get(ctx, sender)
+}
+
+func (ns *namepaceNoncer) updateNonce(ctx sdk.Context, sender string, nonce uint64) {
+	finalNoncer := ns.getNoncer(ctx, func(ctx sdk.Context, sender string) (uint64, error) {
+		return 0, nil
+	})
+	finalNoncer.setIfHigher(sender, nonce)
+}
+
+func (ns *namepaceNoncer) getNoncer(ctx sdk.Context, fallback sdk.GetAccountNonceHandler) *noncer {
+	namespaceId := ctx.Namespace()
+	finalNoncer, init := ns.noncers.Load(namespaceId)
+	if !init {
+		ns.mux.Lock()
+		finalNoncer, init = ns.noncers.Load(namespaceId)
+		if !init {
+			finalNoncer = newNoncer(fallback)
+			ns.noncers.Store(namespaceId, finalNoncer)
+		}
+		ns.mux.Unlock()
+	}
+	return finalNoncer.(*noncer)
 }

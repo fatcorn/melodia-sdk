@@ -1,8 +1,12 @@
 package mempool
 
 import (
+	"errors"
 	"github.com/cometbft/cometbft/libs/cmap"
 	"github.com/cosmos/cosmos-sdk/types"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	"strconv"
+	"sync"
 )
 
 // list is a "list" of MempoolTxs belonging to an account, sorted by account
@@ -59,4 +63,50 @@ func (l *list) Remove(tx *types.MempoolTx) (bool, *types.MempoolTx) {
 		return false, nil
 	}
 	return true, nil
+}
+
+type namespaceList struct {
+	lists *sync.Map
+	mux   sync.Mutex
+}
+
+func newNamepaceList() *namespaceList {
+	return &namespaceList{
+		lists: &sync.Map{},
+	}
+}
+
+func (nsl *namespaceList) addTx(ctx sdk.Context, tx sdk.MempoolTx) (*sdk.MempoolTx, error) {
+	pendingTxs := nsl.getTxs(ctx, tx.From)
+	if pendingTxs.Contains(tx.Nonce) {
+		ok, old := pendingTxs.Add(&tx)
+		if !ok {
+			return nil, errors.New("replacement transaction underpriced")
+		}
+		return old, nil
+	} else {
+		pendingTxs.Put(&tx)
+	}
+	return nil, nil
+}
+
+func (nsl *namespaceList) getTxs(ctx sdk.Context, address string) *list {
+	namespaceId := ctx.Namespace()
+	addressKey := strconv.FormatUint(namespaceId, 10) + address
+	pendingList, init := nsl.lists.Load(addressKey)
+	if !init {
+		nsl.mux.Lock()
+		pendingList, init = nsl.lists.Load(addressKey)
+		if !init {
+			pendingList = newList()
+			nsl.lists.Store(addressKey, pendingList)
+		}
+		nsl.mux.Unlock()
+	}
+	return pendingList.(*list)
+}
+
+func (nsl *namespaceList) removeTx(ctx sdk.Context, tx sdk.MempoolTx) (bool, *types.MempoolTx) {
+	pendingTxs := nsl.getTxs(ctx, tx.From)
+	return pendingTxs.Remove(&tx)
 }
