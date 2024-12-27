@@ -33,8 +33,8 @@ func (nsm *NamespaceMempool) IsGapped(ctx sdk.Context, tx sdk.MempoolTx) bool {
 	if nextNonce == 0 {
 		return txNonce >= nextNonce
 	}
-	return txNonce >= nextNonce
-	//return txNonce == nextNonce
+	//return txNonce >= nextNonce
+	return txNonce == nextNonce
 }
 func (nsm *NamespaceMempool) Reset() {
 	nsm.noncer = newNamepsaceNoncer()
