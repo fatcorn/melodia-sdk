@@ -13,22 +13,20 @@ var _ Mempool = (*NamespaceMempool)(nil)
 
 // NamespaceMempool defines a namespace sort mempool.
 type NamespaceMempool struct {
-	signersCheckNonce map[uint64]*noncer
-	signersFinalNonce map[uint64]*noncer
-	pendingTxs        map[string]*list
-	mux               sync.RWMutex
-	txsSigner         *cmap.ShardedMap
+	signersNonce map[uint64]*noncer
+	pendingTxs   map[string]*list
+	mux          sync.RWMutex
+	txsSigner    *cmap.ShardedMap
 }
 
 // NewNamespaceMempool creates a new mempool that prioritizes transactions by
 // nonce, the lowest first, picking a random sender on each iteration.
 func NewNamespaceMempool() *NamespaceMempool {
 	nsm := &NamespaceMempool{
-		signersCheckNonce: make(map[uint64]*noncer),
-		signersFinalNonce: make(map[uint64]*noncer),
-		pendingTxs:        make(map[string]*list),
-		txsSigner:         cmap.NewShardedMap(20000),
-		mux:               sync.RWMutex{},
+		signersNonce: make(map[uint64]*noncer),
+		pendingTxs:   make(map[string]*list),
+		txsSigner:    cmap.NewShardedMap(20000),
+		mux:          sync.RWMutex{},
 	}
 	return nsm
 }
@@ -51,34 +49,17 @@ func (nsm *NamespaceMempool) getPendingTxs(ctx sdk.Context, address string) *lis
 	return pendingTxs
 }
 
-func (nsm *NamespaceMempool) getCheckNoncer(ctx sdk.Context, fallback sdk.GetAccountNonceHandler) *noncer {
+func (nsm *NamespaceMempool) getNoncer(ctx sdk.Context, fallback sdk.GetAccountNonceHandler) *noncer {
 	namespaceId := ctx.Namespace()
 	nsm.mux.RLock()
-	pendingNoncer, init := nsm.signersCheckNonce[namespaceId]
+	finalNoncer, init := nsm.signersNonce[namespaceId]
 	nsm.mux.RUnlock()
 	if !init {
 		nsm.mux.Lock()
-		pendingNoncer, init = nsm.signersCheckNonce[namespaceId]
-		if !init {
-			pendingNoncer = newNoncer(fallback)
-			nsm.signersCheckNonce[namespaceId] = pendingNoncer
-		}
-		nsm.mux.Unlock()
-	}
-	return pendingNoncer
-}
-
-func (nsm *NamespaceMempool) getFinalNoncer(ctx sdk.Context, fallback sdk.GetAccountNonceHandler) *noncer {
-	namespaceId := ctx.Namespace()
-	nsm.mux.RLock()
-	finalNoncer, init := nsm.signersFinalNonce[namespaceId]
-	nsm.mux.RUnlock()
-	if !init {
-		nsm.mux.Lock()
-		finalNoncer, init = nsm.signersFinalNonce[namespaceId]
+		finalNoncer, init = nsm.signersNonce[namespaceId]
 		if !init {
 			finalNoncer = newNoncer(fallback)
-			nsm.signersFinalNonce[namespaceId] = finalNoncer
+			nsm.signersNonce[namespaceId] = finalNoncer
 		}
 		nsm.mux.Unlock()
 	}
@@ -87,25 +68,22 @@ func (nsm *NamespaceMempool) getFinalNoncer(ctx sdk.Context, fallback sdk.GetAcc
 
 // IsGapped reports whether the given transaction is immediately executable.
 func (nsm *NamespaceMempool) IsGapped(ctx sdk.Context, tx sdk.MempoolTx) bool {
-	pendingNoncer := nsm.getCheckNoncer(ctx, tx.GetAccountNonceHandler)
-	finalNoncer := nsm.getFinalNoncer(ctx, func(ctx sdk.Context, address string) (uint64, error) {
+	finalNoncer := nsm.getNoncer(ctx, func(ctx sdk.Context, address string) (uint64, error) {
 		return 0, nil
 	})
-	maxNonce := pendingNoncer.get(ctx, tx.From)
 	minNonce := finalNoncer.get(ctx, tx.From)
 	txNonce := tx.Nonce
 
-	println("IsGapped->maxNonce=", maxNonce, ", minNonce=", minNonce, "txNonce=", txNonce)
+	println("IsGapped-> minNonce=", minNonce, "txNonce=", txNonce)
 	if minNonce == 0 {
-		return txNonce < maxNonce && txNonce >= minNonce
+		return txNonce >= minNonce
 	}
 	return txNonce == minNonce
 }
 func (nsm *NamespaceMempool) Reset() {
 	nsm.mux.Lock()
 	defer nsm.mux.Unlock()
-	nsm.signersCheckNonce = make(map[uint64]*noncer)
-	nsm.signersFinalNonce = make(map[uint64]*noncer)
+	nsm.signersNonce = make(map[uint64]*noncer)
 	nsm.pendingTxs = make(map[string]*list)
 	nsm.txsSigner.Clear()
 }
@@ -122,13 +100,7 @@ func (nsm *NamespaceMempool) Prepare(ctx sdk.Context, tx sdk.MempoolTx) sdk.Cont
 
 func (nsm *NamespaceMempool) Insert(ctx context.Context, tx sdk.MempoolTx) (context.Context, error) {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	//update nonce
-	pendingNoncer := nsm.getCheckNoncer(sdkCtx, tx.GetAccountNonceHandler)
-	sender := tx.From
-	nonce := sdkCtx.Nonce()
 
-	newNonce := pendingNoncer.setIfHigher(sender, nonce)
-	println("=======check set nonce = ", newNonce, "sender=", sender)
 	//add signer cache
 	txSigner := sdkCtx.TxSigner()
 	if txSigner != nil {
@@ -149,7 +121,7 @@ func (nsm *NamespaceMempool) Insert(ctx context.Context, tx sdk.MempoolTx) (cont
 }
 func (nsm *NamespaceMempool) Remove(ctx context.Context, tx sdk.MempoolTx) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	finalNoncer := nsm.getFinalNoncer(sdkCtx, func(ctx sdk.Context, address string) (uint64, error) {
+	finalNoncer := nsm.getNoncer(sdkCtx, func(ctx sdk.Context, address string) (uint64, error) {
 		return 0, nil
 	})
 	sender := tx.From
