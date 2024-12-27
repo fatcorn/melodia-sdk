@@ -100,18 +100,17 @@ func (nsm *NamespaceSort) SortTxs(ctx context.Context, nsTxs map[uint64][]sdk.Me
 
 func (nsm *NamespaceSort) SelectTxs(ctx context.Context, maxBytes, maxGas int64, reqTxs []sdk.MempoolTx, reqNsTable []*cmtproto.NamespaceTableEntries, sortType types.SortType) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) {
 
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	t0 := time.Now()
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	nsMemTxs := sdk.ListNamespaceMemTxs(reqTxs, reqNsTable)
-
 	txsIterators := nsm.SortTxs(ctx, nsMemTxs)
 	sdkCtx.Logger().Info("2.1->sortTxs sort time", "use", time.Since(t0).String(), "reqSize", len(reqTxs), "reqNsTable", reqNsTable, "height", sdkCtx.BlockHeight())
 
+	t1 := time.Now()
 	selectedTxs := make([]sdk.MempoolTx, 0)
 	selectedNsTable := make([]*cmtproto.NamespaceTableEntries, 0)
 	offset := 0
 
-	t1 := time.Now()
 	for _, txIterator := range txsIterators {
 		iterator := txIterator.Iterator
 		namespaceId := txIterator.NamespaceId
@@ -168,6 +167,7 @@ func (nsm *NamespaceSort) Select(ctx context.Context, maxBytes, maxGas int64, re
 
 	selectedTxs, selectedNsTable := nsm.SelectTxs(ctx, maxBytes, maxGas, reqTxs, reqNsTable, sortType)
 
+	t0 := time.Now()
 	var (
 		//sort
 		txs     = make([][]byte, 0)
@@ -222,8 +222,6 @@ func (nsm *NamespaceSort) Select(ctx context.Context, maxBytes, maxGas int64, re
 			}
 		}
 	}
-
-	t0 := time.Now()
 
 	for _, nsEntry := range selectedNsTable {
 
