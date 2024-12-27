@@ -16,8 +16,8 @@ var _ Mempool = (*NoOpMempool)(nil)
 // is FIFO-ordered by default.
 type NoOpMempool struct{}
 
-func (NoOpMempool) Insert(ctx context.Context, tx sdk.MempoolTx) (context.Context, error) {
-	return ctx, nil
+func (NoOpMempool) Insert(ctx context.Context, tx sdk.MempoolTx) error {
+	return nil
 }
 func (NoOpMempool) Select(context.Context, []sdk.MempoolTx) Iterator   { return nil }
 func (NoOpMempool) CountTx() int                                       { return 0 }

@@ -362,7 +362,7 @@ func (app *BaseApp) CheckTx(req *abci.RequestCheckTx) (*abci.ResponseCheckTx, er
 	checkContext = checkContext.WithConsensusParams(app.GetConsensusParams(checkContext))
 	checkContext = checkContext.WithNamepace(req.NamespaceId).WithTxBytes(req.Tx)
 
-	gInfo, result, anteEvents, packet, replaceTxBytes, err := app.runTx(mode, req.Tx, checkContext)
+	gInfo, result, anteEvents, packet, err := app.runTx(mode, req.Tx, checkContext)
 
 	//app.checkState.SetContext(app.checkState.Context().WithNamepace(req.NamespaceId))
 
@@ -386,7 +386,6 @@ func (app *BaseApp) CheckTx(req *abci.RequestCheckTx) (*abci.ResponseCheckTx, er
 		Data:      result.Data,
 		Events:    sdk.MarkEventsToIndex(result.Events, app.indexEvents),
 		PacketMsg: packetTxData,
-		ReplaceTx: replaceTxBytes,
 	}, nil
 }
 func (app *BaseApp) SortTxs(req *abci.RequestSortTxs) (resp *abci.ResponseSortTxs, err error) {

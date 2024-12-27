@@ -120,14 +120,14 @@ func (snm *SenderNonceMempool) NextSenderTx(sender string) *sdk.MempoolTx {
 
 // Insert adds a tx to the mempool. It returns an error if the tx does not have
 // at least one signer. Note, priority is ignored.
-func (snm *SenderNonceMempool) Insert(ctx context.Context, tx sdk.MempoolTx) (context.Context, error) {
+func (snm *SenderNonceMempool) Insert(ctx context.Context, tx sdk.MempoolTx) error {
 	snm.mtx.Lock()
 	defer snm.mtx.Unlock()
 	if snm.maxTx > 0 && len(snm.existingTx) >= snm.maxTx {
-		return ctx, ErrMempoolTxMaxCapacity
+		return ErrMempoolTxMaxCapacity
 	}
 	if snm.maxTx < 0 {
-		return ctx, nil
+		return nil
 	}
 
 	//sigs, err := tx.(signing.SigVerifiableTx).GetSignaturesV2()
@@ -139,10 +139,10 @@ func (snm *SenderNonceMempool) Insert(ctx context.Context, tx sdk.MempoolTx) (co
 	//}
 	sigs, err := snm.SignerExtractor.GetSigners(tx)
 	if err != nil {
-		return ctx, err
+		return err
 	}
 	if len(sigs) == 0 {
-		return ctx, fmt.Errorf("tx must have at least one signer")
+		return fmt.Errorf("tx must have at least one signer")
 	}
 
 	sig := sigs[0]
@@ -160,7 +160,7 @@ func (snm *SenderNonceMempool) Insert(ctx context.Context, tx sdk.MempoolTx) (co
 	key := txKey{nonce: nonce, address: sender}
 	snm.existingTx[key] = true
 
-	return ctx, nil
+	return nil
 }
 
 // Select returns an iterator ordering transactions the mempool with the lowest

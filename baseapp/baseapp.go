@@ -1128,7 +1128,7 @@ func (app *BaseApp) deliverTx(tx []byte, opts ...sdk.Context) *abci.ExecTxResult
 	}()
 	t2 := time.Now()
 
-	gInfo, result, anteEvents, _, _, err := app.runTx(execModeFinalize, tx, ctx)
+	gInfo, result, anteEvents, _, err := app.runTx(execModeFinalize, tx, ctx)
 	if err != nil {
 		resultStr = "failed"
 		resp = sdkerrors.ResponseExecTxResultWithEvents(
@@ -1268,7 +1268,7 @@ func (app *BaseApp) endBlock(ctx context.Context) (sdk.EndBlock, error) {
 // Note, gas execution info is always returned. A reference to a Result is
 // returned if the tx does not run out of gas and if all the messages are valid
 // and execute successfully. An error is returned otherwise.
-func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (gInfo sdk.GasInfo, result *sdk.Result, anteEvents []abci.Event, packetMsg *sdk.PIBCPacket, replaceTxBytes []byte, err error) {
+func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (gInfo sdk.GasInfo, result *sdk.Result, anteEvents []abci.Event, packetMsg *sdk.PIBCPacket, err error) {
 	// NOTE: GasWanted should be returned by the AnteHandler. GasUsed is
 	// determined by the GasMeter. We need access to the context to get the gas
 	// meter, so we initialize upfront.
@@ -1291,7 +1291,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 
 	// only run the tx if there is block gas remaining
 	if mode == execModeFinalize && ctx.BlockGasMeter().IsOutOfGas() {
-		return gInfo, nil, nil, nil, nil, errorsmod.Wrap(sdkerrors.ErrOutOfGas, "no block gas left to run tx")
+		return gInfo, nil, nil, nil, errorsmod.Wrap(sdkerrors.ErrOutOfGas, "no block gas left to run tx")
 	}
 
 	defer func() {
@@ -1338,7 +1338,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	t2 := time.Now()
 	memTx, err = app.ToMemTx(txBytes)
 	if err != nil {
-		return sdk.GasInfo{}, nil, nil, nil, nil, err
+		return sdk.GasInfo{}, nil, nil, nil, err
 	}
 	tx = memTx.Tx
 
@@ -1349,13 +1349,13 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	t3 := time.Now()
 	msgs := tx.GetMsgs()
 	if err := validateBasicTxMsgs(msgs); err != nil {
-		return sdk.GasInfo{}, nil, nil, nil, nil, err
+		return sdk.GasInfo{}, nil, nil, nil, err
 	}
 
 	for _, msg := range msgs {
 		handler := app.msgServiceRouter.Handler(msg)
 		if handler == nil {
-			return sdk.GasInfo{}, nil, nil, nil, nil, errorsmod.Wrapf(sdkerrors.ErrUnknownRequest, "no message handler found for %T", msg)
+			return sdk.GasInfo{}, nil, nil, nil, errorsmod.Wrapf(sdkerrors.ErrUnknownRequest, "no message handler found for %T", msg)
 		}
 	}
 	t4 := time.Now()
@@ -1400,7 +1400,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 		gasWanted = ctx.GasMeter().Limit()
 
 		if err != nil {
-			return gInfo, nil, nil, nil, nil, err
+			return gInfo, nil, nil, nil, err
 		}
 		a4 := time.Now()
 		//now = cmttime.Now()
@@ -1425,13 +1425,8 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 
 	//now := cmttime.Now()
 	if mode == execModeCheck {
-		var newCtx context.Context
-		newCtx, err = app.mempool.Insert(ctx, memTx)
-		if err != nil {
-			return gInfo, nil, nil, nil, nil, err
-		}
-		ctx = sdk.UnwrapSDKContext(newCtx)
-		replaceTxBytes = ctx.ReplaceTxBytes()
+		err = app.mempool.Insert(ctx, memTx)
+
 		if app.pibcPacketGeneratorHadler != nil && app.signerName != "" {
 			getSigigner := func() sdk.AccAddress {
 				record, err := app.signerKeyring.Key(app.signerName)
@@ -1446,14 +1441,14 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			}
 			msg, err := app.pibcPacketGeneratorHadler.Handle(ctx, tx, getSigigner)
 			if err != nil {
-				return gInfo, nil, anteEvents, nil, nil, err
+				return gInfo, nil, anteEvents, nil, err
 			}
 			packetMsg = msg
 		}
 	} else if mode == execModeFinalize {
 		err = app.mempool.Remove(ctx, memTx)
 		if err != nil && !errors.Is(err, mempool.ErrTxNotFound) {
-			return gInfo, nil, anteEvents, nil, nil,
+			return gInfo, nil, anteEvents, nil,
 				fmt.Errorf("failed to remove tx from mempool: %w", err)
 		}
 	}
@@ -1492,7 +1487,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 
 		newCtx, errPostHandler := app.postHandler(postCtx, tx, mode == execModeSimulate, err == nil)
 		if errPostHandler != nil {
-			return gInfo, nil, anteEvents, nil, nil, errors.Join(err, errPostHandler)
+			return gInfo, nil, anteEvents, nil, errors.Join(err, errPostHandler)
 		}
 
 		// we don't want runTx to panic if runMsgs has failed earlier
@@ -1531,7 +1526,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			"cache write", t9.Sub(t8).String(),
 		)
 	}
-	return gInfo, result, anteEvents, packetMsg, replaceTxBytes, err
+	return gInfo, result, anteEvents, packetMsg, err
 }
 
 // runMsgs iterates through a list of messages and executes them with the provided
@@ -1693,7 +1688,7 @@ func (app *BaseApp) PrepareProposalVerifyTx(tx sdk.Tx) ([]byte, error) {
 		return nil, err
 	}
 
-	_, _, _, _, _, err = app.runTx(execModePrepareProposal, bz)
+	_, _, _, _, err = app.runTx(execModePrepareProposal, bz)
 	if err != nil {
 		return nil, err
 	}
@@ -1712,7 +1707,7 @@ func (app *BaseApp) ProcessProposalVerifyTx(txBz []byte) (sdk.Tx, error) {
 		return nil, err
 	}
 
-	_, _, _, _, _, err = app.runTx(execModeProcessProposal, txBz)
+	_, _, _, _, err = app.runTx(execModeProcessProposal, txBz)
 	if err != nil {
 		return nil, err
 	}

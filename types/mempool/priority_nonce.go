@@ -220,21 +220,21 @@ func (mp *PriorityNonceMempool[C]) NextSenderTx(sender string) *sdk.MempoolTx {
 //
 // Inserting a duplicate tx with a different priority overwrites the existing tx,
 // changing the total order of the mempool.
-func (mp *PriorityNonceMempool[C]) Insert(ctx context.Context, tx sdk.MempoolTx) (context.Context, error) {
+func (mp *PriorityNonceMempool[C]) Insert(ctx context.Context, tx sdk.MempoolTx) error {
 	mp.mtx.Lock()
 	defer mp.mtx.Unlock()
 	if mp.cfg.MaxTx > 0 && mp.priorityIndex.Len() >= mp.cfg.MaxTx {
-		return ctx, ErrMempoolTxMaxCapacity
+		return ErrMempoolTxMaxCapacity
 	} else if mp.cfg.MaxTx < 0 {
-		return ctx, nil
+		return nil
 	}
 
 	sigs, err := mp.cfg.SignerExtractor.GetSigners(tx)
 	if err != nil {
-		return ctx, err
+		return err
 	}
 	if len(sigs) == 0 {
-		return ctx, fmt.Errorf("tx must have at least one signer")
+		return fmt.Errorf("tx must have at least one signer")
 	}
 
 	sig := sigs[0]
@@ -263,7 +263,7 @@ func (mp *PriorityNonceMempool[C]) Insert(ctx context.Context, tx sdk.MempoolTx)
 	sk := txMeta[C]{nonce: nonce, sender: sender}
 	if oldScore, txExists := mp.scores[sk]; txExists {
 		if mp.cfg.TxReplacement != nil && !mp.cfg.TxReplacement(oldScore.priority, priority, senderIndex.Get(key).Value.(sdk.MempoolTx), tx) {
-			return ctx, fmt.Errorf(
+			return fmt.Errorf(
 				"tx doesn't fit the replacement rule, oldPriority: %v, newPriority: %v, oldTx: %v, newTx: %v",
 				oldScore.priority,
 				priority,
@@ -292,7 +292,7 @@ func (mp *PriorityNonceMempool[C]) Insert(ctx context.Context, tx sdk.MempoolTx)
 	mp.scoresMtx.Unlock()
 	mp.priorityIndex.Set(key, tx)
 
-	return ctx, nil
+	return nil
 }
 
 func (i *PriorityNonceIterator[C]) iteratePriority() Iterator {

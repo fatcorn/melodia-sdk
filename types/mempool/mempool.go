@@ -10,7 +10,7 @@ import (
 type Mempool interface {
 	// Insert attempts to insert a Tx into the app-side mempool returning
 	// an error upon failure.
-	Insert(context.Context, sdk.MempoolTx) (context.Context, error)
+	Insert(context.Context, sdk.MempoolTx) error
 
 	// Select returns an Iterator over the app-side mempool. If txs are specified,
 	// then they shall be incorporated into the Iterator. The Iterator must

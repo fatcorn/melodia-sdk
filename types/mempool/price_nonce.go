@@ -110,8 +110,8 @@ func DefaultPriceNonceMempool() *PriceNonceMempool[int64] {
 	return NewPriceNonceMempool(DefaultPriceNonceMempoolConfig())
 }
 
-func (mp *PriceNonceMempool[C]) Insert(ctx context.Context, tx sdk.MempoolTx) (context.Context, error) {
-	return ctx, nil
+func (mp *PriceNonceMempool[C]) Insert(ctx context.Context, tx sdk.MempoolTx) error {
+	return nil
 }
 func (mp *PriceNonceMempool[C]) PrepareSenderTxs() (map[string][]*Transaction[C], []string) {
 	t0 := time.Now()
