@@ -123,6 +123,9 @@ func (ns *namepaceNoncer) getNonce(ctx sdk.Context, sender string) uint64 {
 }
 
 func (ns *namepaceNoncer) updateNonce(ctx sdk.Context, sender string, nonce uint64) uint64 {
+	if nonce == 0 {
+		return nonce
+	}
 	finalNoncer := ns.getNoncer(ctx, func(ctx sdk.Context, sender string) (uint64, error) {
 		return 0, nil
 	})

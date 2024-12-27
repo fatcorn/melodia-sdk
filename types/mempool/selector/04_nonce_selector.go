@@ -30,11 +30,6 @@ func NonceSelector(ctx sdk.Context, txs []sdk.MempoolTx, nsTable []*cmtproto.Nam
 
 			txSignersSeqs := make(map[string]uint64)
 			seq, ok := selectedTxsSignersSeqs[from]
-			//if memTx.Nonce == 48370 {
-			//	if ctx.BlockHeight() < 660 {
-			//		continue
-			//	}
-			//}
 			if !ok {
 				isGapped := memTx.IsGapped(ctx.WithNamepace(namespaceId), memTx)
 				if !isGapped {

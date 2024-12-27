@@ -378,8 +378,6 @@ func (isd IncrementSequenceDecorator) AnteHandle(ctx sdk.Context, tx sdk.Tx, sim
 		}
 
 		isd.ak.SetAccount(ctx, acc)
-
-		ctx = ctx.WithNonce(acc.GetSequence())
 	}
 
 	return next(ctx, tx, simulate)

@@ -35,8 +35,6 @@ func (nsm *NamespaceMempool) IsGapped(ctx sdk.Context, tx sdk.MempoolTx) bool {
 	if txNonce != nextNonce {
 		println("IsGapped-> nextNonce=", nextNonce, "txNonce=", txNonce)
 	}
-
-	//return txNonce >= nextNonce
 	return txNonce == nextNonce
 }
 func (nsm *NamespaceMempool) Reset() {
