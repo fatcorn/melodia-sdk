@@ -29,10 +29,10 @@ func (nsm *NamespaceMempool) IsGapped(ctx sdk.Context, tx sdk.MempoolTx) bool {
 	nextNonce := nsm.noncer.getNonce(ctx, tx.From)
 	txNonce := tx.Nonce
 
-	println("IsGapped-> nextNonce=", nextNonce, "txNonce=", txNonce)
 	if nextNonce == 0 {
 		return txNonce >= nextNonce
 	}
+	println("IsGapped-> nextNonce=", nextNonce, "txNonce=", txNonce)
 	//return txNonce >= nextNonce
 	return txNonce == nextNonce
 }
@@ -64,7 +64,8 @@ func (nsm *NamespaceMempool) Insert(ctx context.Context, tx sdk.MempoolTx) error
 func (nsm *NamespaceMempool) Remove(ctx context.Context, tx sdk.MempoolTx) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	//update nonce
-	nsm.noncer.updateNonce(sdkCtx, tx.From, sdkCtx.Nonce())
+	nextNonce := nsm.noncer.updateNonce(sdkCtx, tx.From, sdkCtx.Nonce())
+	println("next nonce ====", nextNonce, "from=", tx.From)
 	//remove cache signer
 	nsm.signers.Delete(tx.Hash(), func(any any) {})
 	return nil

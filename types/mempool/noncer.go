@@ -89,14 +89,14 @@ func (txn *noncer) setIfLower(addr string, nonce uint64) {
 	})
 }
 func (txn *noncer) setIfHigher(addr string, nonce uint64) uint64 {
-	latestNonce := txn.nonces.SetIf(addr, nonce, func(oldNonce interface{}, exists bool) bool {
+	nextNonce := txn.nonces.SetIf(addr, nonce, func(oldNonce interface{}, exists bool) bool {
 		if exists && oldNonce.(uint64) > nonce {
 			return false
 		}
 		return true
 	})
 
-	return latestNonce.(uint64)
+	return nextNonce.(uint64)
 }
 
 // Reset reset the nonces
@@ -122,11 +122,11 @@ func (ns *namepaceNoncer) getNonce(ctx sdk.Context, sender string) uint64 {
 	return finalNoncer.get(ctx, sender)
 }
 
-func (ns *namepaceNoncer) updateNonce(ctx sdk.Context, sender string, nonce uint64) {
+func (ns *namepaceNoncer) updateNonce(ctx sdk.Context, sender string, nonce uint64) uint64 {
 	finalNoncer := ns.getNoncer(ctx, func(ctx sdk.Context, sender string) (uint64, error) {
 		return 0, nil
 	})
-	finalNoncer.setIfHigher(sender, nonce)
+	return finalNoncer.setIfHigher(sender, nonce)
 }
 
 func (ns *namepaceNoncer) getNoncer(ctx sdk.Context, fallback sdk.GetAccountNonceHandler) *noncer {
