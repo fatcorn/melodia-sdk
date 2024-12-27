@@ -1777,9 +1777,6 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 		return true
 	}
 
-	var selectedTxsNums int
-	selectedTxsSignersSeqs := make(map[string]uint64)
-
 	isNeedCheck := req.SortType == uint32(bfttypes.SortAndCheck)
 
 	globalOffset := int32(0)
@@ -1886,6 +1883,8 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 		if isNeedCheck {
 			baseFee = app.baseFeeHandler(ctx.WithNamepace(namespaceId))
 		}
+		var selectedTxsNums int
+		selectedTxsSignersSeqs := make(map[string]uint64)
 
 		for _, byteTx := range byteTxs {
 			txBz := byteTx.TxBytes
@@ -1897,24 +1896,25 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 
 			txSignersSeqs := make(map[string]uint64)
 			if isNeedCheck {
-				seq, ok := selectedTxsSignersSeqs[from]
-				if !ok {
-					txSignersSeqs[from] = nonce
-				} else {
-					// If we have seen this signer before in this block, we must make
-					// sure that the current sequence is seq+1; otherwise is invalid
-					// and we skip it.
-					if seq+1 != nonce {
-						continue
-					}
-					txSignersSeqs[from] = nonce
-				}
-
 				isFeeVerified := app.checkTxFeeHandler(ctx, baseFee, tx)
 				if !isFeeVerified {
 					continue
 				}
 			}
+
+			seq, ok := selectedTxsSignersSeqs[from]
+			if !ok {
+				txSignersSeqs[from] = nonce
+			} else {
+				// If we have seen this signer before in this block, we must make
+				// sure that the current sequence is seq+1; otherwise is invalid
+				// and we skip it.
+				if seq+1 != nonce {
+					continue
+				}
+				txSignersSeqs[from] = nonce
+			}
+
 			isInterChainPaired := handleNsInterChainTransactionOrders(byteTx, txIndex, namespaceId)
 			if !isInterChainPaired {
 				continue
@@ -1925,24 +1925,22 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 			handleNsTransactionOrders(from, to, txIndex, namespaceId)
 			txIndex++
 
-			if isNeedCheck {
-				txsLen := len(sortTxs)
-				for sender, senderSeq := range txSignersSeqs {
-					// If txsLen != selectedTxsNums is true, it means that we've
-					// added a new tx to the selected txs, so we need to update
-					// the sequence of the sender.
-					if txsLen != selectedTxsNums {
-						selectedTxsSignersSeqs[sender] = senderSeq
-					} else if _, ok := selectedTxsSignersSeqs[sender]; !ok {
-						// The transaction hasn't been added but it passed the
-						// verification, so we know that the sequence is correct.
-						// So we set this sender's sequence to seq-1, in order
-						// to avoid unnecessary calls to PrepareProposalVerifyTx.
-						selectedTxsSignersSeqs[sender] = senderSeq - 1
-					}
+			txsLen := len(sortTxs)
+			for sender, senderSeq := range txSignersSeqs {
+				// If txsLen != selectedTxsNums is true, it means that we've
+				// added a new tx to the selected txs, so we need to update
+				// the sequence of the sender.
+				if txsLen != selectedTxsNums {
+					selectedTxsSignersSeqs[sender] = senderSeq
+				} else if _, ok := selectedTxsSignersSeqs[sender]; !ok {
+					// The transaction hasn't been added but it passed the
+					// verification, so we know that the sequence is correct.
+					// So we set this sender's sequence to seq-1, in order
+					// to avoid unnecessary calls to PrepareProposalVerifyTx.
+					selectedTxsSignersSeqs[sender] = senderSeq - 1
 				}
-				selectedTxsNums = txsLen
 			}
+			selectedTxsNums = txsLen
 		}
 		if len(nsTransactionIndexes) > 0 {
 			nsTable = append(nsTable, &cmtproto.NamespaceTableEntries{
