@@ -57,7 +57,7 @@ func (nsm *NamespaceSort) GetPool(ctx context.Context) Mempool {
 		case types2.SortModeGasPrice:
 			pool = DefaultPriceNonceMempool()
 		case types2.SortModeQueue:
-			pool = NewSenderNonceMempool()
+			pool = DefaultSimpleSenderNonceMempool()
 		default:
 			pool = DefaultPriceNonceMempool()
 		}
