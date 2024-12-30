@@ -145,9 +145,9 @@ func (n *NamespaceBLockStore) Size() int64 {
 }
 
 func (n *NamespaceBLockStore) LoadBlock(height int64) *NamespaceBLock {
-	n.RLock()
+	//n.RLock()
 	blockData, err := n.db.Get(calcBlockDataKey(height))
-	n.RUnlock()
+	//n.RUnlock()
 	if err != nil {
 		panic(err)
 	}
@@ -173,7 +173,9 @@ func (n *NamespaceBLockStore) SaveBlock(height int64, hash []byte, block *Namesp
 		if oldBlock.RelatedCometBFTBlockHeight != block.RelatedCometBFTBlockHeight {
 			panic(fmt.Errorf("BlockStore can only save contiguous blocks. Wanted %v, got %v", n.height+1, height))
 		}
+		n.Lock()
 		n.height = height - 1
+		n.Unlock()
 	}
 	batch := n.db.NewBatch()
 	defer batch.Close()
@@ -192,15 +194,14 @@ func (n *NamespaceBLockStore) SaveBlock(height int64, hash []byte, block *Namesp
 		panic(err)
 	}
 
-	n.Lock()
-	defer n.Unlock()
+	newHeight := n.height
 	if height != n.base {
-		n.height += 1
+		newHeight += 1
 	}
 
 	storeState := BlockStoreState{
 		Base:   n.base,
-		Height: n.height,
+		Height: newHeight,
 	}
 	stateData, err := borsh.Serialize(storeState)
 	if err != nil {
@@ -211,11 +212,15 @@ func (n *NamespaceBLockStore) SaveBlock(height int64, hash []byte, block *Namesp
 	if err != nil {
 		panic(err)
 	}
-	err = batch.WriteSync()
-	n.logger.Info("save namespace Block", "height", block.Height, "cosmos height", block.RelatedCometBFTBlockHeight)
+	err = batch.Write()
+	n.logger.Info("save namespace Block", "height", block.Height, "cosmos height", block.RelatedCometBFTBlockHeight, "blockHash", fmt.Sprintf("%X", block.Hash))
 	if err != nil {
 		panic(err)
 	}
+
+	n.Lock()
+	defer n.Unlock()
+	n.height = newHeight
 }
 
 func (n *NamespaceBLockStore) CacheBlock(block *NamespaceBLock) {
@@ -229,7 +234,10 @@ func (n *NamespaceBLockStore) CurrentBlock() *NamespaceBLock {
 	if n.cancheBlock != nil {
 		return n.cancheBlock
 	}
-	return n.LoadBlock(n.height)
+	n.RLock()
+	currentHeight := n.height
+	n.RUnlock()
+	return n.LoadBlock(currentHeight)
 }
 
 func (n *NamespaceBLockStore) UpdateBlock(block *NamespaceBLock) {

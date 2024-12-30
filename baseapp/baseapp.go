@@ -242,6 +242,8 @@ type BaseApp struct {
 
 	deliverTxHooks     []DeliverTxHook
 	concurrencyWorkers int
+
+	dbtype dbm.BackendType
 }
 
 //type NamespaceStoreManager struct {
@@ -494,17 +496,17 @@ func ListDBNamespace(db dbm.DB) []*bfttypes.NamespacePort {
 }
 
 // NewNamespaceDB handle internal Event to execute related logic
-func CreateNamespaceDB(namespaceId uint64, moudleName string, dbRootDir string) (cmtdbm.DB, error) {
+func CreateNamespaceDB(namespaceId uint64, moudleName string, dbRootDir string, backendType dbm.BackendType) (cmtdbm.DB, error) {
 	namespaceDB, err := cmtcfg.DefaultDBProvider(&cmtcfg.DBContext{
 		ID:     "namespace" + "_" + strconv.FormatUint(namespaceId, 10) + "_" + moudleName,
-		Config: cmtcfg.DefaultConfig().SetRoot(dbRootDir).AddDBPath("namespace"),
+		Config: cmtcfg.DefaultConfig().SetRoot(dbRootDir).AddDBPath("namespace").SetBanCacheDB(true).SetDBBackend(string(backendType)),
 	})
 	return namespaceDB, err
 }
 
 // addNewNamespaceBLockStore Create a new namespace blockdb
 func (app *BaseApp) addNewNamespaceBLockStore(namespaceID uint64, moduleName string, moduleRelatedModules []string) {
-	newNamespaceDB, err := CreateNamespaceDB(namespaceID, moduleName, app.namespaceStoreManager.GetDBRootDir())
+	newNamespaceDB, err := CreateNamespaceDB(namespaceID, moduleName, app.namespaceStoreManager.GetDBRootDir(), app.dbtype)
 	if err != nil {
 		panic(fmt.Sprintf("Create namespace-%v DB failed, causev%v", namespaceID, err))
 	}
@@ -652,7 +654,7 @@ func (app *BaseApp) LoadLatestVersion() error {
 	cms := app.cms
 	store, ok := cms.(*rootmultiv2.Store)
 	if ok {
-		info, err := store.LoadNamespaceStoreInfo(app.namespaceStoreManager.GetDBRootDir())
+		info, err := store.LoadNamespaceStoreInfo(app.namespaceStoreManager.GetDBRootDir(), app.dbtype)
 		if err != nil {
 			panic(err)
 		}
@@ -2061,14 +2063,14 @@ func (app *BaseApp) Close() error {
 	return errors.Join(errs...)
 }
 
-func LoadNamespaceStoreInfo(db dbm.DB, home string) (*nsblockstore.NamespaceStoreDBInfo, error) {
+func LoadNamespaceStoreInfo(db dbm.DB, home string, backendType dbm.BackendType) (*nsblockstore.NamespaceStoreDBInfo, error) {
 	validNamespaces := ListDBNamespace(db)
 
 	namespacesDBMap := make(map[string]cmtdbm.DB)
 	namespacesModuleName := make(map[string]nsblockstore.NamespaceModule)
 	moduleRelatedModules := make(map[string][]string)
 	for _, namespace := range validNamespaces {
-		namespaceDB, err := CreateNamespaceDB(uint64(namespace.NamespaceId), namespace.Module, home)
+		namespaceDB, err := CreateNamespaceDB(uint64(namespace.NamespaceId), namespace.Module, home, backendType)
 		if err != nil {
 			return nil, err
 		}

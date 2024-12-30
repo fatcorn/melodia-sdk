@@ -90,6 +90,7 @@ const (
 	FlagLogFormat           = "log_format"
 	FlagLogNoColor          = "log_no_color"
 	FlagNamespaceDB         = "namespace_db"
+	FlagDBType              = "db_type"
 	FlagValidatorSigner     = "signer"
 	FlagValidatorSignerName = "signer_name"
 )

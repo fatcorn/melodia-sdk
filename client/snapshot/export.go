@@ -26,11 +26,12 @@ func ExportSnapshotCmd(appCreator servertypes.AppCreator) *cobra.Command {
 			}
 
 			home := ctx.Config.RootDir
-			db, err := openDB(home, server.GetAppDBBackend(ctx.Viper))
+			dbType := server.GetAppDBBackend(ctx.Viper)
+			db, err := openDB(home, dbType)
 			if err != nil {
 				return err
 			}
-			namespaceDBInfo, err := baseapp.LoadNamespaceStoreInfo(db, home)
+			namespaceDBInfo, err := baseapp.LoadNamespaceStoreInfo(db, home, dbType)
 			if err != nil {
 				return err
 			}

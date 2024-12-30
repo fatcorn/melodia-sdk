@@ -490,15 +490,15 @@ func (rs *Store) LastCommitID() types.CommitID {
 }
 
 // NewNamespaceDB handle internal Event to execute related logic
-func CreateNamespaceDB(namespaceId uint64, moudleName string, dbRootDir string) (cmtdbm.DB, error) {
+func CreateNamespaceDB(namespaceId uint64, moudleName string, dbRootDir string, backendType db.BackendType) (cmtdbm.DB, error) {
 	namespaceDB, err := cmtcfg.DefaultDBProvider(&cmtcfg.DBContext{
 		ID:     "namespace" + "_" + strconv.FormatUint(namespaceId, 10) + "_" + moudleName,
-		Config: cmtcfg.DefaultConfig().SetRoot(dbRootDir).AddDBPath("namespace"),
+		Config: cmtcfg.DefaultConfig().SetRoot(dbRootDir).AddDBPath("namespace").SetDBBackend(string(backendType)).SetBanCacheDB(true),
 	})
 	return namespaceDB, err
 }
 
-func (rs *Store) LoadNamespaceStoreInfo(home string) (*nsblockstore.NamespaceStoreDBInfo, error) {
+func (rs *Store) LoadNamespaceStoreInfo(home string, backendType db.BackendType) (*nsblockstore.NamespaceStoreDBInfo, error) {
 	validNamespaces := rs.ListDBNamespace()
 	tree := rs.scStore.GetTreeByName("chainservice_0")
 
@@ -509,7 +509,7 @@ func (rs *Store) LoadNamespaceStoreInfo(home string) (*nsblockstore.NamespaceSto
 	namespacesModuleName := make(map[string]nsblockstore.NamespaceModule)
 	moduleRelatedModules := make(map[string][]string)
 	for _, namespace := range validNamespaces {
-		namespaceDB, err := CreateNamespaceDB(uint64(namespace.NamespaceId), namespace.Module, home)
+		namespaceDB, err := CreateNamespaceDB(uint64(namespace.NamespaceId), namespace.Module, home, backendType)
 		if err != nil {
 			return nil, err
 		}

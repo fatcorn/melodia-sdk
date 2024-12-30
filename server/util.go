@@ -519,6 +519,7 @@ func DefaultBaseappOptions(appOpts types.AppOptions) []func(*baseapp.BaseApp) {
 	}
 
 	namespaceDBInfo := appOpts.Get(flags.FlagNamespaceDB).(nsblockstore.NamespaceStoreDBInfo)
+	dbType := appOpts.Get(flags.FlagDBType).(dbm.BackendType)
 	flagSigner := appOpts.Get(flags.FlagValidatorSigner)
 	flagSignerName := appOpts.Get(flags.FlagValidatorSignerName)
 	signerName := ""
@@ -555,6 +556,7 @@ func DefaultBaseappOptions(appOpts types.AppOptions) []func(*baseapp.BaseApp) {
 		baseapp.SetNamespaceDBManager(namespaceDBInfo),
 		baseapp.SetSignerKeyring(signer),
 		baseapp.SetSignerName(signerName),
+		baseapp.SetDBType(dbType),
 	}
 }
 

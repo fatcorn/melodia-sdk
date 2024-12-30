@@ -131,6 +131,11 @@ func SetChainID(chainID string) func(*BaseApp) {
 	return func(app *BaseApp) { app.chainID = chainID }
 }
 
+// SetChainID sets the chain ID in BaseApp.
+func SetDBType(dbtype dbm.BackendType) func(*BaseApp) {
+	return func(app *BaseApp) { app.dbtype = dbtype }
+}
+
 // SetStoreLoader allows customization of the rootMultiStore initialization.
 func SetStoreLoader(loader StoreLoader) func(*BaseApp) {
 	return func(app *BaseApp) { app.SetStoreLoader(loader) }

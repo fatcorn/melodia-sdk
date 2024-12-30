@@ -30,12 +30,13 @@ application.
 			ctx := GetServerContextFromCmd(cmd)
 			cfg := ctx.Config
 			home := cfg.RootDir
-			db, err := openDB(home, GetAppDBBackend(ctx.Viper))
+			dbType := GetAppDBBackend(ctx.Viper)
+			db, err := openDB(home, dbType)
 			if err != nil {
 				return err
 			}
 
-			namespaceDBInfo, err := baseapp.LoadNamespaceStoreInfo(db, home)
+			namespaceDBInfo, err := baseapp.LoadNamespaceStoreInfo(db, home, dbType)
 			if err != nil {
 				return err
 			}
