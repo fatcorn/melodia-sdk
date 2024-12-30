@@ -147,8 +147,8 @@ func (nsm *NamespaceSort) SelectTxs(ctx context.Context, maxBytes, maxGas int64,
 				return selector.LimitSelector(ctx, maxBytes, maxGas, txs, nsTable)
 			},
 			selector.BaseFeeSelector,
-			selector.InterChainSelector,
 			selector.NonceSelector,
+			selector.InterChainSelector,
 		}
 		// Apply all selectors in sequence
 		for _, selectFn := range selectors {
