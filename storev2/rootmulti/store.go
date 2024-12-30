@@ -1397,7 +1397,7 @@ func (*Store) SetKVStores(handler func(key types.StoreKey, s types.KVStore) type
 
 // StoreKeys implements types.CommitMultiStore.
 func (rs *Store) StoreKeys() []types.StoreKey {
-	res := make([]types.StoreKey, len(rs.storeKeys))
+	res := []types.StoreKey{}
 	for _, sk := range rs.storeKeys {
 		res = append(res, sk)
 	}
