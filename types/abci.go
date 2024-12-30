@@ -135,6 +135,9 @@ func (tx *MempoolTx) GasFeeCap() *big.Int {
 	if ok {
 		fee := feeTx.GetFee()
 		gas := feeTx.GetGas()
+		if gas <= 0 {
+			return big.NewInt(0)
+		}
 		for _, c := range fee {
 			gasPrice := c.Amount.QuoRaw(int64(gas))
 			if gasPrice.IsInt64() {
