@@ -15,7 +15,6 @@ import (
 	protoio "github.com/cosmos/gogoproto/io"
 	"github.com/cosmos/gogoproto/proto"
 	"slices"
-	"time"
 )
 
 type (
@@ -248,116 +247,7 @@ func (h *DefaultProposalHandler) SetTxSelector(ts TxSelector) {
 // requested from CometBFT will simply be returned, which, by default, are in
 // FIFO order.
 func (h *DefaultProposalHandler) PrepareProposalHandler() sdk.PrepareProposalHandler {
-	isDef := false
-	switch h.mempool.(type) {
-	case *mempool.NamespaceMempool:
-		isDef = true
-	case *mempool.NamespaceNoncer:
-		isDef = true
-	case mempool.NoOpMempool:
-		isDef = true
-	}
-
-	if h.mempool == nil || isDef {
-		return NoOpPrepareProposal()
-	}
-	return func(ctx sdk.Context, req *abci.RequestPrepareProposal) (*abci.ResponsePrepareProposal, error) {
-
-		startTime := time.Now()
-		var maxBlockGas uint64
-		if b := ctx.ConsensusParams().Block; b != nil {
-			maxBlockGas = uint64(b.MaxGas)
-		}
-
-		defer h.txSelector.Clear()
-
-		var (
-			offset  = 0
-			nsTable = make([]*cmtproto.NamespaceTableEntries, 0, len(req.Txs))
-		)
-		app := h.txVerifier.(*BaseApp)
-		reqByteTxs, _ := app.TxDecodeBatch(req.Txs)
-		app.logger.Info("prepareProposal TxDecodeBatch time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(req.Txs), "height", ctx.BlockHeight())
-
-		nsByteTxs := sdk.ListNamespaceByteTxs(reqByteTxs, req.NsTable)
-		var selectedTxsNums int
-		selectedTxsSignersSeqs := make(map[string]uint64)
-		stop := false
-		for namespaceId, byteTxs := range nsByteTxs {
-			baseFee := app.baseFeeHandler(ctx.WithNamepace(namespaceId))
-
-			for _, byteTx := range byteTxs {
-				txBz := byteTx.TxBytes
-				memTx := byteTx.Tx
-				if memTx == nil || txBz == nil {
-					continue
-				}
-				signerData, err := h.signerExtAdapter.GetSigners(memTx)
-				if err != nil {
-					return nil, err
-				}
-				shouldAdd := true
-				txSignersSeqs := make(map[string]uint64)
-				for _, signer := range signerData {
-					seq, ok := selectedTxsSignersSeqs[signer.Signer.String()]
-					if !ok {
-						txSignersSeqs[signer.Signer.String()] = signer.Sequence
-						continue
-					}
-
-					// If we have seen this signer before in this block, we must make
-					// sure that the current sequence is seq+1; otherwise is invalid
-					// and we skip it.
-					if seq+1 != signer.Sequence {
-						shouldAdd = false
-						break
-					}
-					txSignersSeqs[signer.Signer.String()] = signer.Sequence
-				}
-				if !shouldAdd {
-					continue
-				}
-
-				isFeeVerified := app.checkTxFeeHandler(ctx, baseFee, memTx)
-				if !isFeeVerified {
-					continue
-				} else {
-					stop = h.txSelector.SelectTxForProposal(ctx, uint64(req.MaxTxBytes), maxBlockGas, memTx, txBz)
-					offset++
-					if stop {
-						break
-					}
-					txsLen := len(h.txSelector.SelectedTxs(ctx))
-					for sender, seq := range txSignersSeqs {
-						// If txsLen != selectedTxsNums is true, it means that we've
-						// added a new tx to the selected txs, so we need to update
-						// the sequence of the sender.
-						if txsLen != selectedTxsNums {
-							selectedTxsSignersSeqs[sender] = seq
-						} else if _, ok := selectedTxsSignersSeqs[sender]; !ok {
-							// The transaction hasn't been added but it passed the
-							// verification, so we know that the sequence is correct.
-							// So we set this sender's sequence to seq-1, in order
-							// to avoid unnecessary calls to PrepareProposalVerifyTx.
-							selectedTxsSignersSeqs[sender] = seq - 1
-						}
-					}
-					selectedTxsNums = txsLen
-				}
-			}
-			nsTable = append(nsTable, &cmtproto.NamespaceTableEntries{
-				Namespace: namespaceId,
-				Offset:    int32(offset),
-			})
-			if stop {
-				break
-			}
-		}
-
-		txs := h.txSelector.SelectedTxs(ctx)
-		app.logger.Info("prepareProposal total time", "used", fmt.Sprintf("%v ms", time.Since(startTime).Milliseconds()), "size", len(txs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "height", ctx.BlockHeight())
-		return &abci.ResponsePrepareProposal{Txs: txs, NsTable: nsTable}, nil
-	}
+	return NoOpPrepareProposal()
 }
 
 // ProcessProposalHandler returns the default implementation for processing an
@@ -377,8 +267,6 @@ func (h *DefaultProposalHandler) ProcessProposalHandler() sdk.ProcessProposalHan
 	isDef := false
 	switch h.mempool.(type) {
 	case *mempool.NamespaceMempool:
-		isDef = true
-	case *mempool.NamespaceNoncer:
 		isDef = true
 	case mempool.NoOpMempool:
 		isDef = true

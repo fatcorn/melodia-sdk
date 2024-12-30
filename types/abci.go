@@ -3,9 +3,10 @@ package types
 import (
 	"cosmossdk.io/core/appmodule"
 	abci "github.com/cometbft/cometbft/abci/types"
+	tmbytes "github.com/cometbft/cometbft/libs/bytes"
 	tdmtypes "github.com/cometbft/cometbft/proto/tendermint/types"
-	"github.com/cometbft/cometbft/types"
-	"math"
+	tmtypes "github.com/cometbft/cometbft/types"
+	"math/big"
 )
 
 // InitChainer initializes application state at genesis
@@ -93,165 +94,79 @@ func (r ResponsePreBlock) IsConsensusParamsChanged() bool {
 	return r.ConsensusParamsChanged
 }
 
-type ByteTx struct {
+type SortTxHandler struct {
+	CrossNamespaceTransactionIdentifierHandler func(ctx Context, tx Tx) ([]byte, bool, bool)
+	ContractStaticAnalysisResultHandler        func(ctx Context, contractAddress string) (bool, bool)
+	CheckTxFeeHandler                          func(ctx Context, baseFee *big.Int, tx Tx) bool
+	BaseFeeHandler                             func(ctx Context) *big.Int
+	GetAccountNonceHandler                     func(ctx Context, address string) (uint64, error)
+	IsGapped                                   func(ctx Context, tx MempoolTx) bool
+}
+
+type MempoolTx struct {
 	Tx
-	TxBytes   []byte
-	GasWanted int64
+	SortTxHandler
+	TxBytes  []byte
+	TxGas    uint64
+	GasPrice *big.Int
+	From     string
+	To       string
+	Nonce    uint64
 }
 
-type NamespaceByteTxs struct {
+type NamespaceMempoolTxs struct {
 	NamespaceId uint64
-	Txs         []*ByteTx
+	Txs         []MempoolTx
 }
 
-func ListNamespaceByteTxs(byteTxs []*ByteTx, nsTable []*tdmtypes.NamespaceTableEntries) map[uint64][]*ByteTx {
-	nsByteTxs := make(map[uint64][]*ByteTx)
+func (tx *MempoolTx) Hash() string {
+	return tmbytes.HexBytes(tmtypes.Tx(tx.TxBytes).Hash()).String()
+}
+
+// GasFeeCapCmp compares the fee cap of two transactions.
+func (tx *MempoolTx) GasFeeCapCmp(other *MempoolTx) int {
+	return tx.GasPrice.Cmp(other.GasPrice)
+}
+
+// GasFeeCapCmp compares the fee cap of two transactions.
+func (tx *MempoolTx) GasFeeCap() *big.Int {
+	var gasFeeCap int64
+	feeTx, ok := tx.Tx.(FeeTx)
+	if ok {
+		fee := feeTx.GetFee()
+		gas := feeTx.GetGas()
+		if gas <= 0 {
+			return big.NewInt(0)
+		}
+		for _, c := range fee {
+			gasPrice := c.Amount.QuoRaw(int64(gas))
+			if gasPrice.IsInt64() {
+				gasFeeCap = gasPrice.Int64()
+			}
+			if gasFeeCap > 0 {
+				return big.NewInt(gasFeeCap)
+			}
+		}
+	}
+	return big.NewInt(0)
+}
+
+func (tx *MempoolTx) Gas() uint64 {
+	feeTx, ok := tx.Tx.(FeeTx)
+	if ok {
+		return feeTx.GetGas()
+	}
+	return 0
+}
+
+func ListNamespaceMemTxs(MempoolTxs []MempoolTx, nsTable []*tdmtypes.NamespaceTableEntries) map[uint64][]MempoolTx {
+	nsMempoolTxs := make(map[uint64][]MempoolTx)
 	lastOffset := int32(0)
 	for _, entry := range nsTable {
-		namespaceTxs := byteTxs[lastOffset:entry.Offset]
+		namespaceTxs := MempoolTxs[lastOffset:entry.Offset]
 		namespaceId := entry.Namespace
 		lastOffset = entry.Offset
-		nsByteTxs[namespaceId] = namespaceTxs
+		nsMempoolTxs[namespaceId] = namespaceTxs
 	}
-	return nsByteTxs
-}
-
-func ListNamespaceByteTxsAndTotalBytes(txs []*ByteTx, nsTable []*tdmtypes.NamespaceTableEntries) ([]NamespaceByteTxs, int64, int64) {
-	nsTxs := make([]NamespaceByteTxs, 0)
-	lastOffset := 0
-	totalBytes := int64(0)
-	totalGas := int64(0)
-	for _, entry := range nsTable {
-		namespaceTxs := txs[lastOffset:entry.Offset]
-		memTotalBytes, memTotalGas := TotalBytesAndGas(namespaceTxs)
-		nsTxs = append(nsTxs, NamespaceByteTxs{
-			NamespaceId: entry.Namespace,
-			Txs:         namespaceTxs,
-		})
-		lastOffset = int(entry.Offset)
-		totalBytes += memTotalBytes
-		totalGas += memTotalGas
-	}
-	return nsTxs, totalBytes, totalGas
-}
-
-func TotalBytesAndGas(txs []*ByteTx) (int64, int64) {
-	totalBytes := int64(0)
-	totalGas := int64(0)
-
-	for _, tx := range txs {
-		if tx.Tx != nil {
-			if gasTx, ok := tx.Tx.(FeeTx); ok {
-				tx.GasWanted = int64(gasTx.GetGas())
-				totalBytes += int64(len(tx.TxBytes))
-				totalGas += tx.GasWanted
-			}
-		}
-	}
-	return totalBytes, totalGas
-}
-
-// ReapMaxBytesMaxGasNsTable safely handles concurrent use by multiple goroutines.
-func ReapMaxBytesMaxGasNsTable(maxBytes, maxGas int64, txs []*ByteTx, nsTable []*tdmtypes.NamespaceTableEntries) ([]*ByteTx, []*tdmtypes.NamespaceTableEntries) {
-	var (
-		overflowRatio float64
-		totalBytes    int64
-		totalGas      int64
-		nsMemTxs      []NamespaceByteTxs
-	)
-
-	// List the transactions in namespaces and their total sizes.
-	nsMemTxs, totalBytes, totalGas = ListNamespaceByteTxsAndTotalBytes(txs, nsTable)
-
-	// Early exit if no overflow conditions are met.
-	if (maxBytes == -1 || totalBytes <= maxBytes) && (maxGas == -1 || totalGas <= maxGas) {
-		return txs, nsTable
-	}
-
-	// Initialize ratios and compute the overflow ratios only if applicable.
-	overflowBytesRatio := 0.0
-	overflowGasRatio := 0.0
-
-	if maxBytes > -1 && totalBytes > maxBytes {
-		overflowBytesRatio = float64(maxBytes) / float64(totalBytes)
-	}
-
-	if maxGas > -1 && totalGas > maxGas {
-		overflowGasRatio = float64(maxGas) / float64(totalGas)
-	}
-
-	// Choose the larger overflow ratio.
-	overflowRatio = math.Max(overflowBytesRatio, overflowGasRatio)
-
-	// Prepare the new list of transactions with the adjusted limits.
-	nsTxs := make([]NamespaceByteTxs, 0, len(nsMemTxs))
-
-	for _, nsMemTx := range nsMemTxs {
-		memTxs := nsMemTx.Txs
-		namespaceId := nsMemTx.NamespaceId
-
-		// Apply the limit based on the overflow ratio.
-		limit := len(memTxs)
-		if overflowRatio > 0 {
-			limit = int(math.Ceil(overflowRatio * float64(len(memTxs))))
-		}
-
-		// Limit the number of transactions in the namespace if necessary.
-		if limit < len(memTxs) {
-			memTxs = memTxs[:limit]
-		}
-
-		// Append the adjusted namespace transactions.
-		nsTxs = append(nsTxs, NamespaceByteTxs{
-			NamespaceId: namespaceId,
-			Txs:         memTxs,
-		})
-	}
-
-	// Reap the transactions and return the result.
-	return ReapNsTxs(nsTxs, maxBytes, maxGas)
-}
-
-// ReapNsTxs reap namespace txs result
-func ReapNsTxs(nsTxs []NamespaceByteTxs, maxBytes, maxGas int64) ([]*ByteTx, []*tdmtypes.NamespaceTableEntries) {
-	var (
-		totalGas    int64
-		runningSize int64
-		nsTable     []*tdmtypes.NamespaceTableEntries
-	)
-	// TODO: we will get a performance boost if we have a good estimate of avg
-	// size per tx, and set the initial capacity based off of that.
-	// txs := make([]types.Tx, 0, cmtmath.MinInt(mem.txs.Len(), max/mem.avgTxSize))
-	txs := make([]*ByteTx, 0)
-
-	offset := 0
-	for _, nsTx := range nsTxs {
-		byteTxs := nsTx.Txs
-		for _, byteTx := range byteTxs {
-			dataSize := types.ComputeProtoSizeForTxs([]types.Tx{byteTx.TxBytes})
-			// Check total size requirement
-			if maxBytes > -1 && runningSize+dataSize > maxBytes {
-				break
-			}
-			runningSize += dataSize
-
-			// Check total gas requirement.
-			// If maxGas is negative, skip this check.
-			// Since newTotalGas < masGas, which
-			// must be non-negative, it follows that this won't overflow.
-			newTotalGas := totalGas + byteTx.GasWanted
-			if maxGas > -1 && newTotalGas > maxGas {
-				break
-			}
-
-			txs = append(txs, byteTx)
-			totalGas = newTotalGas
-			offset++
-		}
-		nsTable = append(nsTable, &tdmtypes.NamespaceTableEntries{
-			Namespace: nsTx.NamespaceId,
-			Offset:    int32(offset),
-		})
-	}
-	return txs, nsTable
+	return nsMempoolTxs
 }

@@ -212,11 +212,11 @@ replace (
 	cosmossdk.io/api v0.7.3 => git.everylink.ai/blockchain/melodiasdk-io-api v0.7.4-0.20241104094545-977c75a19f4e
 	cosmossdk.io/collections v0.4.0 => git.everylink.ai/blockchain/melodiasdk-io-collections v0.4.1-0.20241022082508-640d6124f476
 	cosmossdk.io/core => git.everylink.ai/blockchain/melodiasdk-io-core v0.11.1-0.20241104095528-04d8006d90bd
-	cosmossdk.io/store => git.everylink.ai/blockchain/melodiasdk-io-store v1.0.3-0.20241126113205-9de7b16fb12b
+	cosmossdk.io/store => git.everylink.ai/blockchain/melodiasdk-io-store v1.0.3-0.20241227073709-343635734e05
 	//cosmossdk.io/store v1.0.2 => ../melodiasdk-io-store
 	// use cosmos fork of keyring
 	github.com/99designs/keyring => github.com/cosmos/keyring v1.2.0
-	github.com/cometbft/cometbft => git.everylink.ai/blockchain/hotbeat-consensus v0.38.7-0.20241218061801-31a4ba9ba67c
+	github.com/cometbft/cometbft => git.everylink.ai/blockchain/hotbeat-consensus v0.38.7-0.20241227100153-d3ba7b12bf96
 	//github.com/cometbft/cometbft v0.38.5 => ../hotbeat-consensus
 	github.com/cometbft/cometbft-db => git.everylink.ai/blockchain/hotbeat-db v0.0.0-20240829095236-33e4ca3e8583
 	github.com/cosmos/iavl => github.com/sei-protocol/sei-iavl v0.1.9

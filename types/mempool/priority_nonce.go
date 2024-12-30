@@ -24,12 +24,12 @@ type (
 		TxPriority TxPriority[C]
 
 		// OnRead is a callback to be called when a tx is read from the mempool.
-		OnRead func(tx sdk.Tx)
+		OnRead func(tx sdk.MempoolTx)
 
 		// TxReplacement is a callback to be called when duplicated transaction nonce
 		// detected during mempool insert. An application can define a transaction
 		// replacement rule based on tx priority or certain transaction fields.
-		TxReplacement func(op, np C, oTx, nTx sdk.Tx) bool
+		TxReplacement func(op, np C, oTx, nTx sdk.MempoolTx) bool
 
 		// MaxTx sets the maximum number of transactions allowed in the mempool with
 		// the semantics:
@@ -40,7 +40,7 @@ type (
 		// - if MaxTx < 0, `Insert` is a no-op.
 		MaxTx int
 
-		// SignerExtractor is an implementation which retrieves signer data from a sdk.Tx
+		// SignerExtractor is an implementation which retrieves signer data from a sdk.MempoolTx
 		SignerExtractor SignerExtractionAdapter
 	}
 
@@ -76,7 +76,7 @@ type (
 	TxPriority[C comparable] struct {
 		// GetTxPriority returns the priority of the transaction. A priority must be
 		// comparable via Compare.
-		GetTxPriority func(ctx context.Context, tx sdk.Tx) C
+		GetTxPriority func(ctx context.Context, tx sdk.MempoolTx) C
 
 		// Compare compares two transaction priorities. The result must be 0 if
 		// a == b, -1 if a < b, and +1 if a > b.
@@ -107,8 +107,8 @@ type (
 // the defining transaction priority.
 func NewDefaultTxPriority() TxPriority[int64] {
 	return TxPriority[int64]{
-		GetTxPriority: func(goCtx context.Context, tx sdk.Tx) int64 {
-			feeTx, ok := tx.(sdk.FeeTx)
+		GetTxPriority: func(goCtx context.Context, tx sdk.MempoolTx) int64 {
+			feeTx, ok := tx.Tx.(sdk.FeeTx)
 			if ok {
 				fee := feeTx.GetFee()
 				gas := feeTx.GetGas()
@@ -200,14 +200,15 @@ func DefaultPriorityMempool() *PriorityNonceMempool[int64] {
 // NextSenderTx returns the next transaction for a given sender by nonce order,
 // i.e. the next valid transaction for the sender. If no such transaction exists,
 // nil will be returned.
-func (mp *PriorityNonceMempool[C]) NextSenderTx(sender string) sdk.Tx {
+func (mp *PriorityNonceMempool[C]) NextSenderTx(sender string) *sdk.MempoolTx {
 	senderIndex, ok := mp.senderIndices[sender]
 	if !ok {
 		return nil
 	}
 
 	cursor := senderIndex.Front()
-	return cursor.Value.(sdk.Tx)
+	tx := cursor.Value.(sdk.MempoolTx)
+	return &tx
 }
 
 // Insert attempts to insert a Tx into the app-side mempool in O(log n) time,
@@ -219,7 +220,7 @@ func (mp *PriorityNonceMempool[C]) NextSenderTx(sender string) sdk.Tx {
 //
 // Inserting a duplicate tx with a different priority overwrites the existing tx,
 // changing the total order of the mempool.
-func (mp *PriorityNonceMempool[C]) Insert(ctx context.Context, tx sdk.Tx) error {
+func (mp *PriorityNonceMempool[C]) Insert(ctx context.Context, tx sdk.MempoolTx) error {
 	mp.mtx.Lock()
 	defer mp.mtx.Unlock()
 	if mp.cfg.MaxTx > 0 && mp.priorityIndex.Len() >= mp.cfg.MaxTx {
@@ -261,12 +262,12 @@ func (mp *PriorityNonceMempool[C]) Insert(ctx context.Context, tx sdk.Tx) error 
 	// changes.
 	sk := txMeta[C]{nonce: nonce, sender: sender}
 	if oldScore, txExists := mp.scores[sk]; txExists {
-		if mp.cfg.TxReplacement != nil && !mp.cfg.TxReplacement(oldScore.priority, priority, senderIndex.Get(key).Value.(sdk.Tx), tx) {
+		if mp.cfg.TxReplacement != nil && !mp.cfg.TxReplacement(oldScore.priority, priority, senderIndex.Get(key).Value.(sdk.MempoolTx), tx) {
 			return fmt.Errorf(
 				"tx doesn't fit the replacement rule, oldPriority: %v, newPriority: %v, oldTx: %v, newTx: %v",
 				oldScore.priority,
 				priority,
-				senderIndex.Get(key).Value.(sdk.Tx),
+				senderIndex.Get(key).Value.(sdk.MempoolTx),
 				tx,
 			)
 		}
@@ -359,8 +360,8 @@ func (i *PriorityNonceIterator[C]) Next() Iterator {
 	return i
 }
 
-func (i *PriorityNonceIterator[C]) Tx() sdk.Tx {
-	return i.senderCursors[i.sender].Value.(sdk.Tx)
+func (i *PriorityNonceIterator[C]) Tx() sdk.MempoolTx {
+	return i.senderCursors[i.sender].Value.(sdk.MempoolTx)
 }
 
 // Select returns a set of transactions from the mempool, ordered by priority
@@ -372,7 +373,7 @@ func (i *PriorityNonceIterator[C]) Tx() sdk.Tx {
 //
 // NOTE: It is not safe to use this iterator while removing transactions from
 // the underlying mempool.
-func (mp *PriorityNonceMempool[C]) Select(_ context.Context, _ [][]byte) Iterator {
+func (mp *PriorityNonceMempool[C]) Select(_ context.Context, _ []sdk.MempoolTx) Iterator {
 	mp.mtx.Lock()
 	defer mp.mtx.Unlock()
 	if mp.priorityIndex.Len() == 0 {
@@ -392,7 +393,7 @@ func (mp *PriorityNonceMempool[C]) Select(_ context.Context, _ [][]byte) Iterato
 type reorderKey[C comparable] struct {
 	deleteKey txMeta[C]
 	insertKey txMeta[C]
-	tx        sdk.Tx
+	tx        sdk.MempoolTx
 }
 
 func (mp *PriorityNonceMempool[C]) reorderPriorityTies() {
@@ -404,7 +405,7 @@ func (mp *PriorityNonceMempool[C]) reorderPriorityTies() {
 		if mp.priorityCounts[key.priority] > 1 {
 			newKey := key
 			newKey.weight = senderWeight(mp.cfg.TxPriority, key.senderElement)
-			reordering = append(reordering, reorderKey[C]{deleteKey: key, insertKey: newKey, tx: node.Value.(sdk.Tx)})
+			reordering = append(reordering, reorderKey[C]{deleteKey: key, insertKey: newKey, tx: node.Value.(sdk.MempoolTx)})
 		}
 
 		node = node.Next()
@@ -452,7 +453,7 @@ func (mp *PriorityNonceMempool[C]) CountTx() int {
 
 // Remove removes a transaction from the mempool in O(log n) time, returning an
 // error if unsuccessful.
-func (mp *PriorityNonceMempool[C]) Remove(tx sdk.Tx) error {
+func (mp *PriorityNonceMempool[C]) Remove(ctx context.Context, tx sdk.MempoolTx) error {
 	mp.mtx.Lock()
 	defer mp.mtx.Unlock()
 

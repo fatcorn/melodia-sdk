@@ -19,6 +19,7 @@ package mempool
 import (
 	"cosmossdk.io/store/multiversion"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"sync"
 )
 
 // noncer is a tiny virtual state database to manage the executable nonces of
@@ -33,7 +34,7 @@ type noncer struct {
 func newNoncer(fallback sdk.GetAccountNonceHandler) *noncer {
 	return &noncer{
 		fallback: fallback,
-		nonces:   multiversion.NewShardedMap(1024),
+		nonces:   multiversion.NewShardedMap(20000),
 	}
 }
 
@@ -79,44 +80,69 @@ func (txn *noncer) set(_ sdk.Context, addr string, nonce uint64) {
 
 // setIfLower updates a new virtual nonce into the virtual state database if the
 // new one is lower.
-func (txn *noncer) setIfLower(ctx sdk.Context, addr string, nonce uint64) {
-	if _, ok := txn.nonces.Get(addr); !ok {
-		nonce, err := txn.fallback(ctx, addr)
-		if err != nil {
-			panic(err)
+func (txn *noncer) setIfLower(addr string, nonce uint64) {
+	txn.nonces.SetIf(addr, nonce, func(oldNonce interface{}, exists bool) bool {
+		if exists && oldNonce.(uint64) <= nonce {
+			return false
 		}
-		if nonce != 0 {
-			txn.nonces.Set(addr, nonce)
-		}
-	}
-	nonce2, ex := txn.nonces.Get(addr)
-	if ex {
-		if nonce2.(uint64) <= nonce {
-			return
-		}
-	}
-	txn.nonces.Set(addr, nonce)
+		return true
+	})
 }
-func (txn *noncer) setIfHigher(ctx sdk.Context, addr string, nonce uint64) {
-	if _, ok := txn.nonces.Get(addr); !ok {
-		nonce, err := txn.fallback(ctx, addr)
-		if err != nil {
-			panic(err)
+func (txn *noncer) setIfHigher(addr string, nonce uint64) uint64 {
+	nextNonce := txn.nonces.SetIf(addr, nonce, func(oldNonce interface{}, exists bool) bool {
+		if exists && oldNonce.(uint64) > nonce {
+			return false
 		}
-		if nonce != 0 {
-			txn.nonces.Set(addr, nonce)
-		}
-	}
-	nonce2, ex := txn.nonces.Get(addr)
-	if ex {
-		if nonce2.(uint64) > nonce {
-			return
-		}
-	}
-	txn.nonces.Set(addr, nonce)
+		return true
+	})
+
+	return nextNonce.(uint64)
 }
 
 // Reset reset the nonces
 func (txn *noncer) Reset() {
-	txn.nonces = multiversion.NewShardedMap(1024)
+	txn.nonces = multiversion.NewShardedMap(20000)
+}
+
+type namepaceNoncer struct {
+	noncers *sync.Map
+	mux     sync.Mutex
+}
+
+func newNamepsaceNoncer() *namepaceNoncer {
+	return &namepaceNoncer{
+		noncers: &sync.Map{},
+	}
+}
+
+func (ns *namepaceNoncer) getNonce(ctx sdk.Context, sender string) uint64 {
+	finalNoncer := ns.getNoncer(ctx, func(ctx sdk.Context, sender string) (uint64, error) {
+		return 0, nil
+	})
+	return finalNoncer.get(ctx, sender)
+}
+
+func (ns *namepaceNoncer) updateNonce(ctx sdk.Context, sender string, nonce uint64) uint64 {
+	if nonce == 0 {
+		return nonce
+	}
+	finalNoncer := ns.getNoncer(ctx, func(ctx sdk.Context, sender string) (uint64, error) {
+		return 0, nil
+	})
+	return finalNoncer.setIfHigher(sender, nonce)
+}
+
+func (ns *namepaceNoncer) getNoncer(ctx sdk.Context, fallback sdk.GetAccountNonceHandler) *noncer {
+	namespaceId := ctx.Namespace()
+	finalNoncer, init := ns.noncers.Load(namespaceId)
+	if !init {
+		ns.mux.Lock()
+		finalNoncer, init = ns.noncers.Load(namespaceId)
+		if !init {
+			finalNoncer = newNoncer(fallback)
+			ns.noncers.Store(namespaceId, finalNoncer)
+		}
+		ns.mux.Unlock()
+	}
+	return finalNoncer.(*noncer)
 }

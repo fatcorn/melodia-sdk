@@ -58,7 +58,7 @@ func (s *MempoolTestSuite) TestNamespaceTxOrder() {
 		for namespaceId, _ := range namespaceIds {
 			ctx.SetNamespace(namespaceId)
 			t.Run(fmt.Sprintf("case %d", i), func(t *testing.T) {
-				pool := mempool.NewNamespaceMempool()
+				pool := mempool.NewNamespaceSort()
 
 				// create test txs and insert into mempool
 				nsTable := make([]*cmtproto.NamespaceTableEntries, 0, len(tt.txs))
@@ -76,7 +76,7 @@ func (s *MempoolTestSuite) TestNamespaceTxOrder() {
 					Namespace: namespaceId,
 					Offset:    int32(offset),
 				})
-				nsIter, _ := pool.SelectWithNsTable(ctx, txBytes, nsTable)
+				nsIter, _ := pool.Select(ctx, txBytes, nsTable)
 
 				orderedTxs := fetchTxs(nsIter[namespaceId], 100000000)
 
