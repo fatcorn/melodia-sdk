@@ -159,11 +159,11 @@ func (tx *MempoolTx) Gas() uint64 {
 	return 0
 }
 
-func ListNamespaceMemTxs(MempoolTxs []MempoolTx, nsTable []*tdmtypes.NamespaceTableEntries) map[uint64][]MempoolTx {
+func ListNamespaceMemTxs(txs []MempoolTx, nsTable []*tdmtypes.NamespaceTableEntries) map[uint64][]MempoolTx {
 	nsMempoolTxs := make(map[uint64][]MempoolTx)
 	lastOffset := int32(0)
 	for _, entry := range nsTable {
-		namespaceTxs := MempoolTxs[lastOffset:entry.Offset]
+		namespaceTxs := txs[lastOffset:entry.Offset]
 		namespaceId := entry.Namespace
 		lastOffset = entry.Offset
 		nsMempoolTxs[namespaceId] = namespaceTxs

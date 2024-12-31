@@ -52,6 +52,14 @@ func (nsm *NamespaceMempool) Prepare(ctx sdk.Context, tx sdk.MempoolTx) sdk.Cont
 	return ctx
 }
 
+func (nsm *NamespaceMempool) Defer(ctx context.Context, tx sdk.MempoolTx, success bool) {
+	//update nonce
+	if success {
+		sdkCtx := sdk.UnwrapSDKContext(ctx)
+		nsm.noncer.updateNonce(sdkCtx, tx.From, sdkCtx.Nonce())
+	}
+}
+
 func (nsm *NamespaceMempool) Insert(ctx context.Context, tx sdk.MempoolTx) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 
@@ -63,9 +71,6 @@ func (nsm *NamespaceMempool) Insert(ctx context.Context, tx sdk.MempoolTx) error
 	return nil
 }
 func (nsm *NamespaceMempool) Remove(ctx context.Context, tx sdk.MempoolTx) error {
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	//update nonce
-	nsm.noncer.updateNonce(sdkCtx, tx.From, sdkCtx.Nonce())
 	//remove cache signer
 	nsm.signers.Delete(tx.Hash(), func(any any) {})
 	return nil

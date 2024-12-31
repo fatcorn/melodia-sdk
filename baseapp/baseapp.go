@@ -1304,6 +1304,9 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 			ctx.Logger().Warn("panic recovered in runTx", "err", err, "height", ctx.BlockHeight(), "txIndex", ctx.TxIndex())
 
 		}
+		if m, ok := app.mempool.(*mempool.NamespaceMempool); ok {
+			m.Defer(ctx, memTx, err == nil)
+		}
 		gInfo = sdk.GasInfo{GasWanted: gasWanted, GasUsed: ctx.GasMeter().GasConsumed()}
 	}()
 
