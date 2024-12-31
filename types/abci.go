@@ -2,6 +2,7 @@ package types
 
 import (
 	"cosmossdk.io/core/appmodule"
+	"fmt"
 	abci "github.com/cometbft/cometbft/abci/types"
 	tmbytes "github.com/cometbft/cometbft/libs/bytes"
 	tdmtypes "github.com/cometbft/cometbft/proto/tendermint/types"
@@ -100,7 +101,7 @@ type SortTxHandler struct {
 	CheckTxFeeHandler                          func(ctx Context, baseFee *big.Int, tx Tx) bool
 	BaseFeeHandler                             func(ctx Context) *big.Int
 	GetAccountNonceHandler                     func(ctx Context, address string) (uint64, error)
-	IsGapped                                   func(ctx Context, tx MempoolTx) bool
+	IsGapped                                   func(ctx Context, tx MempoolTx) (bool, bool)
 }
 
 type MempoolTx struct {
@@ -114,9 +115,23 @@ type MempoolTx struct {
 	Nonce    uint64
 }
 
+// NamespaceSelectedTxs is used for sorting transactions within a namespace.
+type NamespaceSelectedTxs struct {
+	Txs     []MempoolTx                       // List of transactions
+	NsTable []*tdmtypes.NamespaceTableEntries // Table entries for namespaces
+
+	ReplacedTxs     []MempoolTx
+	ReplacedNsTable []*tdmtypes.NamespaceTableEntries
+}
+
 type NamespaceMempoolTxs struct {
 	NamespaceId uint64
 	Txs         []MempoolTx
+}
+
+func (tx *MempoolTx) NonceKey(namespaceId uint64) string {
+	// Convert uint64 namespaceId and tx.Nonce to string before concatenation
+	return fmt.Sprintf("%d%s%d", namespaceId, tx.From, tx.Nonce)
 }
 
 func (tx *MempoolTx) Hash() string {

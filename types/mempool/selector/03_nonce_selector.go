@@ -5,12 +5,19 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
-func NonceSelector(ctx sdk.Context, txs []sdk.MempoolTx, nsTable []*cmtproto.NamespaceTableEntries) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) {
+func NonceSelector(ctx sdk.Context, nsSelectedTxs sdk.NamespaceSelectedTxs) sdk.NamespaceSelectedTxs {
+
+	txs := nsSelectedTxs.Txs
+	nsTable := nsSelectedTxs.NsTable
 
 	var (
 		selectedTxs     = make([]sdk.MempoolTx, 0, len(txs))
 		selectedNsTable = make([]*cmtproto.NamespaceTableEntries, 0)
 		offset          = int32(0)
+
+		replaceTxs     = make([]sdk.MempoolTx, 0)
+		replaceNsTable = make([]*cmtproto.NamespaceTableEntries, 0)
+		replaceOffset  = int32(0)
 
 		iterOffset  = int32(0)
 		pendingSize = 0
@@ -31,9 +38,14 @@ func NonceSelector(ctx sdk.Context, txs []sdk.MempoolTx, nsTable []*cmtproto.Nam
 			txSignersSeqs := make(map[string]uint64)
 			seq, ok := selectedTxsSignersSeqs[from]
 			if !ok {
-				isGapped := memTx.IsGapped(ctx.WithNamepace(namespaceId), memTx)
+				isGapped, isLower := memTx.IsGapped(ctx.WithNamepace(namespaceId), memTx)
 				if !isGapped {
-					pendingSize++
+					if isLower {
+						replaceTxs = append(replaceTxs, memTx)
+						replaceOffset++
+					} else {
+						pendingSize++
+					}
 					continue
 				}
 				txSignersSeqs[from] = nonce
@@ -42,7 +54,12 @@ func NonceSelector(ctx sdk.Context, txs []sdk.MempoolTx, nsTable []*cmtproto.Nam
 				// sure that the current sequence is seq+1; otherwise is invalid
 				// and we skip it.
 				if seq+1 != nonce {
-					pendingSize++
+					if seq+1 > nonce {
+						replaceTxs = append(replaceTxs, memTx)
+						replaceOffset++
+					} else {
+						pendingSize++
+					}
 					continue
 				}
 				txSignersSeqs[from] = nonce
@@ -74,12 +91,28 @@ func NonceSelector(ctx sdk.Context, txs []sdk.MempoolTx, nsTable []*cmtproto.Nam
 				Offset:    offset,
 			})
 		}
+
+		if len(replaceTxs) > 0 {
+			replaceNsTable = append(replaceNsTable, &cmtproto.NamespaceTableEntries{
+				Namespace: namespaceId,
+				Offset:    replaceOffset,
+			})
+		}
+
 		iterOffset = nsEntry.Offset
 	}
 
+	if len(replaceTxs) > 0 {
+		ctx.Logger().Info("nonce selector replace txs", "size", len(txs), "nsTable", nsTable, "replaceTxs", len(replaceTxs), "replaceNsTable", replaceNsTable, "height", ctx.BlockHeight())
+	}
 	if pendingSize > 0 {
-		ctx.Logger().Info("nonce selector pending txs", "size", len(txs), "nsTable", nsTable, "pendingSize", pendingSize)
+		ctx.Logger().Info("nonce selector pending txs", "size", len(txs), "nsTable", nsTable, "pendingSize", pendingSize, "height", ctx.BlockHeight())
 	}
 
-	return selectedTxs, selectedNsTable
+	return sdk.NamespaceSelectedTxs{
+		Txs:             selectedTxs,
+		NsTable:         selectedNsTable,
+		ReplacedTxs:     replaceTxs,
+		ReplacedNsTable: replaceNsTable,
+	}
 }

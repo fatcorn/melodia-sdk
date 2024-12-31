@@ -7,8 +7,14 @@ import (
 	"math"
 )
 
-func LimitSelector(ctx sdk.Context, maxBytes, maxGas int64, txs []sdk.MempoolTx, nsTable []*cmtproto.NamespaceTableEntries) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) {
-	return ReapMaxBytesMaxGasNsTable(maxBytes, maxGas, txs, nsTable)
+func LimitSelector(ctx sdk.Context, maxBytes, maxGas int64, nsSelectedTxs sdk.NamespaceSelectedTxs) sdk.NamespaceSelectedTxs {
+	selectedTxs, selectedNsTable := ReapMaxBytesMaxGasNsTable(maxBytes, maxGas, nsSelectedTxs.Txs, nsSelectedTxs.NsTable)
+	return sdk.NamespaceSelectedTxs{
+		Txs:             selectedTxs,
+		NsTable:         selectedNsTable,
+		ReplacedTxs:     nsSelectedTxs.ReplacedTxs,
+		ReplacedNsTable: nsSelectedTxs.ReplacedNsTable,
+	}
 }
 
 // ReapMaxBytesMaxGasNsTable safely handles concurrent use by multiple goroutines.

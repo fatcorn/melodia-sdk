@@ -6,7 +6,11 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
-func InterChainSelector(ctx sdk.Context, txs []sdk.MempoolTx, nsTable []*cmtproto.NamespaceTableEntries) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) {
+func InterChainSelector(ctx sdk.Context, nsSelectedTxs sdk.NamespaceSelectedTxs) sdk.NamespaceSelectedTxs {
+
+	txs := nsSelectedTxs.Txs
+	nsTable := nsSelectedTxs.NsTable
+
 	var (
 		checkInterChainPairTxs = make(map[string][]*cmtproto.NsInterChainTransactionIndex)
 		beforeIterOffset       = int32(0)
@@ -29,7 +33,7 @@ func InterChainSelector(ctx sdk.Context, txs []sdk.MempoolTx, nsTable []*cmtprot
 		beforeIterOffset = nsEntry.Offset
 	}
 	if len(checkInterChainPairTxs) == 0 {
-		return txs, nsTable
+		return nsSelectedTxs
 	}
 	var (
 		selectedTxs     = make([]sdk.MempoolTx, 0, len(txs))
@@ -62,5 +66,10 @@ func InterChainSelector(ctx sdk.Context, txs []sdk.MempoolTx, nsTable []*cmtprot
 		afterIterOffset = nsEntry.Offset
 	}
 
-	return selectedTxs, selectedNsTable
+	return sdk.NamespaceSelectedTxs{
+		Txs:             selectedTxs,
+		NsTable:         selectedNsTable,
+		ReplacedTxs:     nsSelectedTxs.ReplacedTxs,
+		ReplacedNsTable: nsSelectedTxs.ReplacedNsTable,
+	}
 }

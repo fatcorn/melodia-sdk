@@ -1433,6 +1433,9 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	//now := cmttime.Now()
 	if mode == execModeCheck {
 		err = app.mempool.Insert(ctx, memTx)
+		if err != nil {
+			return gInfo, nil, nil, nil, err
+		}
 
 		if app.pibcPacketGeneratorHadler != nil && app.signerName != "" {
 			getSigigner := func() sdk.AccAddress {
@@ -1652,11 +1655,17 @@ func (app *BaseApp) sortTxs(ctx sdk.Context, req *abci.RequestSortTxs) (*abci.Re
 
 	t2 := time.Now()
 
-	txs, nsTable, orders := mempool.NewNamespaceSort().Select(ctx, req.MaxTxBytes, maxBlockGas, memTxs, req.NsTable, bfttypes.SortType(req.SortType))
-	app.logger.Info("2->sortTxs select time", "used", time.Since(t2).String(), "consensusUsed", t2.Sub(t1).String(), "size", len(txs), "reqSize", len(req.Txs), "sortType", req.SortType, "height", ctx.BlockHeight())
-	app.logger.Info("3->sortTxs total time", "used", time.Since(t0).String(), "size", len(txs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "sortType", req.SortType, "height", ctx.BlockHeight())
+	txs, nsTable, orders, replacedTxs, replacedNsTable := mempool.NewNamespaceSort().Select(ctx, req.MaxTxBytes, maxBlockGas, memTxs, req.NsTable, bfttypes.SortType(req.SortType))
+	if len(replacedTxs) > 0 {
+		app.logger.Info("2->sortTxs select time", "used", time.Since(t2).String(), "consensusUsed", t2.Sub(t1).String(), "size", len(txs), "reqSize", len(req.Txs), "replacedSize", len(replacedTxs), "replacedNsTable", replacedNsTable, "sortType", req.SortType, "height", ctx.BlockHeight())
+		app.logger.Info("3->sortTxs total time", "used", time.Since(t0).String(), "size", len(txs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "replacedSize", len(replacedTxs), "replacedNsTable", replacedNsTable, "sortType", req.SortType, "height", ctx.BlockHeight())
+	} else {
+		app.logger.Info("2->sortTxs select time", "used", time.Since(t2).String(), "consensusUsed", t2.Sub(t1).String(), "size", len(txs), "reqSize", len(req.Txs), "sortType", req.SortType, "height", ctx.BlockHeight())
+		app.logger.Info("3->sortTxs total time", "used", time.Since(t0).String(), "size", len(txs), "nsTable", nsTable, "reqSize", len(req.Txs), "reqNsTable", req.NsTable, "sortType", req.SortType, "height", ctx.BlockHeight())
 
-	return &abci.ResponseSortTxs{Txs: txs, NsTable: nsTable, Orders: orders}, nil
+	}
+
+	return &abci.ResponseSortTxs{Txs: txs, NsTable: nsTable, Orders: orders, ReplacedTxs: replacedTxs, ReplacedNsTable: replacedNsTable}, nil
 }
 
 // decodeToMemTxs decode txByte to mempoolTx
