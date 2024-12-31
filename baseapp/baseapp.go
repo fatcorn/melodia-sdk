@@ -1305,7 +1305,9 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 
 		}
 		if m, ok := app.mempool.(*mempool.NamespaceMempool); ok {
-			m.Defer(ctx, memTx, err == nil)
+			if mode == execModeFinalize {
+				m.Defer(ctx, memTx, err == nil)
+			}
 		}
 		gInfo = sdk.GasInfo{GasWanted: gasWanted, GasUsed: ctx.GasMeter().GasConsumed()}
 	}()
