@@ -228,7 +228,7 @@ func (nsm *NamespaceSort) Select(ctx context.Context, maxBytes, maxGas int64, re
 		memTxs := selectedTxs[iterOffset:nsEntry.Offset]
 		namespaceId := nsEntry.Namespace
 
-		// Static analysis
+		// static analysis
 		var (
 			addressIndexMap      = make(map[string]int)
 			lastTxIndexMap       = make(map[string]int)
