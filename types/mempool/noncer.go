@@ -135,9 +135,7 @@ func (ns *namepaceNoncer) getNoncer(ctx sdk.Context, fallback sdk.GetAccountNonc
 		ns.mux.Lock()
 		finalNoncer, init = ns.noncers.Load(namespaceId)
 		if !init {
-			finalNoncer = newNoncer(func(ctx sdk.Context, address string) (uint64, error) {
-				return 0, nil
-			})
+			finalNoncer = newNoncer(fallback)
 			ns.noncers.Store(namespaceId, finalNoncer)
 		}
 		ns.mux.Unlock()

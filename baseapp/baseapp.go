@@ -1758,11 +1758,10 @@ func (app *BaseApp) ToMemTx(txByte []byte) (sdk.MempoolTx, error) {
 
 	switch m := app.mempool.(type) {
 	case *mempool.NamespaceMempool:
-		//memTx.SortTxHandler.IsGapped = func(ctx sdk.Context, tx sdk.MempoolTx) (bool, bool) {
-		//	finalCtx, _ := app.finalizeBlockState.Context().CacheContext()
-		//	return m.IsGapped(finalCtx, tx)
-		//}
-		memTx.SortTxHandler.IsGapped = m.IsGapped
+		memTx.SortTxHandler.IsGapped = func(ctx sdk.Context, tx sdk.MempoolTx) (bool, bool) {
+			finalCtx, _ := app.finalizeBlockState.Context().CacheContext()
+			return m.IsGapped(finalCtx.WithNamepace(ctx.Namespace()), tx)
+		}
 	}
 	return memTx, err
 }
