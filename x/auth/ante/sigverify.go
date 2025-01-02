@@ -377,7 +377,9 @@ func (isd IncrementSequenceDecorator) AnteHandle(ctx sdk.Context, tx sdk.Tx, sim
 			panic(err)
 		}
 
-		ctx = ctx.WithNonce(acc.GetSequence())
+		if ctx.ExecMode() == sdk.ExecModeFinalize {
+			ctx = ctx.WithNonce(acc.GetSequence())
+		}
 		isd.ak.SetAccount(ctx, acc)
 	}
 
