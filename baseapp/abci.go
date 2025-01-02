@@ -401,7 +401,8 @@ func (app *BaseApp) SortTxs(req *abci.RequestSortTxs) (resp *abci.ResponseSortTx
 			resp = &abci.ResponseSortTxs{Txs: req.Txs, NsTable: req.NsTable}
 		}
 	}()
-	ctx := app.finalizeBlockState.Context().WithConsensusParams(app.GetConsensusParams(app.finalizeBlockState.Context()))
+	ctx, _ := app.finalizeBlockState.Context().CacheContext()
+	ctx = ctx.WithConsensusParams(app.GetConsensusParams(app.finalizeBlockState.Context()))
 
 	resp, err = app.sortTxs(ctx, req)
 	if err != nil {

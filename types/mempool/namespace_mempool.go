@@ -10,6 +10,7 @@ var _ Mempool = (*NamespaceMempool)(nil)
 
 // NamespaceMempool defines a namespace sort mempool.
 type NamespaceMempool struct {
+	noncer       *namepaceNoncer
 	cacheSigners *cmap.ShardedMap
 	//pendingNonces *cmap.ShardedMap
 }
@@ -18,6 +19,7 @@ type NamespaceMempool struct {
 // nonce, the lowest first, picking a random sender on each iteration.
 func NewNamespaceMempool() *NamespaceMempool {
 	nsm := &NamespaceMempool{
+		noncer:       newNamepsaceNoncer(),
 		cacheSigners: cmap.NewShardedMap(20000),
 		//pendingNonces: cmap.NewShardedMap(20000),
 	}
@@ -26,14 +28,18 @@ func NewNamespaceMempool() *NamespaceMempool {
 
 // IsGapped reports whether the given transaction is immediately executable.
 func (nsm *NamespaceMempool) IsGapped(ctx sdk.Context, tx sdk.MempoolTx) (bool, bool) {
-	nextNonce, err := tx.GetAccountNonceHandler(ctx, tx.From)
-	if err != nil {
-		return true, false
-	}
+	nextNonce := nsm.noncer.getNonce(ctx, tx.From, tx.GetAccountNonceHandler)
 	txNonce := tx.Nonce
+	if nextNonce == 0 {
+		return txNonce >= nextNonce, false
+	}
+	//if txNonce != nextNonce {
+	//	println("IsGapped-> nextNonce=", nextNonce, "txNonce=", txNonce)
+	//}
 	return txNonce == nextNonce, txNonce < nextNonce
 }
 func (nsm *NamespaceMempool) Reset() {
+	nsm.noncer = newNamepsaceNoncer()
 	nsm.cacheSigners.Clear()
 	//nsm.pendingNonces.Clear()
 }
@@ -46,6 +52,16 @@ func (nsm *NamespaceMempool) Prepare(ctx sdk.Context, tx sdk.MempoolTx) sdk.Cont
 		}
 	}
 	return ctx
+}
+
+func (nsm *NamespaceMempool) Defer(ctx context.Context, tx sdk.MempoolTx, success bool) {
+	//update nonce
+	if success {
+		sdkCtx := sdk.UnwrapSDKContext(ctx)
+		if sdkCtx.ExecMode() == sdk.ExecModeFinalize {
+			nsm.noncer.updateNonce(sdkCtx, tx.From, sdkCtx.Nonce(), tx.GetAccountNonceHandler)
+		}
+	}
 }
 
 func (nsm *NamespaceMempool) Insert(ctx context.Context, tx sdk.MempoolTx) error {

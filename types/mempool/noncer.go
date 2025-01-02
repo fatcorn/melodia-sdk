@@ -115,20 +115,16 @@ func newNamepsaceNoncer() *namepaceNoncer {
 	}
 }
 
-func (ns *namepaceNoncer) getNonce(ctx sdk.Context, sender string) uint64 {
-	finalNoncer := ns.getNoncer(ctx, func(ctx sdk.Context, sender string) (uint64, error) {
-		return 0, nil
-	})
+func (ns *namepaceNoncer) getNonce(ctx sdk.Context, sender string, fallback func(ctx sdk.Context, sender string) (uint64, error)) uint64 {
+	finalNoncer := ns.getNoncer(ctx, fallback)
 	return finalNoncer.get(ctx, sender)
 }
 
-func (ns *namepaceNoncer) updateNonce(ctx sdk.Context, sender string, nonce uint64) uint64 {
+func (ns *namepaceNoncer) updateNonce(ctx sdk.Context, sender string, nonce uint64, fallback func(ctx sdk.Context, sender string) (uint64, error)) uint64 {
 	if nonce == 0 {
 		return nonce
 	}
-	finalNoncer := ns.getNoncer(ctx, func(ctx sdk.Context, sender string) (uint64, error) {
-		return 0, nil
-	})
+	finalNoncer := ns.getNoncer(ctx, fallback)
 	return finalNoncer.setIfHigher(sender, nonce)
 }
 
