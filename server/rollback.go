@@ -42,6 +42,7 @@ application.
 			}
 
 			ctx.Viper.Set(flags.FlagNamespaceDB, *namespaceDBInfo)
+			ctx.Viper.Set(flags.FlagDBType, dbType)
 			app := appCreator(ctx.Logger, db, nil, ctx.Viper)
 			// rollback CometBFT state
 			height, hash, err := cmtcmd.RollbackState(ctx.Config, removeBlock)

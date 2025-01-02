@@ -517,6 +517,9 @@ func (app *BaseApp) addNewNamespaceBLockStore(namespaceID uint64, moduleName str
 // loadNamespaceBLockStore Load a namespace blockdb to namespace store manager
 func (app *BaseApp) loadNamespaceBLockStore(namespaceID uint64, db cmtdbm.DB, moduleName string, moduleRelatedModules []string) {
 	nsBLockStore := nsblockstore.NewNamespaceBlockStore(db, namespaceID, app.logger)
+	if !nsBLockStore.GetNamespaceState() {
+		return
+	}
 	curentBlock := nsBLockStore.LoadBlock(nsBLockStore.Height())
 	fmt.Printf("namespace current block %X, heigth %d\n", curentBlock.Hash, curentBlock.Height)
 	app.namespaceStoreManager.AddNamespaceStore(namespaceID, moduleName, nsBLockStore)

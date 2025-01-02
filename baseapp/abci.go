@@ -1562,7 +1562,8 @@ func (app *BaseApp) signPacketTx(packet *sdk.PIBCPacket) []byte {
 	if err != nil {
 		panic(fmt.Errorf("load signer pubkey failed"))
 	}
-	tx.SetFeeAmount(sdk.NewCoins(sdk.NewCoin("stake", math.NewInt(5000))))
+	demon := app.minGasPrices[0].Denom
+	tx.SetFeeAmount(sdk.NewCoins(sdk.NewCoin(demon, math.NewInt(5000))))
 	tx.SetGasLimit(200000)
 	//tx.SetFeeGranter(f.feeGranter)
 	tx.SetFeePayer(sdk.AccAddress(pubkey.Address()))
