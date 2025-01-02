@@ -162,12 +162,12 @@ func (nsm *NamespaceSort) SelectTxs(ctx context.Context, maxBytes, maxGas int64,
 	// If the sorting type requires additional selection logic, apply selectors.
 	if sortType == types.SortAndSelect {
 		selectors := []func(sdk.Context, sdk.NamespaceSelectedTxs) sdk.NamespaceSelectedTxs{
+			selector.BaseFeeSelector,
+			selector.InterChainSelector,
+			selector.NonceSelector,
 			func(ctx sdk.Context, nsSelectedTxs sdk.NamespaceSelectedTxs) sdk.NamespaceSelectedTxs {
 				return selector.LimitSelector(ctx, maxBytes, maxGas, nsSelectedTxs)
 			},
-			selector.BaseFeeSelector,
-			selector.NonceSelector,
-			selector.InterChainSelector,
 		}
 		// Apply selectors sequentially to refine the selected transactions.
 		for _, selectFn := range selectors {
