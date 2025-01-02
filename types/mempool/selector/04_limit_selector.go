@@ -7,12 +7,18 @@ import (
 	"math"
 )
 
-func LimitSelector(ctx sdk.Context, maxBytes, maxGas int64, txs []sdk.MempoolTx, nsTable []*cmtproto.NamespaceTableEntries) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) {
-	return ReapMaxBytesMaxGasNsTable(maxBytes, maxGas, txs, nsTable)
+func LimitSelector(ctx sdk.Context, maxBytes, maxGas int64, nsSelectedTxs sdk.NamespaceSelectedTxs) sdk.NamespaceSelectedTxs {
+	selectedTxs, selectedNsTable := ReapMaxBytesMaxGasNsTable(ctx, maxBytes, maxGas, nsSelectedTxs.Txs, nsSelectedTxs.NsTable)
+	return sdk.NamespaceSelectedTxs{
+		Txs:             selectedTxs,
+		NsTable:         selectedNsTable,
+		ReplacedTxs:     nsSelectedTxs.ReplacedTxs,
+		ReplacedNsTable: nsSelectedTxs.ReplacedNsTable,
+	}
 }
 
 // ReapMaxBytesMaxGasNsTable safely handles concurrent use by multiple goroutines.
-func ReapMaxBytesMaxGasNsTable(maxBytes, maxGas int64, txs []sdk.MempoolTx, nsTable []*cmtproto.NamespaceTableEntries) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) {
+func ReapMaxBytesMaxGasNsTable(ctx sdk.Context, maxBytes, maxGas int64, txs []sdk.MempoolTx, nsTable []*cmtproto.NamespaceTableEntries) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) {
 	var (
 		overflowRatio float64
 		totalBytes    int64
@@ -60,6 +66,13 @@ func ReapMaxBytesMaxGasNsTable(maxBytes, maxGas int64, txs []sdk.MempoolTx, nsTa
 		if limit < len(memTxs) {
 			memTxs = memTxs[:limit]
 		}
+		if len(memTxs) > 0 {
+			latestMemTx := memTxs[len(memTxs)-1]
+			_, isCross, isFirst := latestMemTx.CrossNamespaceTransactionIdentifierHandler(ctx.WithTxBytes(latestMemTx.TxBytes), latestMemTx.Tx)
+			if isCross && isFirst {
+				memTxs = memTxs[:limit-1]
+			}
+		}
 
 		// Append the adjusted namespace transactions.
 		nsTxs = append(nsTxs, sdk.NamespaceMempoolTxs{
@@ -69,11 +82,11 @@ func ReapMaxBytesMaxGasNsTable(maxBytes, maxGas int64, txs []sdk.MempoolTx, nsTa
 	}
 
 	// Reap the transactions and return the result.
-	return ReapNsTxs(nsTxs, maxBytes, maxGas)
+	return ReapNsTxs(ctx, nsTxs, maxBytes, maxGas)
 }
 
 // ReapNsTxs reap namespace txs result
-func ReapNsTxs(nsTxs []sdk.NamespaceMempoolTxs, maxBytes, maxGas int64) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) {
+func ReapNsTxs(ctx sdk.Context, nsTxs []sdk.NamespaceMempoolTxs, maxBytes, maxGas int64) ([]sdk.MempoolTx, []*cmtproto.NamespaceTableEntries) {
 	var (
 		totalGas    int64
 		runningSize int64
@@ -91,7 +104,10 @@ func ReapNsTxs(nsTxs []sdk.NamespaceMempoolTxs, maxBytes, maxGas int64) ([]sdk.M
 			dataSize := types.ComputeProtoSizeForTxs([]types.Tx{memTx.TxBytes})
 			// Check total size requirement
 			if maxBytes > -1 && runningSize+dataSize > maxBytes {
-				break
+				_, isCross, _ := memTx.CrossNamespaceTransactionIdentifierHandler(ctx.WithTxBytes(memTx.TxBytes), memTx.Tx)
+				if !isCross {
+					break
+				}
 			}
 			runningSize += dataSize
 
@@ -101,7 +117,10 @@ func ReapNsTxs(nsTxs []sdk.NamespaceMempoolTxs, maxBytes, maxGas int64) ([]sdk.M
 			// must be non-negative, it follows that this won't overflow.
 			newTotalGas := totalGas + int64(memTx.TxGas)
 			if maxGas > -1 && newTotalGas > maxGas {
-				break
+				_, isCross, _ := memTx.CrossNamespaceTransactionIdentifierHandler(ctx.WithTxBytes(memTx.TxBytes), memTx.Tx)
+				if !isCross {
+					break
+				}
 			}
 
 			txs = append(txs, memTx)
