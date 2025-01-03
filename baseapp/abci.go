@@ -401,10 +401,10 @@ func (app *BaseApp) SortTxs(req *abci.RequestSortTxs) (resp *abci.ResponseSortTx
 			resp = &abci.ResponseSortTxs{Txs: req.Txs, NsTable: req.NsTable}
 		}
 	}()
-	app.checkState.SetContext(app.checkState.Context().
-		WithConsensusParams(app.GetConsensusParams(app.checkState.Context())))
+	app.prepareProposalState.SetContext(app.prepareProposalState.Context().
+		WithConsensusParams(app.GetConsensusParams(app.prepareProposalState.Context())))
 
-	resp, err = app.sortTxs(app.checkState.Context(), req)
+	resp, err = app.sortTxs(app.prepareProposalState.Context(), req)
 	if err != nil {
 		app.logger.Error("failed to sort txs", "err", err)
 		panic("sort txs error")
