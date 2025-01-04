@@ -48,6 +48,7 @@ func (txn *noncer) get(ctx sdk.Context, addr string) uint64 {
 		if err != nil {
 			panic(err)
 		}
+		println("Noncer init nonce", "sender=", addr, "nonce=", nonce)
 		if nonce != 0 {
 			txn.nonces.Set(addr, nonce)
 		}
