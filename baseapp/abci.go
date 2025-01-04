@@ -78,6 +78,7 @@ func (app *BaseApp) InitChain(req *abci.RequestInitChain) (*abci.ResponseInitCha
 	// initialize states with a correct header
 	app.setState(execModeFinalize, initHeader)
 	app.setState(execModeCheck, initHeader)
+	app.setState(execModePrepareProposal, initHeader)
 
 	// Store the consensus params in the BaseApp's param store. Note, this must be
 	// done after the finalizeBlockState and context have been set as it's persisted

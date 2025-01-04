@@ -28,11 +28,11 @@ func NewNamespaceMempool() *NamespaceMempool {
 
 // IsGapped reports whether the given transaction is immediately executable.
 func (nsm *NamespaceMempool) IsGapped(ctx sdk.Context, tx sdk.MempoolTx) (bool, bool) {
-	nextNonce := nsm.noncer.getNonce(ctx, tx.From, tx.GetAccountNonceHandler)
 	txNonce := tx.Nonce
-	//if txNonce != nextNonce {
-	//	println("IsGapped-> nextNonce=", nextNonce, "txNonce=", txNonce)
-	//}
+	nextNonce := nsm.noncer.getNonce(ctx, tx.From, tx.GetAccountNonceHandler)
+	if txNonce != nextNonce {
+		println("IsGapped-> nextNonce=", nextNonce, "txNonce=", txNonce)
+	}
 	return txNonce == nextNonce, txNonce < nextNonce
 }
 func (nsm *NamespaceMempool) Reset() {

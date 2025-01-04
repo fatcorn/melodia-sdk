@@ -749,6 +749,8 @@ func (app *BaseApp) Init() error {
 
 	// needed for the export command which inits from store but never calls initchain
 	app.setState(execModeCheck, emptyHeader)
+	app.setState(execModePrepareProposal, emptyHeader)
+
 	app.Seal()
 
 	if app.cms == nil {
