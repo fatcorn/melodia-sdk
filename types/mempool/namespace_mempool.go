@@ -30,9 +30,9 @@ func NewNamespaceMempool() *NamespaceMempool {
 func (nsm *NamespaceMempool) IsGapped(ctx sdk.Context, tx sdk.MempoolTx) (bool, bool) {
 	nextNonce := nsm.noncer.getNonce(ctx, tx.From, tx.GetAccountNonceHandler)
 	txNonce := tx.Nonce
-	//if nextNonce == 0 {
-	//	return txNonce >= nextNonce, false
-	//}
+	if nextNonce == 0 {
+		return txNonce == nextNonce+1, false
+	}
 	//if txNonce != nextNonce {
 	//	println("IsGapped-> nextNonce=", nextNonce, "txNonce=", txNonce)
 	//}
