@@ -405,6 +405,9 @@ func (app *BaseApp) SetTxAccountInfoHandler(txAccountInfoHandler sdk.TxAccountIn
 func (app *BaseApp) SetNextAccountNumberHandler(nextAccountNumberHandler sdk.NextAccountNumberHandler) {
 	app.nextAccountNumberHandler = nextAccountNumberHandler
 }
+func (app *BaseApp) SetMoveExecutionCounterHandler(moveExecutionCounterHandler sdk.MoveExecutionCounterHandler) {
+	app.moveExecutionCounterHandler = moveExecutionCounterHandler
+}
 func (app *BaseApp) SetBaseFeeHandler(baseFeeHandler sdk.BaseFeeHandler) {
 	app.baseFeeHandler = baseFeeHandler
 }

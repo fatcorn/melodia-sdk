@@ -116,7 +116,7 @@ func (dt *deliverTxTask) Increment() {
 // Scheduler processes tasks concurrently
 type Scheduler interface {
 	ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]abci.ExecTxResult, error)
-	SetSchedulerHandlers(modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, isEVMTxHandler sdk.IsEVMTxHandler, nextAccountNumberHandler sdk.NextAccountNumberHandler, txAccountInfoHandler sdk.TxAccountInfoHandler, addTransientGasWanted sdk.AddTransientGasWanted, txNewAccountAddressesHandler sdk.TxNewAccountAddressesHandler)
+	SetSchedulerHandlers(modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, isEVMTxHandler sdk.IsEVMTxHandler, nextAccountNumberHandler sdk.NextAccountNumberHandler, txAccountInfoHandler sdk.TxAccountInfoHandler, addTransientGasWanted sdk.AddTransientGasWanted, txNewAccountAddressesHandler sdk.TxNewAccountAddressesHandler, moveExecutionCounterHandler sdk.MoveExecutionCounterHandler)
 }
 
 // tx []byte
@@ -141,6 +141,7 @@ type scheduler struct {
 	txNewAccountAddressesHandler  sdk.TxNewAccountAddressesHandler
 	txAccountInfoHandler          sdk.TxAccountInfoHandler
 	addTransientGasWanted         sdk.AddTransientGasWanted
+	moveExecutionCounterHandler   sdk.MoveExecutionCounterHandler
 	namespaceList                 []uint64
 	threadIds                     []int
 	//tracingInfo        *tracing.Info
@@ -160,7 +161,7 @@ func NewScheduler(workers int, deliverTxFunc func(tx []byte, opts ...sdk.Context
 		allNextAccountNumbers: make(map[string]map[uint64]uint64),
 	}
 }
-func (s *scheduler) SetSchedulerHandlers(modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, isEVMTxHandler sdk.IsEVMTxHandler, nextAccountNumberHandler sdk.NextAccountNumberHandler, txAccountInfoHandler sdk.TxAccountInfoHandler, addTransientGasWanted sdk.AddTransientGasWanted, txNewAccountAddressesHandler sdk.TxNewAccountAddressesHandler) {
+func (s *scheduler) SetSchedulerHandlers(modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, isEVMTxHandler sdk.IsEVMTxHandler, nextAccountNumberHandler sdk.NextAccountNumberHandler, txAccountInfoHandler sdk.TxAccountInfoHandler, addTransientGasWanted sdk.AddTransientGasWanted, txNewAccountAddressesHandler sdk.TxNewAccountAddressesHandler, moveExecutionCounterHandler sdk.MoveExecutionCounterHandler) {
 	s.modifyLogIndexHandler = modifyLogIndexHandler
 	s.setBlockBloomTransientHandler = setBlockBloomTransientHandler
 	s.isEVMTxHandler = isEVMTxHandler
@@ -168,6 +169,7 @@ func (s *scheduler) SetSchedulerHandlers(modifyLogIndexHandler sdk.ModifyLogInde
 	s.txAccountInfoHandler = txAccountInfoHandler
 	s.addTransientGasWanted = addTransientGasWanted
 	s.txNewAccountAddressesHandler = txNewAccountAddressesHandler
+	s.moveExecutionCounterHandler = moveExecutionCounterHandler
 }
 
 func (s *scheduler) invalidateTask(task *deliverTxTask) {
@@ -341,6 +343,7 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 
 	wg := &sync.WaitGroup{}
 	wg.Add(len(reqs))
+	peek := s.moveExecutionCounterHandler(ctx, len(reqs))
 	for idx, tx := range reqs {
 		go func(idx int, callTx *sdk.DeliverTxEntry) {
 			defer wg.Done()
@@ -351,7 +354,7 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 	t2 := time.Now()
 
 	for idx, tx := range reqs {
-		accountNumbers, executionCounter := s.nextAccountNumbers(ctx, s.namespaceList[idx], tx.NewAccAddresses)
+		accountNumbers := s.nextAccountNumbers(ctx, s.namespaceList[idx], tx.NewAccAddresses)
 		task := &deliverTxTask{
 			Request:          tx.Request,
 			SdkTx:            tx.SdkTx,
@@ -361,9 +364,10 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 			TotalTask:        totalTask,
 			IsEVMTx:          false,
 			AccountNumbers:   accountNumbers,
-			ExecutionCounter: executionCounter,
+			ExecutionCounter: peek,
 			//TxTracer:      r.TxTracer,
 		}
+		peek++
 
 		// if there are dependencies, set the task to waiting
 		dependIdxes := txDepends[idx]
@@ -382,8 +386,8 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 	println("to task time=======", "orders", t1.Sub(t0).String(), "new account address", t2.Sub(t1).String(), "next number", t3.Sub(t2).String())
 	return allTasks, tasksMap
 }
-func (s *scheduler) nextAccountNumbers(ctx sdk.Context, namespaceId uint64, newAccAddresses []sdk.NamespaceAccount) (map[string]map[uint64]uint64, uint64) {
-	nextAccountNumbers, executionCounter := s.nextAccountNumberHandler(ctx.WithNamepace(namespaceId).WithNextAccountNumber(s.allNextAccountNumbers), newAccAddresses)
+func (s *scheduler) nextAccountNumbers(ctx sdk.Context, namespaceId uint64, newAccAddresses []sdk.NamespaceAccount) map[string]map[uint64]uint64 {
+	nextAccountNumbers := s.nextAccountNumberHandler(ctx.WithNamepace(namespaceId).WithNextAccountNumber(s.allNextAccountNumbers), newAccAddresses)
 	if nextAccountNumbers != nil && len(nextAccountNumbers) > 0 {
 		for addr, accNumbers := range nextAccountNumbers {
 			for nsId, accNumber := range accNumbers {
@@ -394,7 +398,7 @@ func (s *scheduler) nextAccountNumbers(ctx sdk.Context, namespaceId uint64, newA
 			}
 		}
 	}
-	return nextAccountNumbers, executionCounter
+	return nextAccountNumbers
 }
 
 func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) []abci.ExecTxResult {
