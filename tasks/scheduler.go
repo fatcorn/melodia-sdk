@@ -307,6 +307,7 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 	interChainIndexes := make(map[int32]int32)
 	txDepends := make([][]int, len(reqs), len(reqs))
 
+	t0 := time.Now()
 	if orders != nil {
 		if orders.NsInterChainTransactionOrders != nil {
 			for _, orderEntry := range orders.NsInterChainTransactionOrders.Entries {
@@ -336,6 +337,8 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 			}
 		}
 	}
+	t1 := time.Now()
+
 	wg := &sync.WaitGroup{}
 	wg.Add(len(reqs))
 	for idx, tx := range reqs {
@@ -345,6 +348,7 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 		}(idx, tx)
 	}
 	wg.Wait()
+	t2 := time.Now()
 
 	for idx, tx := range reqs {
 		accountNumbers, executionCounter := s.nextAccountNumbers(ctx, s.namespaceList[idx], tx.NewAccAddresses)
@@ -374,6 +378,8 @@ func (s *scheduler) toTasks(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]*
 		tasksMap[tx.AbsoluteIndex] = task
 		allTasks = append(allTasks, task)
 	}
+	t3 := time.Now()
+	println("to task time=======", "orders", t1.Sub(t0).String(), "new account address", t2.Sub(t1).String(), "next number", t3.Sub(t2).String())
 	return allTasks, tasksMap
 }
 func (s *scheduler) nextAccountNumbers(ctx sdk.Context, namespaceId uint64, newAccAddresses []sdk.NamespaceAccount) (map[string]map[uint64]uint64, uint64) {
