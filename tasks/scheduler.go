@@ -867,10 +867,10 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 		wg.Add(1)
 		s.DoExecute(func() {
 			defer wg.Done()
-			now := time.Now()
+			//now := time.Now()
 			sdkCtx := ctx.WithNamepace(t.NamespaceId).WithNextAccountNumber(t.AccountNumbers).WithSynchronous(s.synchronous).WithTxIndex(task.AbsoluteIndex).WithExecutionCounter(task.ExecutionCounter)
 			s.prepareAndRunTask(wg, sdkCtx, t)
-			println("run task time", "sub", time.Now().Sub(now).String())
+			//println("run task time", "sub", time.Now().Sub(now).String())
 		})
 	}
 	//printSystemStats("executing")
