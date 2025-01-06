@@ -232,6 +232,7 @@ type BaseApp struct {
 	isEVMTxHandler                             sdk.IsEVMTxHandler
 	txAccountInfoHandler                       sdk.TxAccountInfoHandler
 	nextAccountNumberHandler                   sdk.NextAccountNumberHandler
+	moveExecutionCounterHandler                sdk.MoveExecutionCounterHandler
 	txNewAccountAddressesHandler               sdk.TxNewAccountAddressesHandler
 	crossNamespaceTransactionIdentifierHandler sdk.CrossNamespaceTransactionIdentifierHandler
 	getAccountNonceHandler                     sdk.GetAccountNonceHandler
