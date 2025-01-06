@@ -1169,7 +1169,7 @@ func (app *BaseApp) deliverTx(tx []byte, opts ...sdk.Context) *abci.ExecTxResult
 		hook(ctx, sdkTx, sha256.Sum256(tx), resp)
 	}
 
-	fmt.Printf("deliverTx:", "pre runTx", t2.Sub(t1).String(), "runTx", t3.Sub(t2).String(), "build resp", t4.Sub(t3).String(), "decode", t5.Sub(t4).String(), "hook", time.Since(t5).String())
+	fmt.Println("deliverTx:", "pre runTx", t2.Sub(t1).String(), "runTx", t3.Sub(t2).String(), "build resp", t4.Sub(t3).String(), "decode", t5.Sub(t4).String(), "hook", time.Since(t5).String())
 
 	return resp
 }
@@ -1529,7 +1529,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	if mode == execModeFinalize {
 		//sleepDuration := cmttime.Now().Sub(now)
 		//println("stage5 task: ", ctx.TxIndex(), " time: ", sleepDuration, " from: ", now.String())
-		fmt.Println("runMsg",
+		fmt.Sprintf("runMsg",
 			"Prepare Ctx", t2.Sub(t1).String(),
 			"decode Tx", t3.Sub(t2).String(),
 			"msg touter", t4.Sub(t3).String(),
