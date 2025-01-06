@@ -1169,7 +1169,7 @@ func (app *BaseApp) deliverTx(tx []byte, opts ...sdk.Context) *abci.ExecTxResult
 		hook(ctx, sdkTx, sha256.Sum256(tx), resp)
 	}
 
-	fmt.Println("deliverTx:", "pre runTx", t2.Sub(t1).String(), "runTx", t3.Sub(t2).String(), "build resp", t4.Sub(t3).String(), "decode", t5.Sub(t4).String(), "hook", time.Since(t5).String())
+	fmt.Printf("deliverTx:", "pre runTx", t2.Sub(t1).String(), "runTx", t3.Sub(t2).String(), "build resp", t4.Sub(t3).String(), "decode", t5.Sub(t4).String(), "hook", time.Since(t5).String())
 
 	return resp
 }

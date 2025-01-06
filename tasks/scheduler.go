@@ -214,16 +214,21 @@ func (s *scheduler) start2(ctx context.Context, ch chan func(), workers int) {
 
 func (s *scheduler) start(ctx context.Context, ch chan func(), workers int) {
 	for i := 0; i < workers; i++ {
-		go func() {
+		go func(worker int) {
+			t0 := time.Now()
 			for {
 				select {
 				case <-ctx.Done():
 					return
 				case work := <-ch:
+					t1 := time.Now()
 					work()
+					fmt.Println("scheduler start", "waitTime", t1.Sub(t0).String(), "worker time", time.Since(t1).String())
+					t0 = time.Now()
+
 				}
 			}
-		}()
+		}(i)
 	}
 }
 
@@ -867,10 +872,10 @@ func (s *scheduler) executeAll(ctx sdk.Context, tasks []*deliverTxTask) error {
 		wg.Add(1)
 		s.DoExecute(func() {
 			defer wg.Done()
-			now := time.Now()
+			//now := time.Now()
 			sdkCtx := ctx.WithNamepace(t.NamespaceId).WithNextAccountNumber(t.AccountNumbers).WithSynchronous(s.synchronous).WithTxIndex(task.AbsoluteIndex).WithExecutionCounter(task.ExecutionCounter)
 			s.prepareAndRunTask(wg, sdkCtx, t)
-			println("run task time", "sub", time.Now().Sub(now).String())
+			//println("run task time", "sub", time.Now().Sub(now).String())
 		})
 	}
 	//printSystemStats("executing")
