@@ -1422,7 +1422,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 		//}
 		a5 := time.Now()
 		if mode == execModeFinalize {
-			fmt.Println("AnteHandler",
+			fmt.Printf("AnteHandler",
 				"getnonce", a2.Sub(a1).String(),
 				"ante", a3.Sub(a2).String(),
 				"gas wanted", a4.Sub(a3).String(),
@@ -1528,7 +1528,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	if mode == execModeFinalize {
 		//sleepDuration := cmttime.Now().Sub(now)
 		//println("stage5 task: ", ctx.TxIndex(), " time: ", sleepDuration, " from: ", now.String())
-		fmt.Sprintf("runMsg",
+		fmt.Println("runMsg",
 			"Prepare Ctx", t2.Sub(t1).String(),
 			"decode Tx", t3.Sub(t2).String(),
 			"msg touter", t4.Sub(t3).String(),
