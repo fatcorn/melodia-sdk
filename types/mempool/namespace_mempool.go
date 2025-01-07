@@ -31,7 +31,7 @@ func (nsm *NamespaceMempool) IsGapped(ctx sdk.Context, tx sdk.MempoolTx) (bool, 
 	txNonce := tx.Nonce
 	nextNonce := nsm.noncer.getNonce(ctx, tx.From, tx.GetAccountNonceHandler)
 	if txNonce != nextNonce {
-		println("IsGapped-> nextNonce=", nextNonce, "txNonce=", txNonce)
+		println("IsGapped-> nextNonce=", nextNonce, "txNonce=", txNonce, "sender=", tx.From)
 	}
 	return txNonce == nextNonce, txNonce < nextNonce
 }
