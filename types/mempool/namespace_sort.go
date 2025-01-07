@@ -175,7 +175,7 @@ func (nsm *NamespaceSort) SelectTxs(ctx context.Context, maxBytes, maxGas int64,
 		}
 	}
 
-	sdkCtx.Logger().Info("2.3->sortTxs selectors time", "use", time.Since(t2).String(), "size", len(selectedTxs), "reqSize", len(reqTxs), "height", sdkCtx.BlockHeight())
+	sdkCtx.Logger().Info("2.3->sortTxs selectors time", "use", time.Since(t2).String(), "size", len(nsSelectedTxs.Txs), "reqSize", len(reqTxs), "height", sdkCtx.BlockHeight())
 
 	return nsSelectedTxs
 }
