@@ -740,14 +740,15 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 			tmp.WriteLatestToStore()
 		})
 	}
-	wg.Wait()
-	t3 := time.Now()
-	println("write latest to store", "sub", t3.Sub(t2).String(), "start total sub", t2.Sub(startTime).String())
 
 	// end trace
 	s.metrics.maxIncarnation = s.maxIncarnation
 
 	res := s.collectResponses(ctx, tasks)
+
+	wg.Wait()
+	t3 := time.Now()
+	println("write latest to store and collectResponses", "sub", t3.Sub(t2).String(), "start total sub", t2.Sub(startTime).String())
 	//printSystemStats("after process")
 
 	//s.setMsgsHandler(ctx, evmTxs)
