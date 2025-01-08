@@ -969,7 +969,7 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	}
 
 	// calculate time used by scheduler
-	fmt.Printf("========= Scheduler Time used: %v,decode tx time %v,deliver tx %v,append time %v, make namespace block time %v,handler event time %v \n", time.Since(startTime).String(), t1.Sub(startTime1).String(), t2.Sub(startTime).String(), time.Since(t22).String(), t21.Sub(t2).String(), t22.Sub(t21).String())
+	//fmt.Printf("========= Scheduler Time used: %v,decode tx time %v,deliver tx %v,append time %v, make namespace block time %v,handler event time %v \n", time.Since(startTime).String(), t1.Sub(startTime1).String(), t2.Sub(startTime).String(), time.Since(t22).String(), t21.Sub(t2).String(), t22.Sub(t21).String())
 	//app.logger.Info("FinalizeBlock", "schedulerTime", time.Since(startTime))
 	time1 := time.Now()
 
@@ -994,7 +994,17 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	events = append(events, endBlock.Events...)
 	cp := app.GetConsensusParams(app.finalizeBlockState.Context())
 	time3 := time.Now()
-	println("finalize block ", "end block time", time2.Sub(time1).String(), "get consendus parames", time3.Sub(time2).String(), "Total time", time.Since(timeStart).String())
+	println("finalize block ",
+		"checkHalt",startTime1.Sub(timeStart).String(),
+		"decode tx",t1.Sub(startTime1).String(),
+		"begin block",startTime.Sub(t1).String(),
+		"DeliverTxBatch",t2.Sub(startTime).String(),
+		"make namesapce blcok",t21.Sub(t2).String(),
+		"HandleInternalEvent",t22.Sub(t21).String(),
+		"namespaceList",time1.Sub(t22).String(),
+		"end block time", time2.Sub(time1).String(),
+		"get consendus parames", time3.Sub(time2).String(),
+		"Total time", time.Since(timeStart).String())
 
 	return &abci.ResponseFinalizeBlock{
 		Events:                events,
