@@ -585,7 +585,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	go func() {
 		defer wg.Done()
 		s.tryInitMultiVersionStore(ctx, len(req.TxEntries))
-		println("process all", "init multi version store", time.Since(startTime).String(), "total tx entries")
+		println("process all", "init multi version store", time.Since(startTime).String(), "total tx entries", len(req.TxEntries))
 
 	}()
 	// initialize mutli-version stores if they haven't been initialized yet
@@ -601,11 +601,11 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	go func() {
 		defer wg.Done()
 		tasks, tasksMap = s.toTasks(ctx, req)
-		println("process all", "to task", time.Since(toTaskStartTime), "task", len(tasks))
+		println("process all", "to task", time.Since(toTaskStartTime).String(), "task", len(tasks))
 
 	}()
 	wg.Wait()
-	println("process all", "init store and to task", time.Since(startTime))
+	println("process all", "init store and to task", time.Since(startTime).String())
 
 	s.allTasks = tasks
 	s.allTasksMap = tasksMap
