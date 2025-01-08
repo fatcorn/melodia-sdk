@@ -2,7 +2,7 @@ package types
 
 import (
 	"context"
-	sdk "github.com/cosmos/cosmos-sdk/types"
+
 	"time"
 
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -51,7 +51,7 @@ type Context struct {
 	// Deprecated: Use HeaderService for chainID and CometService for the rest
 	chainID              string
 	txBytes              []byte
-	sdkTx                sdk.Tx
+	sdkTx                Tx
 	logger               log.Logger
 	voteInfo             []abci.VoteInfo
 	gasMeter             storetypes.GasMeter
@@ -111,7 +111,7 @@ func (c Context) HeaderInfo() header.Info                       { return c.heade
 func (c Context) TxIndex() int                                  { return c.txIndex }
 func (c Context) Namespace() uint64                             { return c.namespaceId }
 func (c Context) TxSigner() *string                             { return c.txSigner }
-func (c Context) SdkTx() sdk.Tx                                 { return c.sdkTx }
+func (c Context) SdkTx() Tx                                     { return c.sdkTx }
 
 func (c Context) Synchronous() bool { return c.synchronous }
 func (c Context) Nonce() uint64     { return c.nonce }
@@ -228,7 +228,7 @@ func (c Context) WithNamepace(namespaceId uint64) Context {
 }
 
 // WithSdkTx returns a Context with an sdk.Tx.
-func (c Context) WithSdkTx(sdkTx sdk.Tx) Context {
+func (c Context) WithSdkTx(sdkTx Tx) Context {
 	c.sdkTx = sdkTx
 	return c
 }
