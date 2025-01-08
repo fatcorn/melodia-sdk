@@ -409,6 +409,8 @@ func (s *scheduler) nextAccountNumbers(ctx sdk.Context, namespaceId uint64, newA
 
 func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) []abci.ExecTxResult {
 	res := make([]abci.ExecTxResult, 0, len(tasks))
+	logSizesRwLock := &sync.RWMutex{}
+	txLogsesRwLock := &sync.RWMutex{}
 	logSizes := make(map[uint64]uint64)
 	txLogses := make(map[uint64][]string)
 	consumeGasWanted := make(map[uint64]int64)
@@ -416,6 +418,7 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) []
 
 	// start time
 	startTime := time.Now()
+	wg := &sync.WaitGroup{}
 
 	for _, t := range tasks {
 		res = append(res, *t.Response)
@@ -436,45 +439,90 @@ func (s *scheduler) collectResponses(ctx sdk.Context, tasks []*deliverTxTask) []
 		} else {
 			namespaceBlockTxIndexes[t.NamespaceId] = evmTxIndex
 		}
+		wg.Add(1)
+		go func(evmTxIndex int, t *deliverTxTask) {
+			defer wg.Done()
+			for _, e := range t.Response.Events {
+				if e.Type == "ethereum_tx" {
+					for i := range e.Attributes {
+						if e.Attributes[i].Key != "txIndex" {
+							continue
+						}
+						e.Attributes[i].Value = strconv.Itoa(evmTxIndex)
+						break
+					}
+				} else if e.Type == "tx_log" {
+					for i := range e.Attributes {
+						if e.Attributes[i].Key != "txLog" {
+							continue
+						}
+						logSize := uint64(0)
+						logSizesRwLock.RLock()
+						if size, ok := logSizes[t.NamespaceId]; ok {
+							logSize = size
+						}
+						logSizesRwLock.RUnlock()
+						txLogs := make([]string, 0)
+						txLogsesRwLock.RLock()
+						if logs, ok := txLogses[t.NamespaceId]; ok {
+							txLogs = logs
+						}
+						txLogsesRwLock.RUnlock()
 
-		for _, e := range t.Response.Events {
-			if e.Type == "ethereum_tx" {
-				for i := range e.Attributes {
-					if e.Attributes[i].Key != "txIndex" {
-						continue
-					}
-					e.Attributes[i].Value = strconv.Itoa(evmTxIndex)
-					break
-				}
-			} else if e.Type == "tx_log" {
-				for i := range e.Attributes {
-					if e.Attributes[i].Key != "txLog" {
-						continue
-					}
+						newLog := s.modifyLogIndexHandler(ctx, e.Attributes[i].Value, logSize)
+						e.Attributes[i].Value = newLog
+						txLogs = append(txLogs, newLog)
+						logSizesRwLock.Lock()
+						txLogses[t.NamespaceId] = txLogs
+						logSizesRwLock.Unlock()
 
-					logSize := uint64(0)
-					if size, ok := logSizes[t.NamespaceId]; ok {
-						logSize = size
+						txLogsesRwLock.Lock()
+						logSizes[t.NamespaceId] = logSize + 1
+						txLogsesRwLock.Unlock()
 					}
-					txLogs := make([]string, 0)
-					if logs, ok := txLogses[t.NamespaceId]; ok {
-						txLogs = logs
-					}
-
-					newLog := s.modifyLogIndexHandler(ctx, e.Attributes[i].Value, logSize)
-					e.Attributes[i].Value = newLog
-					txLogs = append(txLogs, newLog)
-					txLogses[t.NamespaceId] = txLogs
-					logSizes[t.NamespaceId] = logSize + 1
 				}
 			}
-		}
+		}(evmTxIndex, t)
+
+		//for _, e := range t.Response.Events {
+		//	if e.Type == "ethereum_tx" {
+		//		for i := range e.Attributes {
+		//			if e.Attributes[i].Key != "txIndex" {
+		//				continue
+		//			}
+		//			e.Attributes[i].Value = strconv.Itoa(evmTxIndex)
+		//			break
+		//		}
+		//	} else if e.Type == "tx_log" {
+		//		for i := range e.Attributes {
+		//			if e.Attributes[i].Key != "txLog" {
+		//				continue
+		//			}
+		//
+		//			logSize := uint64(0)
+		//			if size, ok := logSizes[t.NamespaceId]; ok {
+		//				logSize = size
+		//			}
+		//			txLogs := make([]string, 0)
+		//			if logs, ok := txLogses[t.NamespaceId]; ok {
+		//				txLogs = logs
+		//			}
+		//
+		//			newLog := s.modifyLogIndexHandler(ctx, e.Attributes[i].Value, logSize)
+		//			e.Attributes[i].Value = newLog
+		//			txLogs = append(txLogs, newLog)
+		//			txLogses[t.NamespaceId] = txLogs
+		//			logSizes[t.NamespaceId] = logSize + 1
+		//		}
+		//	}
+		//}
 		//if t.Response.Code == 0 {
 		//	namespaceBlockTxIndexes[t.NamespaceId] = evmTxIndex + 1
 		//}
 		namespaceBlockTxIndexes[t.NamespaceId] = evmTxIndex + 1
 
 	}
+	wg.Wait()
 	t1 := time.Now()
 	s.consumeGasWanted(ctx, consumeGasWanted)
 	t2 := time.Now()
