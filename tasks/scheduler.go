@@ -518,7 +518,6 @@ func (s *scheduler) tryInitMultiVersionStore(ctx sdk.Context, totalTask int) {
 	keys := ctx.MultiStore().StoreKeys()
 	for _, sk := range keys {
 		mvs[sk] = multiversion.NewMultiVersionListStore(ctx.MultiStore().GetKVStore(sk), totalTask)
-
 	}
 	s.multiVersionStores = mvs
 }
@@ -581,17 +580,33 @@ type schedulerMetrics struct {
 func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) ([]abci.ExecTxResult, error) {
 	startTime := time.Now()
 	var iterations int
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		s.tryInitMultiVersionStore(ctx, len(req.TxEntries))
+		println("process all", "init multi version store", time.Since(startTime).String(), "total tx entries")
+
+	}()
 	// initialize mutli-version stores if they haven't been initialized yet
-	s.tryInitMultiVersionStore(ctx, len(req.TxEntries))
+
 	// prefill estimates
 	// This "optimization" path is being disabled because we don't have a strong reason to have it given that it
 	//s.PrefillEstimates(reqs)
 	toTaskStartTime := time.Now()
-	tasks, tasksMap := s.toTasks(ctx, req)
-	println("init version store time========", "sub", toTaskStartTime.Sub(startTime).String(), "len(tasks)", len(tasks))
 
-	fmt.Printf("========= toTasks Time used: %v\n", time.Since(toTaskStartTime))
-	//now := time.Now()
+	wg.Add(1)
+	var tasks []*deliverTxTask
+	var tasksMap map[int]*deliverTxTask
+	go func() {
+		defer wg.Done()
+		tasks, tasksMap = s.toTasks(ctx, req)
+		println("process all", "to task", time.Since(toTaskStartTime), "task", len(tasks))
+
+	}()
+	wg.Wait()
+	println("process all", "init store and to task", time.Since(startTime))
+
 	s.allTasks = tasks
 	s.allTasksMap = tasksMap
 	s.executeCh = make(chan func(), len(tasks))
@@ -614,17 +629,11 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 		go printCpuCount()
 	}
 
-	t6 := time.Now()
 	// execution tasks are limited by workers
 	s.start(workerCtx, s.executeCh, workers)
-	println("start worker ctx", "", time.Since(t6).String())
-
 	s.start1(workerCtx, s.collectCh, workers)
-	//t6 := time.Now()
-	//println("======================", "sub", t6.Sub(now).String())
 
 	toExecute := tasks
-	//go printCpuCount()
 
 	for !allValidated(tasks) {
 		// if the max incarnation >= x, we should revert to synchronous
@@ -643,9 +652,6 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 			}
 		}
 
-		//go printCpuCount()
-		printSystemStats("start ")
-
 		// execute sets statuses of tasks to either executed or aborted
 		t1 := time.Now()
 		if err := s.executeAll(ctx, toExecute); err != nil {
@@ -653,13 +659,9 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 		}
 		t2 := time.Now()
 
-		//writeNow := cmttime.Now()
-		// write from version store to multiversion stores
-
-		listStore := os.Getenv("listStore")
 		totalExecuted := 0
 
-		if listStore == "" && !s.synchronous {
+		if !s.synchronous {
 			t := time.Now()
 			var wg sync.WaitGroup
 			for _, task := range tasks {
@@ -682,7 +684,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 
 		t3 := time.Now()
 
-		if listStore == "" && !s.synchronous {
+		if !s.synchronous {
 			wg := &sync.WaitGroup{}
 			wg.Add(totalExecuted)
 
@@ -706,12 +708,10 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 
 		var err error
 		toExecute, err = s.validateAll(ctx, tasks)
-		printSystemStats("end ")
 		t5 := time.Now()
 		if err != nil {
 			return nil, err
 		}
-		// these are retries which apply to metrics
 		s.metrics.retries += len(toExecute)
 
 		println("=========", "executeAll time", t2.Sub(t1).String(), "new key", t3.Sub(t2).String(), "write version store", t4.Sub(t3).String(), "validateAll", t5.Sub(t4).String(), "iterations", iterations)
@@ -719,8 +719,6 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	}
 	t2 := time.Now()
 	s.start2(workerCtx, s.writeLatest, workers)
-
-	wg := &sync.WaitGroup{}
 
 	for _, mv := range s.multiVersionStores {
 		tmp := mv
@@ -738,7 +736,6 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	s.metrics.maxIncarnation = s.maxIncarnation
 
 	res := s.collectResponses(ctx, tasks)
-	//printSystemStats("after process")
 
 	//s.setMsgsHandler(ctx, evmTxs)
 	ctx.Logger().Info("occ scheduler", "height", ctx.BlockHeight(), "txs", len(tasks), "latency_ms", time.Since(startTime).String(), "retries", s.metrics.retries, "maxIncarnation", s.maxIncarnation, "iterations", iterations, "sync", s.synchronous, "workers", workers)
