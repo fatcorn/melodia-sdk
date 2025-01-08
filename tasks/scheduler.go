@@ -1013,6 +1013,7 @@ func (s *scheduler) executeTask(task *deliverTxTask) {
 	//now := cmttime.Now()
 	//t0 := time.Now()
 	//now := cmttime.Now()
+	task.Ctx = task.Ctx.WithSdkTx(task.SdkTx)
 	resp := s.deliverTx(task.Request, task.Ctx)
 	//t1 := time.Now()
 	//println("deliver tx=============", "sppend", t1.Sub(t0).String()) //sleepDuration := cmttime.Now().Sub(now)
