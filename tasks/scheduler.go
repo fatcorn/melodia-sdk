@@ -516,13 +516,9 @@ func (s *scheduler) tryInitMultiVersionStore(ctx sdk.Context, totalTask int) {
 	}
 	mvs := make(map[storetypes.StoreKey]multiversion.MultiVersionStore)
 	keys := ctx.MultiStore().StoreKeys()
-	listStore := os.Getenv("listStore")
 	for _, sk := range keys {
-		if listStore == "" {
-			mvs[sk] = multiversion.NewMultiVersionListStore(ctx.MultiStore().GetKVStore(sk), totalTask)
-		} else {
-			mvs[sk] = multiversion.NewMultiVersionStore(ctx.MultiStore().GetKVStore(sk))
-		}
+		mvs[sk] = multiversion.NewMultiVersionListStore(ctx.MultiStore().GetKVStore(sk), totalTask)
+
 	}
 	s.multiVersionStores = mvs
 }
