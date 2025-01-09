@@ -607,7 +607,7 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 
 	toTaskStartTime := time.Now()
 	tasks, tasksMap := s.toTasks(ctx, req)
-	println("init version store time========", "sub", toTaskStartTime.Sub(startTime).String(), "len(tasks)", len(tasks), "prepareNamespaceBlock time ", time.Since(chanTime).String())
+	println("init version store time========", "sub", toTaskStartTime.Sub(startTime).String(), "len(tasks)", len(tasks), "prepareNamespaceBlock time ", toTaskStartTime.Sub(chanTime).String())
 
 	fmt.Printf("========= toTasks Time used: %v\n", time.Since(toTaskStartTime))
 	//now := time.Now()
