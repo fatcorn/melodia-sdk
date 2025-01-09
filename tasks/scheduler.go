@@ -146,11 +146,13 @@ type scheduler struct {
 	threadIds                     []int
 	//tracingInfo        *tracing.Info
 	allNextAccountNumbers map[string]map[uint64]uint64
+
+	prepareBlockWaitChan chan error
 }
 
 // NewScheduler creates a new scheduler
 // func NewScheduler(workers int, deliverTxFunc func(ctx sdk.Context, req []byte, tx sdk.Tx, checksum [32]byte) (res abci.ExecTxResult)) Scheduler {
-func NewScheduler(workers int, deliverTxFunc func(tx []byte, opts ...sdk.Context) *abci.ExecTxResult, namespaceList []uint64) Scheduler {
+func NewScheduler(workers int, deliverTxFunc func(tx []byte, opts ...sdk.Context) *abci.ExecTxResult, namespaceList []uint64, prepareBlockWaitChan chan error) Scheduler {
 	threadProfile = pprof.Lookup("threadcreate")
 
 	return &scheduler{
@@ -159,6 +161,7 @@ func NewScheduler(workers int, deliverTxFunc func(tx []byte, opts ...sdk.Context
 		metrics:               &schedulerMetrics{},
 		namespaceList:         namespaceList,
 		allNextAccountNumbers: make(map[string]map[uint64]uint64),
+		prepareBlockWaitChan:  prepareBlockWaitChan,
 	}
 }
 func (s *scheduler) SetSchedulerHandlers(modifyLogIndexHandler sdk.ModifyLogIndexHandler, setBlockBloomTransientHandler sdk.SetBlockBloomTransientHandler, isEVMTxHandler sdk.IsEVMTxHandler, nextAccountNumberHandler sdk.NextAccountNumberHandler, txAccountInfoHandler sdk.TxAccountInfoHandler, addTransientGasWanted sdk.AddTransientGasWanted, txNewAccountAddressesHandler sdk.TxNewAccountAddressesHandler, moveExecutionCounterHandler sdk.MoveExecutionCounterHandler) {
@@ -599,6 +602,11 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	toTaskStartTime := time.Now()
 	tasks, tasksMap := s.toTasks(ctx, req)
 	println("init version store time========", "sub", toTaskStartTime.Sub(startTime).String(), "len(tasks)", len(tasks))
+
+	err := s.prepareBlockWaitChan
+	if err != nil {
+		panic(fmt.Sprintf("prepareNamespaceBlock failed %v", err))
+	}
 
 	fmt.Printf("========= toTasks Time used: %v\n", time.Since(toTaskStartTime))
 	//now := time.Now()

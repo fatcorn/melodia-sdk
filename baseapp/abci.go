@@ -1636,7 +1636,7 @@ func (app *BaseApp) signPacketTx(packet *sdk.PIBCPacket) []byte {
 }
 
 // DeliverTxBatch executes multiple txs
-func (app *BaseApp) DeliverTxBatch(ctx sdk.Context, req sdk.DeliverTxBatchRequest, namespaceList []uint64) (res sdk.DeliverTxBatchResponse) {
+func (app *BaseApp) DeliverTxBatch(ctx sdk.Context, req sdk.DeliverTxBatchRequest, namespaceList []uint64, prepareBlockWaitChan chan error) (res sdk.DeliverTxBatchResponse) {
 	responses := make([]*sdk.DeliverTxResult, 0, len(req.TxEntries))
 
 	if len(req.TxEntries) == 0 {
@@ -1644,7 +1644,7 @@ func (app *BaseApp) DeliverTxBatch(ctx sdk.Context, req sdk.DeliverTxBatchReques
 	}
 
 	// avoid overhead for empty batches
-	scheduler := tasks.NewScheduler(app.concurrencyWorkers, app.deliverTx, namespaceList)
+	scheduler := tasks.NewScheduler(app.concurrencyWorkers, app.deliverTx, namespaceList, prepareBlockWaitChan)
 	scheduler.SetSchedulerHandlers(app.modifyLogIndexHandler, app.setBlockBloomTransientHandler, app.isEVMTxHandler, app.nextAccountNumberHandler, app.txAccountInfoHandler, app.addTransientGasWanted, app.txNewAccountAddressesHandler, app.moveExecutionCounterHandler)
 
 	txRes, err := scheduler.ProcessAll(ctx.WithNamespaceBlockManager(app.namespaceStoreManager).WithConsensusParams(app.GetConsensusParams(ctx)), req)
