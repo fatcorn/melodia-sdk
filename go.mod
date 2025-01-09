@@ -216,6 +216,8 @@ replace (
 	//cosmossdk.io/store v1.0.2 => ../melodiasdk-io-store
 	// use cosmos fork of keyring
 	github.com/99designs/keyring => github.com/cosmos/keyring v1.2.0
+
+	github.com/celestiaorg/nmt => git.everylink.ai/blockchain/melodia-nmt v0.0.0-20250103071333-dc2edc3a53bc
 	github.com/cometbft/cometbft => git.everylink.ai/blockchain/hotbeat-consensus v0.38.7-0.20250103104205-9e3df31ca135
 	//github.com/cometbft/cometbft v0.38.5 => ../hotbeat-consensus
 	github.com/cometbft/cometbft-db => git.everylink.ai/blockchain/hotbeat-db v0.0.0-20240829095236-33e4ca3e8583

@@ -79,6 +79,8 @@ git.everylink.ai/blockchain/hotbeat-consensus v0.38.7-0.20250103104205-9e3df31ca
 git.everylink.ai/blockchain/hotbeat-consensus v0.38.7-0.20250103104205-9e3df31ca135/go.mod h1:FgEXqNfZ0+qR48dmwqsAHA11JuBLYF4uj7bjqhxAS+w=
 git.everylink.ai/blockchain/hotbeat-db v0.0.0-20240829095236-33e4ca3e8583 h1:WgUraetUZlBEaHQNJOuHzVmoaKkLte2hu7keM0zgbrE=
 git.everylink.ai/blockchain/hotbeat-db v0.0.0-20240829095236-33e4ca3e8583/go.mod h1:GDPJAC/iFHNjmZZPN8V8C1yr/eyityhi2W1hz2MGKSc=
+git.everylink.ai/blockchain/melodia-nmt v0.0.0-20250103071333-dc2edc3a53bc h1:9E9GYFaEGv38hDepXagQzLSmZkBymX8tE/RWTwRZxuk=
+git.everylink.ai/blockchain/melodia-nmt v0.0.0-20250103071333-dc2edc3a53bc/go.mod h1:Oz15Ub6YPez9uJV0heoU4WpFctxazuIhKyUtaYNio7E=
 git.everylink.ai/blockchain/melodiasdk-io-collections v0.4.1-0.20241022082508-640d6124f476 h1:Pqd2B1G4NEj2kiom6rQPMSfRmrbIG/oM1nGJGnZl3PY=
 git.everylink.ai/blockchain/melodiasdk-io-collections v0.4.1-0.20241022082508-640d6124f476/go.mod h1:oa5lUING2dP+gdDquow+QjlF45eL1t4TJDypgGd+tv0=
 git.everylink.ai/blockchain/melodiasdk-io-core v0.11.1-0.20241104095528-04d8006d90bd h1:hVVinS00VeYWyraAQxBlKILafDh5AvDMY7hRqtz5PNo=
@@ -218,8 +220,6 @@ github.com/bytedance/sonic v1.9.1 h1:6iJ6NqdoxCDr6mbY8h18oSO+cShGSMRGCEo7F2h0x8s
 github.com/bytedance/sonic v1.9.1/go.mod h1:i736AoUSYt75HyZLoJW9ERYxcy6eaN6h4BZXU064P/U=
 github.com/casbin/casbin/v2 v2.1.2/go.mod h1:YcPU1XXisHhLzuxH9coDNf2FbKpjGlbCg3n9yuLkIJQ=
 github.com/casbin/casbin/v2 v2.37.0/go.mod h1:vByNa/Fchek0KZUgG5wEsl7iFsiviAYKRtgrQfcJqHg=
-github.com/celestiaorg/nmt v0.20.0 h1:9i7ultZ8Wv5ytt8ZRaxKQ5KOOMo4A2K2T/aPGjIlSas=
-github.com/celestiaorg/nmt v0.20.0/go.mod h1:Oz15Ub6YPez9uJV0heoU4WpFctxazuIhKyUtaYNio7E=
 github.com/cenkalti/backoff v2.2.1+incompatible h1:tNowT99t7UNflLxfYYSlKYsBpXdEet03Pg2g16Swow4=
 github.com/cenkalti/backoff v2.2.1+incompatible/go.mod h1:90ReRw6GdpyfrHakVjL/QHaoyV4aDUVVkXQJJJ3NXXM=
 github.com/cenkalti/backoff/v4 v4.1.1/go.mod h1:scbssz8iZGpm3xbr14ovlUdkxfGXNInqkPWOWmG2CLw=

@@ -54,6 +54,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/cosmos/gogoproto/proto"
+	goruntime "runtime"
 )
 
 // AppModuleBasic is the standard form for basic non-dependant elements of an application module.
@@ -887,7 +888,7 @@ func (m *Manager) PrepareNamespaceBlock(
 			for i := 0; i < len(namespaceTxs); i++ {
 				namespaceIds = append(namespaceIds, namespaceId)
 			}
-			args.TxRootHash = merkle.ParellelGenerateBlockDataNmtRootHash(namespaceIds, namespaceTxs)
+			args.TxRootHash = merkle.ParellelGenerateBlockDataNmtRootHash(namespaceIds, namespaceTxs, goruntime.NumCPU()-2)
 		} else {
 			args.TxRootHash = merkle.ParellelGenerateBlockDataNmtRootHash([]uint64{}, emptyNamespaceTxs)
 		}
