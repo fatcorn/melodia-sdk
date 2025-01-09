@@ -603,12 +603,13 @@ func (s *scheduler) ProcessAll(ctx sdk.Context, req sdk.DeliverTxBatchRequest) (
 	tasks, tasksMap := s.toTasks(ctx, req)
 	println("init version store time========", "sub", toTaskStartTime.Sub(startTime).String(), "len(tasks)", len(tasks))
 
-	err := s.prepareBlockWaitChan
+	chanTime := time.Now()
+	err := <-s.prepareBlockWaitChan
 	if err != nil {
 		panic(fmt.Sprintf("prepareNamespaceBlock failed %v", err))
 	}
 
-	fmt.Printf("========= toTasks Time used: %v\n", time.Since(toTaskStartTime))
+	fmt.Printf("========= toTasks Time used: %v, prepareNamespaceBlock time %v\n", time.Since(toTaskStartTime), time.Since(chanTime))
 	//now := time.Now()
 	s.allTasks = tasks
 	s.allTasksMap = tasksMap

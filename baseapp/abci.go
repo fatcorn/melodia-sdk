@@ -939,9 +939,7 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	//}
 
 	//wg.Wait()
-	tt3 := time.Now()
-	err = <-waitChan
-	fmt.Printf("=============HandleInternalEvent %v, prepare make block time %v \n", tt2.Sub(tt1).String(), time.Since(tt3).String())
+	fmt.Printf("=============HandleInternalEvent %v\n", tt2.Sub(tt1).String())
 
 	if err != nil {
 		return nil, err
@@ -949,7 +947,7 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 
 	finalizeCtx := app.getContext(execModeFinalize)
 
-	batchResult := app.DeliverTxBatch(finalizeCtx, sdk.DeliverTxBatchRequest{TxEntries: entries, Orders: req.Orders}, namespaceList)
+	batchResult := app.DeliverTxBatch(finalizeCtx, sdk.DeliverTxBatchRequest{TxEntries: entries, Orders: req.Orders}, namespaceList, waitChan)
 	t2 := time.Now()
 
 	err = app.makeNamespaceBlock(app.finalizeBlockState.Context(), &events)
