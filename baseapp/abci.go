@@ -1638,6 +1638,10 @@ func (app *BaseApp) DeliverTxBatch(ctx sdk.Context, req sdk.DeliverTxBatchReques
 	responses := make([]*sdk.DeliverTxResult, 0, len(req.TxEntries))
 
 	if len(req.TxEntries) == 0 {
+		err := <-prepareBlockWaitChan
+		if err != nil {
+			panic(fmt.Sprintf("prepareNamespaceBlock failed %v", err))
+		}
 		return sdk.DeliverTxBatchResponse{Results: responses}
 	}
 
