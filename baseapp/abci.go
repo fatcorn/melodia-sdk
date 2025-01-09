@@ -794,6 +794,13 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 		AppHash:            app.LastCommitID().Hash,
 	}
 
+	waitChan := make(chan error)
+	go func() {
+		err := app.prepareNamespaceBlock(app.finalizeBlockState.Context(), req.Txs, req.NsTable)
+
+		waitChan <- err
+	}()
+
 	sdkTxs := make([]sdk.Tx, len(req.Txs))
 	entries := make([]*sdk.DeliverTxEntry, len(req.Txs))
 	startTime1 := time.Now()
@@ -825,7 +832,7 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 
 	app.HandleInternalEvent(sdk.SdkEventsFromABCIEvent(internalEvents.Events))
 
-	fmt.Printf("=============HandleInternalEvent %v \n", time.Since(tt1).String())
+	tt2 := time.Now()
 
 	// finalizeBlockState should be set on InitChain or ProcessProposal. If it is
 	// nil, it means we are replaying this block and we need to set the state here
@@ -900,12 +907,6 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 
 	events = append(events, beginBlock.Events...)
 
-	err = app.prepareNamespaceBlock(app.finalizeBlockState.Context(), req.Txs, req.NsTable)
-
-	if err != nil {
-		return nil, err
-	}
-
 	// Reset the gas meter so that the AnteHandlers aren't required to
 	gasMeter = app.getBlockGasMeter(app.finalizeBlockState.Context())
 	app.finalizeBlockState.SetContext(app.finalizeBlockState.Context().WithBlockGasMeter(gasMeter))
@@ -938,6 +939,13 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	//}
 
 	//wg.Wait()
+	tt3 := time.Now()
+	err = <-waitChan
+	fmt.Printf("=============HandleInternalEvent %v, prepare make block time %v \n", tt2.Sub(tt1).String(), time.Since(tt3).String())
+
+	if err != nil {
+		return nil, err
+	}
 
 	finalizeCtx := app.getContext(execModeFinalize)
 
