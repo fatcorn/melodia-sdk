@@ -817,12 +817,15 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	wg.Wait()
 	t1 := time.Now()
 
+	tt1 := time.Now()
 	internalEvents, err := app.DetectInternalEvent(sdkTxs)
 	if err != nil {
 		return nil, err
 	}
 
 	app.HandleInternalEvent(sdk.SdkEventsFromABCIEvent(internalEvents.Events))
+
+	fmt.Printf("=============HandleInternalEvent %v \n", time.Since(tt1).String())
 
 	// finalizeBlockState should be set on InitChain or ProcessProposal. If it is
 	// nil, it means we are replaying this block and we need to set the state here
