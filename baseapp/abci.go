@@ -794,13 +794,6 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 		AppHash:            app.LastCommitID().Hash,
 	}
 
-	waitChan := make(chan error)
-	go func() {
-		err := app.prepareNamespaceBlock(app.finalizeBlockState.Context(), req.Txs, req.NsTable)
-
-		waitChan <- err
-	}()
-
 	sdkTxs := make([]sdk.Tx, len(req.Txs))
 	entries := make([]*sdk.DeliverTxEntry, len(req.Txs))
 	startTime1 := time.Now()
@@ -823,6 +816,13 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 
 	wg.Wait()
 	t1 := time.Now()
+
+	waitChan := make(chan error)
+	go func() {
+		err := app.prepareNamespaceBlock(app.finalizeBlockState.Context(), req.Txs, req.NsTable)
+
+		waitChan <- err
+	}()
 
 	tt1 := time.Now()
 	internalEvents, err := app.DetectInternalEvent(sdkTxs)
