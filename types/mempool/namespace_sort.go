@@ -261,6 +261,7 @@ func (nsm *NamespaceSort) Select(ctx context.Context, maxBytes, maxGas int64, re
 			addressIndexMap      = make(map[string]int) // Map to store address indices.
 			lastTxIndexMap       = make(map[string]int) // Map to track last seen transaction indices.
 			nsTransactionIndexes = make([]*cmtproto.NsTransactionIndexes, 0, len(memTxs))
+			contractIsSerialMap  = make(map[string]bool)
 		)
 
 		// Handle transaction dependencies and ordering.
@@ -299,10 +300,15 @@ func (nsm *NamespaceSort) Select(ctx context.Context, maxBytes, maxGas int64, re
 				curIdx     int
 				isToSerial bool
 				toIsSerial = func(tx sdk.MempoolTx) bool {
-					isContract, isContractSerial := tx.ContractStaticAnalysisResultHandler(sdkCtx.WithNamepace(namespaceId), to)
-					if isContract {
+					if isContractSerial, ok := contractIsSerialMap[to]; ok {
 						return isContractSerial
 					}
+					isContract, isContractSerial := tx.ContractStaticAnalysisResultHandler(sdkCtx.WithNamepace(namespaceId), to)
+					if isContract {
+						contractIsSerialMap[to] = isContractSerial
+						return isContractSerial
+					}
+					contractIsSerialMap[to] = true
 					return true
 				}
 			)

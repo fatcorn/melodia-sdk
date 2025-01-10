@@ -824,15 +824,14 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 		waitChan <- err
 	}()
 
-	tt1 := time.Now()
 	internalEvents, err := app.DetectInternalEvent(sdkTxs)
 	if err != nil {
 		return nil, err
 	}
 
+	t11 := time.Now()
 	app.HandleInternalEvent(sdk.SdkEventsFromABCIEvent(internalEvents.Events))
-
-	tt2 := time.Now()
+	t12 := time.Now()
 
 	// finalizeBlockState should be set on InitChain or ProcessProposal. If it is
 	// nil, it means we are replaying this block and we need to set the state here
@@ -876,6 +875,7 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 			ProposerAddress: req.ProposerAddress,
 			LastCommit:      req.DecidedLastCommit,
 		}))
+	t13 := time.Now()
 
 	// GasMeter must be set after we get a context with updated consensus params.
 	gasMeter := app.getBlockGasMeter(app.finalizeBlockState.Context())
@@ -887,14 +887,18 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 			WithHeaderHash(req.Hash))
 	}
 
+	t14 := time.Now()
+
 	if err := app.preBlock(req); err != nil {
 		return nil, err
 	}
+	t15 := time.Now()
 
 	beginBlock, err := app.beginBlock(req)
 	if err != nil {
 		return nil, err
 	}
+	t16 := time.Now()
 
 	// First check for an abort signal after beginBlock, as it's the first place
 	// we spend any significant amount of time.
@@ -906,10 +910,19 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	}
 
 	events = append(events, beginBlock.Events...)
+	t17 := time.Now()
+
+	err = app.prepareNamespaceBlock(app.finalizeBlockState.Context(), req.Txs, req.NsTable)
+
+	if err != nil {
+		return nil, err
+	}
+	t18 := time.Now()
 
 	// Reset the gas meter so that the AnteHandlers aren't required to
 	gasMeter = app.getBlockGasMeter(app.finalizeBlockState.Context())
 	app.finalizeBlockState.SetContext(app.finalizeBlockState.Context().WithBlockGasMeter(gasMeter))
+	t19 := time.Now()
 
 	// Iterate over all raw transactions in the proposal and attempt to execute
 	// them, gathering the execution results.
@@ -917,7 +930,25 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	// NOTE: Not all raw transactions may adhere to the sdk.Tx interface, e.g.
 	// vote extensions, so skip those.
 	namespaceList, err := consensustypes.ListTxsNamespaceIdsWithTxsAndNSTable(len(req.Txs), req.NsTable)
+	t20 := time.Now()
+
 	txResults := make([]*abci.ExecTxResult, len(req.Txs))
+
+	if len(req.Txs) > 0 {
+		println("begin block ==========",
+			"DetectInternalEvent",t11.Sub(t1).String(),
+			"HandleInternalEvent",t12.Sub(t11).String(),
+			"SetContext",t13.Sub(t12).String(),
+			"getBlockGasMeter",t14.Sub(t13).String(),
+			"preBlock",t15.Sub(t14).String(),
+			"beginBlock",t16.Sub(t15).String(),
+			" append events",t17.Sub(t16).String(),
+			"prepareNamespaceBlock",t18.Sub(t17).String(),
+			"app.finalizeBlockState.SetContext",t19.Sub(t18).String(),
+			"ListTxsNamespaceIdsWithTxsAndNSTable",t20.Sub(t19).String(),
+			"make txs",time.Since(t20).String(),
+		)
+	}
 
 	// Start use scheduler to deal Txs
 	startTime := time.Now()
@@ -939,11 +970,6 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	//}
 
 	//wg.Wait()
-	fmt.Printf("=============HandleInternalEvent %v\n", tt2.Sub(tt1).String())
-
-	if err != nil {
-		return nil, err
-	}
 
 	finalizeCtx := app.getContext(execModeFinalize)
 
@@ -978,7 +1004,7 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	}
 
 	// calculate time used by scheduler
-	fmt.Printf("========= Scheduler Time used: %v,decode tx time %v,deliver tx %v,append time %v, make namespace block time %v,handler event time %v \n", time.Since(startTime).String(), t1.Sub(startTime1).String(), t2.Sub(startTime).String(), time.Since(t22).String(), t21.Sub(t2).String(), t22.Sub(t21).String())
+	//fmt.Printf("========= Scheduler Time used: %v,decode tx time %v,deliver tx %v,append time %v, make namespace block time %v,handler event time %v \n", time.Since(startTime).String(), t1.Sub(startTime1).String(), t2.Sub(startTime).String(), time.Since(t22).String(), t21.Sub(t2).String(), t22.Sub(t21).String())
 	//app.logger.Info("FinalizeBlock", "schedulerTime", time.Since(startTime))
 	time1 := time.Now()
 
@@ -1003,7 +1029,17 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	events = append(events, endBlock.Events...)
 	cp := app.GetConsensusParams(app.finalizeBlockState.Context())
 	time3 := time.Now()
-	println("finalize block ", "end block time", time2.Sub(time1).String(), "get consendus parames", time3.Sub(time2).String(), "Total time", time.Since(timeStart).String())
+	println("finalize block ",
+		"checkHalt", startTime1.Sub(timeStart).String(),
+		"decode tx", t1.Sub(startTime1).String(),
+		"begin block", startTime.Sub(t1).String(),
+		"DeliverTxBatch", t2.Sub(startTime).String(),
+		"make namesapce blcok", t21.Sub(t2).String(),
+		"HandleInternalEvent", t22.Sub(t21).String(),
+		"namespaceList", time1.Sub(t22).String(),
+		"end block time", time2.Sub(time1).String(),
+		"get consendus parames", time3.Sub(time2).String(),
+		"Total time", time.Since(timeStart).String())
 
 	return &abci.ResponseFinalizeBlock{
 		Events:                events,
