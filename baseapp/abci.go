@@ -911,13 +911,13 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 
 	events = append(events, beginBlock.Events...)
 	t17 := time.Now()
-
-	err = app.prepareNamespaceBlock(app.finalizeBlockState.Context(), req.Txs, req.NsTable)
-
-	if err != nil {
-		return nil, err
-	}
-	t18 := time.Now()
+	//
+	//err = app.prepareNamespaceBlock(app.finalizeBlockState.Context(), req.Txs, req.NsTable)
+	//
+	//if err != nil {
+	//	return nil, err
+	//}
+	//t18 := time.Now()
 
 	// Reset the gas meter so that the AnteHandlers aren't required to
 	gasMeter = app.getBlockGasMeter(app.finalizeBlockState.Context())
@@ -936,17 +936,16 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 
 	if len(req.Txs) > 0 {
 		println("begin block ==========",
-			"DetectInternalEvent",t11.Sub(t1).String(),
-			"HandleInternalEvent",t12.Sub(t11).String(),
-			"SetContext",t13.Sub(t12).String(),
-			"getBlockGasMeter",t14.Sub(t13).String(),
-			"preBlock",t15.Sub(t14).String(),
-			"beginBlock",t16.Sub(t15).String(),
-			" append events",t17.Sub(t16).String(),
-			"prepareNamespaceBlock",t18.Sub(t17).String(),
-			"app.finalizeBlockState.SetContext",t19.Sub(t18).String(),
-			"ListTxsNamespaceIdsWithTxsAndNSTable",t20.Sub(t19).String(),
-			"make txs",time.Since(t20).String(),
+			"DetectInternalEvent", t11.Sub(t1).String(),
+			"HandleInternalEvent", t12.Sub(t11).String(),
+			"SetContext", t13.Sub(t12).String(),
+			"getBlockGasMeter", t14.Sub(t13).String(),
+			"preBlock", t15.Sub(t14).String(),
+			"beginBlock", t16.Sub(t15).String(),
+			" append events", t17.Sub(t16).String(),
+			"app.finalizeBlockState.SetContext", t19.Sub(t17).String(),
+			"ListTxsNamespaceIdsWithTxsAndNSTable", t20.Sub(t19).String(),
+			"make txs", time.Since(t20).String(),
 		)
 	}
 
