@@ -2,12 +2,14 @@ package types
 
 import (
 	"cosmossdk.io/core/appmodule"
-	"fmt"
 	abci "github.com/cometbft/cometbft/abci/types"
+	"github.com/cometbft/cometbft/crypto/tmhash"
 	tmbytes "github.com/cometbft/cometbft/libs/bytes"
 	tdmtypes "github.com/cometbft/cometbft/proto/tendermint/types"
 	tmtypes "github.com/cometbft/cometbft/types"
 	"math/big"
+	"strconv"
+	"strings"
 )
 
 // InitChainer initializes application state at genesis
@@ -129,9 +131,12 @@ type NamespaceMempoolTxs struct {
 	Txs         []MempoolTx
 }
 
-func (tx *MempoolTx) NonceKey(namespaceId uint64) string {
-	// Convert uint64 namespaceId and tx.Nonce to string before concatenation
-	return fmt.Sprintf("%d%s%d", namespaceId, tx.From, tx.Nonce)
+func (tx *MempoolTx) NonceHash(namespaceId uint64) string {
+	var builder strings.Builder
+	builder.WriteString(strconv.FormatUint(namespaceId, 10))
+	builder.WriteString(tx.From)
+	builder.WriteString(strconv.FormatUint(tx.Nonce, 10))
+	return tmbytes.HexBytes(tmhash.Sum([]byte(builder.String()))).String()
 }
 
 func (tx *MempoolTx) Hash() string {
