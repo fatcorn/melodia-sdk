@@ -344,6 +344,7 @@ func (rs *Store) Commit1(bumpVersion bool) types.CommitID {
 	if err := rs.flush(); err != nil {
 		panic(err)
 	}
+	t0 := time.Now()
 
 	rs.mtx.Lock()
 	defer rs.mtx.Unlock()
@@ -352,11 +353,14 @@ func (rs *Store) Commit1(bumpVersion bool) types.CommitID {
 			_ = store.Commit()
 		}
 	}
+	t1 := time.Now()
+
 	// Commit to SC Store
 	_, err := rs.scStore.Commit()
 	if err != nil {
 		panic(err)
 	}
+	t2 := time.Now()
 
 	// reset the removalMap
 	rs.removalMap = make(map[types.StoreKey]bool)
@@ -371,11 +375,14 @@ func (rs *Store) Commit1(bumpVersion bool) types.CommitID {
 			}
 		}
 	}
+	t3 := time.Now()
 
 	rs.lastCommitInfo = convertCommitInfo(rs.scStore.LastCommitInfo())
 	rs.lastCommitInfo = amendCommitInfo(rs.lastCommitInfo, rs.storesParams)
 	id := rs.lastCommitInfo.CommitID()
 	rs.commitHashInfoCache.Store(id.Version, id)
+	t4 := time.Now()
+	println("store v2 root multi store commit","store flush",t0.Sub(commitStartTime).String(),"store commit",t1.Sub(t0).String(),"sc store",t2.Sub(t1).String(),"load params",t3.Sub(t2).String(),"store version",t4.Sub(t3).String())
 	return id
 }
 
