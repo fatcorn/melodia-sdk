@@ -1097,7 +1097,7 @@ func (app *BaseApp) FinalizeBlock(req *abci.RequestFinalizeBlock) (res *abci.Res
 
 		// calculate workingHash execute time
 		startTime := time.Now().UnixNano()
-		res.AppHash = app.workingHash()
+		go app.asyncWorkingHash()
 		endTime := time.Now().UnixNano()
 		fmt.Printf("========= WorkingHash Time used: %v\n", time.Duration(endTime-startTime))
 		//app.logger.Info("FinalizeBlock", "appHash", fmt.Sprintf("%X", time.Duration(endTime-startTime)))
@@ -1108,6 +1108,12 @@ func (app *BaseApp) FinalizeBlock(req *abci.RequestFinalizeBlock) (res *abci.Res
 	fmt.Printf("========= FinalizeBlock Time used: %v\n", time.Duration(finalizeEndTime-finalizeStartTime))
 	//app.logger.Info("FinalizeBlock", "time", time.Duration(finalizeEndTime-finalizeStartTime))
 	return res, err
+}
+func (app *BaseApp) asyncWorkingHash() {
+	startTime := time.Now()
+	appHash := app.workingHash()
+	app.appHashRet <- appHash
+	println("async working hash", "time used", time.Since(startTime).String())
 }
 
 // checkHalt checkes if height or time exceeds halt-height or halt-time respectively.
@@ -1140,6 +1146,11 @@ func (app *BaseApp) Commit() (*abci.ResponseCommit, error) {
 	header := app.finalizeBlockState.Context().BlockHeader()
 	retainHeight := app.GetBlockRetentionHeight(header.Height)
 
+	resp := &abci.ResponseCommit{
+		RetainHeight: retainHeight,
+	}
+	appHash := <-app.appHashRet
+	resp.AppHash = appHash
 	if app.precommiter != nil {
 		app.precommiter(app.finalizeBlockState.Context())
 	}
@@ -1163,10 +1174,6 @@ func (app *BaseApp) Commit() (*abci.ResponseCommit, error) {
 	app.cms.Commit()
 
 	t3 := time.Now()
-
-	resp := &abci.ResponseCommit{
-		RetainHeight: retainHeight,
-	}
 
 	abciListeners := app.streamingManager.ABCIListeners
 	if len(abciListeners) > 0 {
@@ -1203,7 +1210,7 @@ func (app *BaseApp) Commit() (*abci.ResponseCommit, error) {
 
 	t6 := time.Now()
 
-	println("base app Commit time", t5.Sub(startTime).String(), "precommiter ", t1.Sub(startTime).String(), "SetCommitHeader", t2.Sub(t1).String(), "commit", t3.Sub(t2).String(), "abciListeners", t4.Sub(t3).String(), "namespaceBlock", t5.Sub(t4).String(), "SnapshotIfApplicable", t6.Sub(t5).String())
+	app.logger.Info("base app Commit time", "total", t5.Sub(startTime).String(), "await appHash used ", t1.Sub(startTime).String(), "SetCommitHeader", t2.Sub(t1).String(), "commit", t3.Sub(t2).String(), "abciListeners", t4.Sub(t3).String(), "namespaceBlock", t5.Sub(t4).String(), "SnapshotIfApplicable", t6.Sub(t5).String())
 
 	return resp, nil
 }

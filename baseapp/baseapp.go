@@ -243,6 +243,8 @@ type BaseApp struct {
 	concurrencyWorkers int
 
 	dbtype dbm.BackendType
+
+	appHashRet chan []byte
 }
 
 //type NamespaceStoreManager struct {
@@ -299,6 +301,7 @@ func NewBaseApp(
 		fauxMerkleMode:        false,
 		queryGasLimit:         math.MaxUint64,
 		namespaceStoreManager: nsblockstore.NewNamespaceStoreManager(),
+		appHashRet:            make(chan []byte, 1),
 	}
 
 	for _, option := range options {
