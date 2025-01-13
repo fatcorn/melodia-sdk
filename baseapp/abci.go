@@ -950,42 +950,20 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	}
 
 	// Start use scheduler to deal Txs
-	startTime := time.Now()
-
-	//entries := make([]*sdk.DeliverTxEntry, len(req.Txs))
-	//wg := sync.WaitGroup{}
-	//for txIndex, rawTx := range req.Txs {
-	//	wg.Add(1)
-	//	go func(txIndex int, rawTx []byte) {
-	//		defer wg.Done()
-	//		tx, _ := app.txDecoder(rawTx)
-	//		deliverTxEntry := &sdk.DeliverTxEntry{
-	//			Request:       rawTx,
-	//			SdkTx:         tx,
-	//			AbsoluteIndex: txIndex,
-	//		}
-	//		entries[txIndex] = deliverTxEntry
-	//	}(txIndex, rawTx)
-	//}
-
-	//wg.Wait()
 
 	finalizeCtx := app.getContext(execModeFinalize)
 
 	batchResult := app.DeliverTxBatch(finalizeCtx, sdk.DeliverTxBatchRequest{TxEntries: entries, Orders: req.Orders}, namespaceList, waitChan)
-	t2 := time.Now()
 
 	err = app.makeNamespaceBlock(app.finalizeBlockState.Context(), &events)
 	if err != nil {
 		return nil, err
 	}
-	t21 := time.Now()
 
 	for idx, result := range batchResult.Results {
 		txResults[idx] = &result.Response
 		app.HandleInternalEvent(sdk.SdkEventsFromABCIEvent(result.Response.Events))
 	}
-	t22 := time.Now()
 
 	// Finalize all Bank Module Transfers here so that events are included for txs
 	// TODO: Since the fee collection rules have not yet been finalized, fees are temporarily stored in the store under the transaction's associated namespace.
@@ -1005,7 +983,6 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	// calculate time used by scheduler
 	//fmt.Printf("========= Scheduler Time used: %v,decode tx time %v,deliver tx %v,append time %v, make namespace block time %v,handler event time %v \n", time.Since(startTime).String(), t1.Sub(startTime1).String(), t2.Sub(startTime).String(), time.Since(t22).String(), t21.Sub(t2).String(), t22.Sub(t21).String())
 	//app.logger.Info("FinalizeBlock", "schedulerTime", time.Since(startTime))
-	time1 := time.Now()
 
 	if app.finalizeBlockState.ms.TracingEnabled() {
 		app.finalizeBlockState.ms = app.finalizeBlockState.ms.SetTracingContext(nil).(storetypes.CacheMultiStore)
@@ -1015,7 +992,6 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	if err != nil {
 		return nil, err
 	}
-	time2 := time.Now()
 
 	// check after endBlock if we should abort, to avoid propagating the result
 	select {
@@ -1027,18 +1003,7 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 
 	events = append(events, endBlock.Events...)
 	cp := app.GetConsensusParams(app.finalizeBlockState.Context())
-	time3 := time.Now()
-	println("finalize block ",
-		"checkHalt", startTime1.Sub(timeStart).String(),
-		"decode tx", t1.Sub(startTime1).String(),
-		"begin block", startTime.Sub(t1).String(),
-		"DeliverTxBatch", t2.Sub(startTime).String(),
-		"make namesapce blcok", t21.Sub(t2).String(),
-		"HandleInternalEvent", t22.Sub(t21).String(),
-		"namespaceList", time1.Sub(t22).String(),
-		"end block time", time2.Sub(time1).String(),
-		"get consendus parames", time3.Sub(time2).String(),
-		"Total time", time.Since(timeStart).String())
+
 
 	return &abci.ResponseFinalizeBlock{
 		Events:                events,
@@ -1093,19 +1058,11 @@ func (app *BaseApp) FinalizeBlock(req *abci.RequestFinalizeBlock) (res *abci.Res
 	// if no OE is running, just run the block (this is either a block replay or a OE that got aborted)
 	res, err = app.internalFinalizeBlock(context.Background(), req)
 	if res != nil {
-		println("internal finalize block", "", time.Since(now).String())
-
-		// calculate workingHash execute time
-		startTime := time.Now().UnixNano()
 		go app.asyncWorkingHash()
-		endTime := time.Now().UnixNano()
-		fmt.Printf("========= WorkingHash Time used: %v\n", time.Duration(endTime-startTime))
-		//app.logger.Info("FinalizeBlock", "appHash", fmt.Sprintf("%X", time.Duration(endTime-startTime)))
-
 	}
 	app.finalizeBlockHeight = req.Height
 	finalizeEndTime := time.Now().UnixNano()
-	fmt.Printf("========= FinalizeBlock Time used: %v\n", time.Duration(finalizeEndTime-finalizeStartTime))
+	app.logger.Info("========= FinalizeBlock", " Time used", time.Duration(finalizeEndTime-finalizeStartTime))
 	//app.logger.Info("FinalizeBlock", "time", time.Duration(finalizeEndTime-finalizeStartTime))
 	return res, err
 }
@@ -1113,7 +1070,7 @@ func (app *BaseApp) asyncWorkingHash() {
 	startTime := time.Now()
 	appHash := app.workingHash()
 	app.appHashRet <- appHash
-	println("async working hash", "time used", time.Since(startTime).String())
+	app.logger.Info("async working hash", "time used", time.Since(startTime).String())
 }
 
 // checkHalt checkes if height or time exceeds halt-height or halt-time respectively.
