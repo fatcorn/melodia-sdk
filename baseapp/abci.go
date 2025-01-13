@@ -769,7 +769,6 @@ func (app *BaseApp) VerifyVoteExtension(req *abci.RequestVerifyVoteExtension) (r
 // must be used.
 func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.RequestFinalizeBlock) (*abci.ResponseFinalizeBlock, error) {
 	var events []abci.Event
-	timeStart := time.Now()
 
 	if err := app.checkHalt(req.Height, req.Time); err != nil {
 		return nil, err
@@ -796,7 +795,6 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 
 	sdkTxs := make([]sdk.Tx, len(req.Txs))
 	entries := make([]*sdk.DeliverTxEntry, len(req.Txs))
-	startTime1 := time.Now()
 	wg := sync.WaitGroup{}
 	for txIndex, rawTx := range req.Txs {
 		wg.Add(1)
@@ -1004,7 +1002,6 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	events = append(events, endBlock.Events...)
 	cp := app.GetConsensusParams(app.finalizeBlockState.Context())
 
-
 	return &abci.ResponseFinalizeBlock{
 		Events:                events,
 		TxResults:             txResults,
@@ -1054,7 +1051,6 @@ func (app *BaseApp) FinalizeBlock(req *abci.RequestFinalizeBlock) (res *abci.Res
 		app.optimisticExec.Reset()
 	}
 
-	now := time.Now()
 	// if no OE is running, just run the block (this is either a block replay or a OE that got aborted)
 	res, err = app.internalFinalizeBlock(context.Background(), req)
 	if res != nil {
