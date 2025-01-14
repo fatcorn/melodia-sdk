@@ -1355,7 +1355,7 @@ func (app *BaseApp) runTx(mode execMode, txBytes []byte, opts ...sdk.Context) (g
 	//}
 
 	t2 := time.Now()
-	memTx, err = app.ToMemTx(txBytes, ctx.SdkTx())
+	memTx, err = app.ToMemTx(txBytes)
 	if err != nil {
 		return sdk.GasInfo{}, nil, nil, nil, err
 	}
@@ -1695,7 +1695,7 @@ func (app *BaseApp) decodeToMemTxs(txBytes [][]byte) []sdk.MempoolTx {
 				wg.Done()
 				<-ch
 			}()
-			tx, err := app.ToMemTx(txBz, nil)
+			tx, err := app.ToMemTx(txBz)
 			if err == nil {
 				txs[idx] = tx
 			}
@@ -1753,14 +1753,10 @@ func (app *BaseApp) TxEncode(tx sdk.Tx) ([]byte, error) {
 	return app.txEncoder(tx)
 }
 
-func (app *BaseApp) ToMemTx(txByte []byte, sdkTx sdk.Tx) (sdk.MempoolTx, error) {
-	var err error
-	if sdkTx == nil {
-		sdkTx, err = app.txDecoder(txByte)
-	}
-
-	from, to, nonce := app.txAccountInfoHandler(sdkTx)
-	memTx := sdk.MempoolTx{Tx: sdkTx, TxBytes: txByte, From: from, To: to, Nonce: nonce, SortTxHandler: sdk.SortTxHandler{
+func (app *BaseApp) ToMemTx(txByte []byte) (sdk.MempoolTx, error) {
+	tx, err := app.txDecoder(txByte)
+	from, to, nonce := app.txAccountInfoHandler(tx)
+	memTx := sdk.MempoolTx{Tx: tx, TxBytes: txByte, From: from, To: to, Nonce: nonce, SortTxHandler: sdk.SortTxHandler{
 		CrossNamespaceTransactionIdentifierHandler: app.crossNamespaceTransactionIdentifierHandler,
 		ContractStaticAnalysisResultHandler:        app.contractStaticAnalysisResultHandler,
 		CheckTxFeeHandler:                          app.checkTxFeeHandler,
