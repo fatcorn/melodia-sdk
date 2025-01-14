@@ -7,7 +7,6 @@ import (
 	"cosmossdk.io/errors"
 
 	"cosmossdk.io/store/cachekv"
-	"cosmossdk.io/store/tracekv"
 	"cosmossdk.io/store/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/cosmos/cosmos-sdk/types/kv"
@@ -48,18 +47,6 @@ func (rs *Store) CacheWrapWithTrace(w io.Writer, tc types.TraceContext) types.Ca
 	//TODO implement me
 	panic("implement me")
 }
-
-func (st *Store) CacheWrap1(storeKey types.StoreKey) types.CacheWrap {
-	return cachekv.NewStore(st)
-}
-
-func (st *Store) CacheWrapWithTrace1(storeKey types.StoreKey, w io.Writer, tc types.TraceContext) types.CacheWrap {
-	return cachekv.NewStore(tracekv.NewStore(st, w, tc))
-}
-
-//func (st *Store) CacheWrapWithListeners(storeKey types.StoreKey, listeners []types.WriteListener) types.CacheWrap {
-//	return cachekv.NewStore(listenkv.NewStore(st, storeKey, listeners))
-//}
 
 func (st *Store) Get(key []byte) []byte {
 	value, err := st.store.Get(st.storeKey.Name(), st.version, key)

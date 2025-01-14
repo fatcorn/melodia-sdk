@@ -20,8 +20,6 @@ import (
 	goerrors "errors"
 
 	"fmt"
-	hashmetrics "github.com/hashicorp/go-metrics"
-
 	cmtdbm "github.com/cometbft/cometbft-db"
 	abci "github.com/cometbft/cometbft/abci/types"
 	cmtcfg "github.com/cometbft/cometbft/config"
@@ -45,8 +43,6 @@ import (
 	"github.com/sei-protocol/sei-db/ss"
 	"github.com/sei-protocol/sei-db/ss/pruning"
 	sstypes "github.com/sei-protocol/sei-db/ss/types"
-	dbm "github.com/tendermint/tm-db"
-
 	"golang.org/x/exp/slices"
 	"io"
 	"math"
@@ -80,7 +76,51 @@ type Store struct {
 }
 
 func (rs *Store) Commit() types.CommitID {
-	return rs.Commit1(true)
+	commitStartTime := time.Now()
+	defer telemetry.MeasureSince(commitStartTime, "storeV2", "sc", "commit", "latency")
+	if err := rs.flush(); err != nil {
+		panic(err)
+	}
+	t0 := time.Now()
+
+	rs.mtx.Lock()
+	defer rs.mtx.Unlock()
+	for _, store := range rs.ckvStores {
+		if store.GetStoreType() != types.StoreTypeIAVL {
+			_ = store.Commit()
+		}
+	}
+	t1 := time.Now()
+
+	// Commit to SC Store
+	_, err := rs.scStore.Commit()
+	if err != nil {
+		panic(err)
+	}
+	t2 := time.Now()
+
+	// reset the removalMap
+	rs.removalMap = make(map[types.StoreKey]bool)
+
+	// The underlying sc store might be reloaded, reload the store as well.
+	for key := range rs.ckvStores {
+		store := rs.ckvStores[key]
+		if store.GetStoreType() == types.StoreTypeIAVL {
+			rs.ckvStores[key], err = rs.loadCommitStoreFromParams(key, rs.storesParams[key])
+			if err != nil {
+				panic(fmt.Errorf("inconsistent store map, store %s not found", key.Name()))
+			}
+		}
+	}
+	t3 := time.Now()
+
+	rs.lastCommitInfo = convertCommitInfo(rs.scStore.LastCommitInfo())
+	rs.lastCommitInfo = amendCommitInfo(rs.lastCommitInfo, rs.storesParams)
+	id := rs.lastCommitInfo.CommitID()
+	rs.commitHashInfoCache.Store(id.Version, id)
+	t4 := time.Now()
+	println("store v2 root multi store commit", "store flush", t0.Sub(commitStartTime).String(), "store commit", t1.Sub(t0).String(), "sc store", t2.Sub(t1).String(), "load params", t3.Sub(t2).String(), "store version", t4.Sub(t3).String())
+	return id
 }
 
 func (rs *Store) WorkingHash() []byte {
@@ -332,58 +372,6 @@ func NewStore(
 	}
 	return store
 
-}
-
-// Commit implements interface Committer, called by ABCI Commit
-func (rs *Store) Commit1(bumpVersion bool) types.CommitID {
-	if !bumpVersion {
-		panic("Commit should always bump version in root multistore")
-	}
-	commitStartTime := time.Now()
-	defer telemetry.MeasureSince(commitStartTime, "storeV2", "sc", "commit", "latency")
-	if err := rs.flush(); err != nil {
-		panic(err)
-	}
-	t0 := time.Now()
-
-	rs.mtx.Lock()
-	defer rs.mtx.Unlock()
-	for _, store := range rs.ckvStores {
-		if store.GetStoreType() != types.StoreTypeIAVL {
-			_ = store.Commit()
-		}
-	}
-	t1 := time.Now()
-
-	// Commit to SC Store
-	_, err := rs.scStore.Commit()
-	if err != nil {
-		panic(err)
-	}
-	t2 := time.Now()
-
-	// reset the removalMap
-	rs.removalMap = make(map[types.StoreKey]bool)
-
-	// The underlying sc store might be reloaded, reload the store as well.
-	for key := range rs.ckvStores {
-		store := rs.ckvStores[key]
-		if store.GetStoreType() == types.StoreTypeIAVL {
-			rs.ckvStores[key], err = rs.loadCommitStoreFromParams(key, rs.storesParams[key])
-			if err != nil {
-				panic(fmt.Errorf("inconsistent store map, store %s not found", key.Name()))
-			}
-		}
-	}
-	t3 := time.Now()
-
-	rs.lastCommitInfo = convertCommitInfo(rs.scStore.LastCommitInfo())
-	rs.lastCommitInfo = amendCommitInfo(rs.lastCommitInfo, rs.storesParams)
-	id := rs.lastCommitInfo.CommitID()
-	rs.commitHashInfoCache.Store(id.Version, id)
-	t4 := time.Now()
-	println("store v2 root multi store commit","store flush",t0.Sub(commitStartTime).String(),"store commit",t1.Sub(t0).String(),"sc store",t2.Sub(t1).String(),"load params",t3.Sub(t2).String(),"store version",t4.Sub(t3).String())
-	return id
 }
 
 // StateStoreCommit is a background routine to apply changes to SS store
@@ -653,21 +641,6 @@ func (rs *Store) PruneSnapshotHeight(_ int64) {
 // Implements interface Snapshotter
 // not needed, memiavl manage its own snapshot/pruning strategy
 func (rs *Store) SetSnapshotInterval(_ uint64) {
-}
-
-// Implements interface CommitMultiStore
-func (rs *Store) MountStoreWithDB1(key types.StoreKey, typ types.StoreType, _ dbm.DB) {
-	if key == nil {
-		panic("MountIAVLStore() key cannot be nil")
-	}
-	if _, ok := rs.storesParams[key]; ok {
-		panic(fmt.Sprintf("store duplicate store key %v", key))
-	}
-	if _, ok := rs.storeKeys[key.Name()]; ok {
-		panic(fmt.Sprintf("store duplicate store key name %v", key))
-	}
-	rs.storesParams[key] = newStoreParams(key, typ)
-	rs.storeKeys[key.Name()] = key
 }
 
 // Implements interface CommitMultiStore
@@ -1212,23 +1185,6 @@ func (rs *Store) ListeningEnabled(_ types.StoreKey) bool {
 //	return
 //}
 
-// Restore Implements interface Snapshotter
-func (rs *Store) Restore1(
-	height uint64, format uint32, protoReader protoio.Reader,
-) (snapshottypes.SnapshotItem, error) {
-	if rs.scStore != nil {
-		if err := rs.scStore.Close(); err != nil {
-			return snapshottypes.SnapshotItem{}, fmt.Errorf("failed to close db: %w", err)
-		}
-	}
-	item, err := rs.restore(int64(height), protoReader)
-	if err != nil {
-		return snapshottypes.SnapshotItem{}, err
-	}
-
-	return item, rs.LoadLatestVersion()
-}
-
 func (rs *Store) restore(height int64, protoReader protoio.Reader) (snapshottypes.SnapshotItem, error) {
 	var (
 		ssImporter   chan sstypes.SnapshotNode
@@ -1314,87 +1270,6 @@ loop:
 	}
 
 	return snapshotItem, restoreErr
-}
-
-// Snapshot Implements the interface from Snapshotter
-func (rs *Store) Snapshot1(height uint64, protoWriter protoio.Writer) error {
-	if height > math.MaxUint32 {
-		return fmt.Errorf("height overflows uint32: %d", height)
-	}
-
-	exporter, err := rs.scStore.Exporter(int64(height))
-	if err != nil {
-		return err
-	}
-	defer exporter.Close()
-	keySizePerStore := map[string]int64{}
-	valueSizePerStore := map[string]int64{}
-	numKeysPerStore := map[string]int64{}
-	currentStoreName := ""
-	for {
-		item, err := exporter.Next()
-		if err != nil {
-			if err == commonerrors.ErrorExportDone {
-				for k, v := range keySizePerStore {
-					label := hashmetrics.Label{"store_name", k}
-					telemetry.SetGaugeWithLabels(
-						[]string{"iavl", "store", "total_key_bytes"},
-						float32(v),
-						[]hashmetrics.Label{label},
-					)
-				}
-				for k, v := range valueSizePerStore {
-					telemetry.SetGaugeWithLabels(
-						[]string{"iavl", "store", "total_value_bytes"},
-						float32(v),
-						[]hashmetrics.Label{telemetry.NewLabel("store_name", k)},
-					)
-				}
-				for k, v := range numKeysPerStore {
-					telemetry.SetGaugeWithLabels(
-						[]string{"iavl", "store", "total_num_keys"},
-						float32(v),
-						[]hashmetrics.Label{telemetry.NewLabel("store_name", k)},
-					)
-				}
-				break
-			}
-			return err
-		}
-		switch item := item.(type) {
-		case *sctypes.SnapshotNode:
-			if err := protoWriter.WriteMsg(&snapshottypes.SnapshotItem{
-				Item: &snapshottypes.SnapshotItem_IAVL{
-					IAVL: &snapshottypes.SnapshotIAVLItem{
-						Key:     item.Key,
-						Value:   item.Value,
-						Height:  int32(item.Height),
-						Version: item.Version,
-					},
-				},
-			}); err != nil {
-				return err
-			}
-			keySizePerStore[currentStoreName] += int64(len(item.Key))
-			valueSizePerStore[currentStoreName] += int64(len(item.Value))
-			numKeysPerStore[currentStoreName] += 1
-		case string:
-			if err := protoWriter.WriteMsg(&snapshottypes.SnapshotItem{
-				Item: &snapshottypes.SnapshotItem_Store{
-					Store: &snapshottypes.SnapshotStoreItem{
-						Name: item,
-					},
-				},
-			}); err != nil {
-				return err
-			}
-			currentStoreName = item
-		default:
-			return fmt.Errorf("unknown item type %T", item)
-		}
-	}
-
-	return nil
 }
 
 // SetKVStores implements types.CommitMultiStore.
