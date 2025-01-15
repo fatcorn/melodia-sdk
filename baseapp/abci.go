@@ -815,6 +815,13 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	wg.Wait()
 	t1 := time.Now()
 
+	// finalizeBlockState should be set on InitChain or ProcessProposal. If it is
+	// nil, it means we are replaying this block and we need to set the state here
+	// given that during block replay ProcessProposal is not executed by CometBFT.
+	if app.finalizeBlockState == nil {
+		app.setState(execModeFinalize, header)
+	}
+
 	waitChan := make(chan error)
 	go func() {
 		err := app.prepareNamespaceBlock(app.finalizeBlockState.Context(), req.Txs, req.NsTable)
@@ -830,13 +837,6 @@ func (app *BaseApp) internalFinalizeBlock(ctx context.Context, req *abci.Request
 	t11 := time.Now()
 	app.HandleInternalEvent(sdk.SdkEventsFromABCIEvent(internalEvents.Events))
 	t12 := time.Now()
-
-	// finalizeBlockState should be set on InitChain or ProcessProposal. If it is
-	// nil, it means we are replaying this block and we need to set the state here
-	// given that during block replay ProcessProposal is not executed by CometBFT.
-	if app.finalizeBlockState == nil {
-		app.setState(execModeFinalize, header)
-	}
 
 	if len(app.cms.StoreKeys()) > len(app.finalizeBlockState.GetCache().ListStores()) {
 		ms := app.cms.CacheMultiStore()
