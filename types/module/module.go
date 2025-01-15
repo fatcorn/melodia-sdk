@@ -54,6 +54,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/cosmos/gogoproto/proto"
+	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	goruntime "runtime"
 )
 
@@ -881,7 +882,7 @@ func (m *Manager) PrepareNamespaceBlock(
 		if lastBlock != nil {
 			args.ParentBlockData = lastBlock.Data
 		}
-		var emptyNamespaceTxs [][]byte
+		//var emptyNamespaceTxs [][]byte
 		// if block not include this namespace txs, namespace root hash set to empty root hash
 		if namespaceTxs, ok := namespaceTxsMap[namespaceId]; ok {
 			namespaceIds := make([]uint64, 0)
@@ -890,7 +891,7 @@ func (m *Manager) PrepareNamespaceBlock(
 			}
 			args.TxRootHash = merkle.ParellelGenerateBlockDataNmtRootHash(namespaceIds, namespaceTxs, goruntime.NumCPU()-2)
 		} else {
-			args.TxRootHash = merkle.ParellelGenerateBlockDataNmtRootHash([]uint64{}, emptyNamespaceTxs)
+			args.TxRootHash = ethtypes.EmptyTxsHash[:]
 		}
 
 		if module, ok := m.Modules[moduleName].(appmodule.HasVMNamespaceBLockMaker); ok {
