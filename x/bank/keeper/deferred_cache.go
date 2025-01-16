@@ -106,7 +106,23 @@ func (d *DeferredCache) UpsertBalances(ctx sdk.Context, moduleAddr sdk.AccAddres
 // callback, iteration is halted.
 func (d *DeferredCache) IterateDeferredBalances(ctx sdk.Context, cb func(moduleAddr sdk.AccAddress, balance sdk.Coin) bool) {
 	//deferredStore := prefix.NewStore(ctx.KVStore(d.storeKey), types.DeferredCachePrefix)
-	storeService := d.memory.OpenMemoryStore(ctx)
+	storeService, paris := d.memory.OpenMemoryTypesStore(ctx)
+	if paris != nil {
+		for key, value := range paris {
+			var balance sdk.Coin
+			d.cdc.MustUnmarshal(value, &balance)
+			moduleAddr, err := types.AddressFromDeferredCacheStore([]byte(key))
+			if err != nil {
+				ctx.Logger().With("key", []byte(key), "err", err).Error("failed to get address from deferred cache store")
+				panic(err)
+			}
+
+			if cb(moduleAddr, balance) {
+				break
+			}
+		}
+		return
+	}
 	deferredStore := runtime.KVStoreAdapter(storeService)
 
 	iterator := deferredStore.Iterator(nil, nil)

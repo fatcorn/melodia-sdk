@@ -9,6 +9,7 @@ import (
 	"cosmossdk.io/core/store"
 	storetypes "cosmossdk.io/store/types"
 
+	"github.com/cosmos/cosmos-sdk/storev2/commitment"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	"encoding/binary"
@@ -46,6 +47,20 @@ type memStoreService struct {
 
 func (m memStoreService) OpenMemoryStore(ctx context.Context) store.KVStore {
 	return newKVStore(sdk.UnwrapSDKContext(ctx).KVStore(m.key))
+}
+
+func (m memStoreService) OpenMemoryTypesStore(ctx context.Context) (store.KVStore, map[string][]byte) {
+	sdkContext := sdk.UnwrapSDKContext(ctx)
+	kvStore := sdkContext.KVStore(m.key)
+	if commitStore, ok := kvStore.GetParent().GetParent().(*commitment.Store); ok {
+		changeSet := commitStore.PopChangeSet()
+		pairs := make(map[string][]byte, len(changeSet.Pairs))
+		for _, pair := range changeSet.Pairs {
+			pairs[string(pair.Key)] = pair.Value
+		}
+		return nil, pairs
+	}
+	return newKVStore(kvStore), nil
 }
 
 type transientStoreService struct {
