@@ -102,7 +102,7 @@ type TxDecoder func(txBytes []byte) (Tx, error)
 // TxEncoder marshals transaction to bytes
 type TxEncoder func(tx Tx) ([]byte, error)
 
-type TxAccountInfoHandler func(tx Tx) (string, string, uint64)
+type TxAccountInfoHandler func(tx Tx) (string, string, uint64, bool)
 type MoveExecutionCounterHandler func(ctx Context, counter int) uint64
 type NextAccountNumberHandler func(ctx Context, nsAccounts []NamespaceAccount) map[string]map[uint64]uint64
 type TxNewAccountAddressesHandler func(ctx Context, tx Tx) []NamespaceAccount

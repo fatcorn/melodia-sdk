@@ -33,6 +33,11 @@ func NonceSelector(ctx sdk.Context, nsSelectedTxs sdk.NamespaceSelectedTxs) sdk.
 		txsLen := 0
 
 		for _, memTx := range memTxs {
+			if memTx.IsNoOp {
+				selectedTxs = append(selectedTxs, memTx)
+				offset++
+				continue
+			}
 			from, nonce := memTx.From, memTx.Nonce
 
 			txSignersSeqs := make(map[string]uint64)

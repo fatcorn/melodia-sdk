@@ -30,6 +30,9 @@ func NewNamespaceMempool() *NamespaceMempool {
 
 // IsGapped reports whether the given transaction is immediately executable.
 func (nsm *NamespaceMempool) IsGapped(ctx sdk.Context, tx sdk.MempoolTx) (bool, bool) {
+	if tx.IsNoOp {
+		return true, false
+	}
 	txNonce := tx.Nonce
 	nextNonce := nsm.noncer.getNonce(ctx, tx.From, tx.GetAccountNonceHandler)
 	if txNonce != nextNonce {
@@ -44,6 +47,10 @@ func (nsm *NamespaceMempool) Reset() {
 }
 
 func (nsm *NamespaceMempool) Prepare(ctx sdk.Context, tx sdk.MempoolTx) sdk.Context {
+	if tx.IsNoOp {
+		return ctx
+	}
+
 	if ctx.ExecMode() == sdk.ExecModeFinalize {
 		//set signer
 		if signer, ok := nsm.cacheSigners.Load(tx.Hash()); ok {
@@ -54,6 +61,9 @@ func (nsm *NamespaceMempool) Prepare(ctx sdk.Context, tx sdk.MempoolTx) sdk.Cont
 }
 
 func (nsm *NamespaceMempool) Defer(ctx context.Context, tx sdk.MempoolTx, success bool) {
+	if tx.IsNoOp {
+		return
+	}
 	//update nonce
 	if success {
 		sdkCtx := sdk.UnwrapSDKContext(ctx)
@@ -64,6 +74,9 @@ func (nsm *NamespaceMempool) Defer(ctx context.Context, tx sdk.MempoolTx, succes
 }
 
 func (nsm *NamespaceMempool) Insert(ctx context.Context, tx sdk.MempoolTx) error {
+	if tx.IsNoOp {
+		return nil
+	}
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 
 	// If there's an older better MempoolTx, abort
@@ -83,6 +96,9 @@ func (nsm *NamespaceMempool) Insert(ctx context.Context, tx sdk.MempoolTx) error
 	return nil
 }
 func (nsm *NamespaceMempool) Remove(ctx context.Context, tx sdk.MempoolTx) error {
+	if tx.IsNoOp {
+		return nil
+	}
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	//remove cache signer
 	nsm.cacheSigners.Delete(tx.Hash(), func(any any) {})

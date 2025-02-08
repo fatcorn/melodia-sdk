@@ -1755,7 +1755,7 @@ func (app *BaseApp) TxEncode(tx sdk.Tx) ([]byte, error) {
 
 func (app *BaseApp) ToMemTx(txByte []byte) (sdk.MempoolTx, error) {
 	tx, err := app.txDecoder(txByte)
-	from, to, nonce := app.txAccountInfoHandler(tx)
+	from, to, nonce, isNoOp := app.txAccountInfoHandler(tx)
 	memTx := sdk.MempoolTx{Tx: tx, TxBytes: txByte, From: from, To: to, Nonce: nonce, SortTxHandler: sdk.SortTxHandler{
 		CrossNamespaceTransactionIdentifierHandler: app.crossNamespaceTransactionIdentifierHandler,
 		ContractStaticAnalysisResultHandler:        app.contractStaticAnalysisResultHandler,
@@ -1766,6 +1766,7 @@ func (app *BaseApp) ToMemTx(txByte []byte) (sdk.MempoolTx, error) {
 
 	memTx.TxGas = memTx.Gas()
 	memTx.GasPrice = memTx.GasFeeCap()
+	memTx.IsNoOp = isNoOp
 
 	switch m := app.mempool.(type) {
 	case *mempool.NamespaceMempool:

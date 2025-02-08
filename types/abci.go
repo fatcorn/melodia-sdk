@@ -115,6 +115,7 @@ type MempoolTx struct {
 	From     string
 	To       string
 	Nonce    uint64
+	IsNoOp   bool
 }
 
 // NamespaceSelectedTxs is used for sorting transactions within a namespace.
