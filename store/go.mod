@@ -13,7 +13,7 @@ require (
 	github.com/cosmos/ics23/go v0.10.0
 	github.com/golang/mock v1.6.0
 	github.com/golang/protobuf v1.5.4 // indirect
-	github.com/hashicorp/go-hclog v1.5.0
+	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-metrics v0.5.1
 	github.com/hashicorp/go-plugin v1.5.2
 	github.com/hashicorp/golang-lru v1.0.2
@@ -25,6 +25,8 @@ require (
 	google.golang.org/protobuf v1.33.0
 	gotest.tools/v3 v3.5.1
 )
+
+require github.com/google/btree v1.1.2
 
 require (
 	github.com/DataDog/zstd v1.5.5 // indirect
@@ -43,7 +45,6 @@ require (
 	github.com/getsentry/sentry-go v0.27.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
-	github.com/google/btree v1.1.2 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/hashicorp/go-immutable-radix v1.0.0 // indirect
 	github.com/hashicorp/go-uuid v1.0.1 // indirect
